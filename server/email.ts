@@ -114,6 +114,50 @@ export async function sendResetPasswordEmail(to: string, name: string, resetLink
 }
 
 /**
+ * Send CSV data export to user via email
+ */
+export async function sendExportEmail(to: string, name: string, csvContent: string, scope: string) {
+  if (!resend) return;
+
+  const scopeLabel = scope === "all" ? "All Expenses" : scope;
+  const dateStr = new Date().toISOString().split("T")[0];
+  const filename = `splitease-${scope.toLowerCase().replace(/\s+/g, "-")}-${dateStr}.csv`;
+
+  const subject = `Your SplitEase export: ${scopeLabel}`;
+
+  const html = `
+<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <tr><td align="center" style="padding:24px 16px;">
+    <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="max-width:520px;">
+      <tr><td style="padding-bottom:20px;">
+        <span style="font-size:18px;font-weight:700;color:#1a1a1a;letter-spacing:-0.3px;">Split</span><span style="font-size:18px;font-weight:700;color:#2dd4a8;letter-spacing:-0.3px;">Ease</span>
+      </td></tr>
+      <tr><td style="font-size:15px;color:#374151;padding-bottom:16px;">
+        Hi ${name},
+      </td></tr>
+      <tr><td style="font-size:15px;color:#374151;padding-bottom:16px;">
+        Your expense export for <strong>${scopeLabel}</strong> is attached as a CSV file.
+      </td></tr>
+      <tr><td style="font-size:14px;color:#6b7280;padding-bottom:24px;">
+        Open the attached CSV in Excel, Google Sheets, or any spreadsheet app.
+      </td></tr>
+      <tr><td style="border-top:1px solid #f3f4f6;padding-top:16px;font-size:12px;color:#9ca3af;">
+        SplitEase &middot; Expense splitting made easy
+      </td></tr>
+    </table>
+  </td></tr>
+</table>`;
+
+  const text = `Hi ${name},\n\nYour expense export for ${scopeLabel} is attached as a CSV file.\n\nOpen the attached CSV in Excel, Google Sheets, or any spreadsheet app.\n\n— SplitEase`;
+
+  const attachments = [
+    { content: Buffer.from(csvContent, "utf-8"), filename },
+  ];
+
+  await sendEmail(to, subject, html, text, attachments);
+}
+
+/**
  * Notify people involved in a new expense
  */
 export async function notifyExpenseCreated(opts: {

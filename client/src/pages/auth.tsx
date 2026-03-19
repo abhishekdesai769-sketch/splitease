@@ -9,6 +9,57 @@ import { Eye, EyeOff, ArrowLeft, Mail } from "lucide-react";
 
 type AuthView = "login" | "signup" | "otp" | "forgot" | "forgot-sent";
 
+// Logo — defined OUTSIDE AuthPage so it doesn't get re-created on every render
+function Logo() {
+  return (
+    <div className="text-center space-y-2">
+      <div className="flex items-center justify-center gap-2.5">
+        <svg width="36" height="36" viewBox="0 0 32 32" fill="none" aria-label="SplitEase logo">
+          <rect width="32" height="32" rx="8" fill="hsl(172 63% 45%)" fillOpacity="0.15" />
+          <path d="M10 11h12M10 16h12M10 21h12" stroke="hsl(172 63% 45%)" strokeWidth="2" strokeLinecap="round" />
+          <path d="M16 8v16" stroke="hsl(172 63% 45%)" strokeWidth="2" strokeLinecap="round" strokeDasharray="2 3" />
+        </svg>
+        <span className="text-xl font-semibold tracking-tight text-foreground">
+          Split<span className="text-primary">Ease</span>
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// Password input — defined OUTSIDE so React doesn't unmount/remount on every keystroke
+function PasswordField({
+  id, value, onChange, placeholder, show, onToggle, testId, minLen,
+}: {
+  id: string; value: string; onChange: (v: string) => void;
+  placeholder: string; show: boolean; onToggle: () => void; testId: string;
+  minLen?: number;
+}) {
+  return (
+    <div className="relative">
+      <Input
+        id={id}
+        type={show ? "text" : "password"}
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        required
+        minLength={minLen ?? 6}
+        className="pr-10"
+        data-testid={testId}
+      />
+      <button
+        type="button"
+        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+        onClick={onToggle}
+        tabIndex={-1}
+      >
+        {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+      </button>
+    </div>
+  );
+}
+
 export default function AuthPage() {
   const { login, signup, sendOtp, forgotPassword } = useAuth();
   const { toast } = useToast();
@@ -106,52 +157,6 @@ export default function AuthPage() {
     setView(v);
   };
 
-  // Logo component
-  const Logo = () => (
-    <div className="text-center space-y-2">
-      <div className="flex items-center justify-center gap-2.5">
-        <svg width="36" height="36" viewBox="0 0 32 32" fill="none" aria-label="SplitEase logo">
-          <rect width="32" height="32" rx="8" fill="hsl(172 63% 45%)" fillOpacity="0.15" />
-          <path d="M10 11h12M10 16h12M10 21h12" stroke="hsl(172 63% 45%)" strokeWidth="2" strokeLinecap="round" />
-          <path d="M16 8v16" stroke="hsl(172 63% 45%)" strokeWidth="2" strokeLinecap="round" strokeDasharray="2 3" />
-        </svg>
-        <span className="text-xl font-semibold tracking-tight text-foreground">
-          Split<span className="text-primary">Ease</span>
-        </span>
-      </div>
-    </div>
-  );
-
-  // Password input with eye toggle
-  const PasswordInput = ({
-    id, value, onChange, placeholder, show, onToggle, testId
-  }: {
-    id: string; value: string; onChange: (v: string) => void;
-    placeholder: string; show: boolean; onToggle: () => void; testId: string;
-  }) => (
-    <div className="relative">
-      <Input
-        id={id}
-        type={show ? "text" : "password"}
-        placeholder={placeholder}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        required
-        minLength={6}
-        className="pr-10"
-        data-testid={testId}
-      />
-      <button
-        type="button"
-        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-        onClick={onToggle}
-        tabIndex={-1}
-      >
-        {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-      </button>
-    </div>
-  );
-
   // ===== LOGIN =====
   if (view === "login") {
     return (
@@ -163,9 +168,9 @@ export default function AuthPage() {
           <Card className="p-6">
             <form onSubmit={handleLogin} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
+                <Label htmlFor="login-email">Email</Label>
                 <Input
-                  id="email" type="email" placeholder="you@example.com"
+                  id="login-email" type="email" placeholder="you@example.com"
                   value={email} onChange={(e) => setEmail(e.target.value)}
                   required data-testid="input-email"
                 />
@@ -173,7 +178,7 @@ export default function AuthPage() {
 
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="password">Password</Label>
+                  <Label htmlFor="login-password">Password</Label>
                   <button
                     type="button"
                     className="text-xs text-primary hover:underline"
@@ -183,10 +188,11 @@ export default function AuthPage() {
                     Forgot password?
                   </button>
                 </div>
-                <PasswordInput
-                  id="password" value={password} onChange={setPassword}
+                <PasswordField
+                  id="login-password" value={password} onChange={setPassword}
                   placeholder="Enter password" show={showPassword}
                   onToggle={() => setShowPassword(!showPassword)} testId="input-password"
+                  minLen={1}
                 />
               </div>
 
@@ -218,36 +224,36 @@ export default function AuthPage() {
           <Card className="p-6">
             <form onSubmit={handleSendOtp} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="name">Name</Label>
+                <Label htmlFor="signup-name">Name</Label>
                 <Input
-                  id="name" placeholder="Your name"
+                  id="signup-name" placeholder="Your name"
                   value={name} onChange={(e) => setName(e.target.value)}
                   required data-testid="input-name"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
+                <Label htmlFor="signup-email">Email</Label>
                 <Input
-                  id="email" type="email" placeholder="you@example.com"
+                  id="signup-email" type="email" placeholder="you@example.com"
                   value={email} onChange={(e) => setEmail(e.target.value)}
                   required data-testid="input-email"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
-                <PasswordInput
-                  id="password" value={password} onChange={setPassword}
+                <Label htmlFor="signup-password">Password</Label>
+                <PasswordField
+                  id="signup-password" value={password} onChange={setPassword}
                   placeholder="At least 6 characters" show={showPassword}
                   onToggle={() => setShowPassword(!showPassword)} testId="input-password"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="confirm-password">Confirm Password</Label>
-                <PasswordInput
-                  id="confirm-password" value={confirmPassword} onChange={setConfirmPassword}
+                <Label htmlFor="signup-confirm">Confirm Password</Label>
+                <PasswordField
+                  id="signup-confirm" value={confirmPassword} onChange={setConfirmPassword}
                   placeholder="Re-enter password" show={showConfirmPassword}
                   onToggle={() => setShowConfirmPassword(!showConfirmPassword)} testId="input-confirm-password"
                 />
@@ -298,9 +304,9 @@ export default function AuthPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="otp">Verification Code</Label>
+                <Label htmlFor="otp-code">Verification Code</Label>
                 <Input
-                  id="otp" placeholder="000000"
+                  id="otp-code" placeholder="000000"
                   value={otpCode} onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
                   required maxLength={6}
                   className="text-center text-lg tracking-[0.3em] font-mono"
@@ -361,9 +367,9 @@ export default function AuthPage() {
               </p>
 
               <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
+                <Label htmlFor="forgot-email">Email</Label>
                 <Input
-                  id="email" type="email" placeholder="you@example.com"
+                  id="forgot-email" type="email" placeholder="you@example.com"
                   value={email} onChange={(e) => setEmail(e.target.value)}
                   required data-testid="input-forgot-email"
                 />

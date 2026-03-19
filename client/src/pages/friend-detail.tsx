@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Plus, Trash2, Receipt, CheckCircle2, HandCoins, AlertTriangle, UserMinus, Camera, X } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Receipt, CheckCircle2, HandCoins, AlertTriangle, UserMinus, Camera, X, Mail, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
@@ -132,6 +132,24 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
       try { msg = JSON.parse(msg.split(": ").slice(1).join(": ")).error; } catch {}
       toast({ title: "Error", description: msg, variant: "destructive" });
       setDeleteExpenseId(null);
+    },
+  });
+
+  const exportFriendMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/export/expenses", {
+        scope: "friend",
+        friendId,
+      });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      toast({ title: "Export sent", description: data.message || "CSV sent to your email" });
+    },
+    onError: (err: Error) => {
+      let msg = err.message;
+      try { msg = JSON.parse(msg.split(": ").slice(1).join(": ")).error; } catch {}
+      toast({ title: "Error", description: msg, variant: "destructive" });
     },
   });
 
@@ -350,6 +368,25 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
           </DialogContent>
         </Dialog>
       </div>
+
+      {/* Export + Balance summary */}
+      {friendExpenses.length > 0 && (
+        <Button
+          size="sm"
+          variant="outline"
+          className="w-full"
+          onClick={() => exportFriendMutation.mutate()}
+          disabled={exportFriendMutation.isPending}
+          data-testid="export-friend-expenses-btn"
+        >
+          {exportFriendMutation.isPending ? (
+            <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+          ) : (
+            <Mail className="w-4 h-4 mr-1.5" />
+          )}
+          {exportFriendMutation.isPending ? "Sending..." : `Export expenses with ${friend.name}`}
+        </Button>
+      )}
 
       {/* Balance summary */}
       <Card className="p-4">

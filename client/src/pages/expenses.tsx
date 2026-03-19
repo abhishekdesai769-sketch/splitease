@@ -1,13 +1,17 @@
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 import type { Group, Expense, SafeUser } from "@shared/schema";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Receipt, Download } from "lucide-react";
+import { Receipt, Mail, Loader2 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { Link } from "wouter";
+import { useToast } from "@/hooks/use-toast";
 
 export default function Expenses() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const { data: groups = [] } = useQuery<Group[]>({ queryKey: ["/api/groups"] });
   const { data: expenses = [] } = useQuery<Expense[]>({ queryKey: ["/api/expenses"] });
   const { data: friendsList = [] } = useQuery<SafeUser[]>({ queryKey: ["/api/friends"] });
@@ -55,6 +59,21 @@ export default function Expenses() {
 
   const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
 
+  const exportMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/export/expenses", { scope: "all" });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      toast({ title: "Export sent", description: data.message || `CSV sent to your email` });
+    },
+    onError: (err: Error) => {
+      let msg = err.message;
+      try { msg = JSON.parse(msg.split(": ").slice(1).join(": ")).error; } catch {}
+      toast({ title: "Error", description: msg, variant: "destructive" });
+    },
+  });
+
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-3">
@@ -68,14 +87,16 @@ export default function Expenses() {
           <Button
             size="sm"
             variant="outline"
-            onClick={() => {
-              const API_BASE = "__PORT_5000__".startsWith("__") ? "" : "__PORT_5000__";
-              window.open(`${API_BASE}/api/export/expenses`, "_blank");
-            }}
+            onClick={() => exportMutation.mutate()}
+            disabled={exportMutation.isPending}
             data-testid="export-expenses-btn"
           >
-            <Download className="w-4 h-4 mr-1.5" />
-            Export CSV
+            {exportMutation.isPending ? (
+              <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+            ) : (
+              <Mail className="w-4 h-4 mr-1.5" />
+            )}
+            {exportMutation.isPending ? "Sending..." : "Export CSV"}
           </Button>
         )}
       </div>

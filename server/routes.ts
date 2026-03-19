@@ -6,7 +6,7 @@ import multer from "multer";
 import { storage } from "./storage";
 import { signupSchema, loginSchema, verifyOtpSchema, forgotPasswordSchema, resetPasswordSchema } from "@shared/schema";
 import { createHash, randomBytes } from "crypto";
-import { notifyExpenseCreated, sendOtpEmail, sendResetPasswordEmail } from "./email";
+import { notifyExpenseCreated, sendOtpEmail, sendResetPasswordEmail, sendExportEmail } from "./email";
 
 // Multer: memory-only storage for receipt uploads (max 10MB)
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -674,50 +674,86 @@ export async function registerRoutes(
     res.json(members);
   });
 
-  // ========== Data Export ==========
-  app.get("/api/export/expenses", requireAuth, requireApproved, async (req, res) => {
+  // ========== Data Export (emailed as CSV) ==========
+  app.post("/api/export/expenses", requireAuth, requireApproved, async (req, res) => {
     const userId = (req.session as any).userId;
     const user = await storage.getUser(userId);
     if (!user) return res.status(401).json({ error: "User not found" });
 
-    // Get all expenses for this user (direct + group)
-    const allExpenses = await storage.getExpensesForUser(userId);
-    const allFriends = await storage.getFriends(userId);
-    const allGroups = await storage.getGroupsForUser(userId);
+    const { scope, friendId, groupId } = req.body;
+    // scope: "all" | "friend" | "group"
 
-    // Build lookup maps
+    let expenses: any[] = [];
+    let scopeLabel = "All Expenses";
+
+    if (scope === "friend" && friendId) {
+      // Get direct expenses between this user and the friend
+      const directExpenses = await storage.getDirectExpensesForUser(userId);
+      expenses = directExpenses.filter(
+        (e: any) =>
+          (e.paidById === userId && e.splitAmongIds.includes(friendId)) ||
+          (e.paidById === friendId && e.splitAmongIds.includes(userId))
+      );
+      const friendUser = await storage.getUser(friendId);
+      scopeLabel = friendUser ? `Expenses with ${friendUser.name}` : "Friend Expenses";
+    } else if (scope === "group" && groupId) {
+      // Get group expenses
+      const group = await storage.getGroup(groupId);
+      if (!group || !group.memberIds.includes(userId)) {
+        return res.status(403).json({ error: "Not a member of this group" });
+      }
+      expenses = await storage.getExpensesByGroup(groupId);
+      scopeLabel = `Expenses in ${group.name}`;
+    } else {
+      // All expenses
+      expenses = await storage.getExpensesForUser(userId);
+      scopeLabel = "All Expenses";
+    }
+
+    if (expenses.length === 0) {
+      return res.status(400).json({ error: "No expenses to export" });
+    }
+
+    // Build user and group lookup maps
     const userIds = new Set<string>();
-    allExpenses.forEach(e => {
+    expenses.forEach((e: any) => {
       userIds.add(e.paidById);
-      e.splitAmongIds.forEach(id => userIds.add(id));
+      e.splitAmongIds.forEach((id: string) => userIds.add(id));
     });
     const usersMap = new Map<string, string>();
     if (userIds.size > 0) {
       const users = await storage.getUsersSafe(Array.from(userIds));
       users.forEach(u => usersMap.set(u.id, u.name));
     }
+    const allGroups = await storage.getGroupsForUser(userId);
     const groupsMap = new Map<string, string>();
     allGroups.forEach(g => groupsMap.set(g.id, g.name));
 
     // Sort by date descending
-    const sorted = [...allExpenses].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    const sorted = [...expenses].sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-    // CSV header
+    // Build CSV
     const csvRows = ["Date,Description,Amount,Paid By,Split Among,Group,Type"];
     for (const e of sorted) {
       const date = new Date(e.date).toLocaleDateString("en-CA"); // YYYY-MM-DD
       const desc = e.description.replace(/"/g, '""');
       const paidBy = usersMap.get(e.paidById) || "Unknown";
-      const splitAmong = e.splitAmongIds.map(id => usersMap.get(id) || "Unknown").join("; ");
+      const splitAmong = e.splitAmongIds.map((id: string) => usersMap.get(id) || "Unknown").join("; ");
       const group = e.groupId ? (groupsMap.get(e.groupId) || "Unknown Group") : "Direct";
       const type = e.isSettlement ? "Settlement" : "Expense";
       csvRows.push(`"${date}","${desc}",${e.amount.toFixed(2)},"${paidBy}","${splitAmong}","${group}","${type}"`);
     }
 
     const csv = csvRows.join("\n");
-    res.setHeader("Content-Type", "text/csv");
-    res.setHeader("Content-Disposition", `attachment; filename="splitease-expenses-${new Date().toISOString().split("T")[0]}.csv"`);
-    res.send(csv);
+
+    // Email the CSV to the user
+    try {
+      await sendExportEmail(user.email, user.name, csv, scopeLabel);
+      res.json({ message: `Export sent to ${user.email}` });
+    } catch (err) {
+      console.error("Export email failed:", err);
+      res.status(500).json({ error: "Failed to send export email. Please try again." });
+    }
   });
 
   return httpServer;

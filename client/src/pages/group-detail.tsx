@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, ArrowLeft, Trash2, Shuffle, Receipt, UserPlus, X, HandCoins, CheckCircle2, AlertTriangle, Camera } from "lucide-react";
+import { Plus, ArrowLeft, Trash2, Shuffle, Receipt, UserPlus, X, HandCoins, CheckCircle2, AlertTriangle, Camera, Mail, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 import { useAuth } from "@/lib/auth";
@@ -168,6 +168,24 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
     },
     onError: (err: Error) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const exportGroupMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/export/expenses", {
+        scope: "group",
+        groupId,
+      });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      toast({ title: "Export sent", description: data.message || "CSV sent to your email" });
+    },
+    onError: (err: Error) => {
+      let msg = err.message;
+      try { msg = JSON.parse(msg.split(": ").slice(1).join(": ")).error; } catch {}
+      toast({ title: "Error", description: msg, variant: "destructive" });
     },
   });
 
@@ -513,6 +531,25 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
           </DialogContent>
         </Dialog>
       </div>
+
+      {/* Export + Settle Up + Simplify Debts */}
+      {expenses.length > 0 && (
+        <Button
+          size="sm"
+          variant="outline"
+          className="w-full"
+          onClick={() => exportGroupMutation.mutate()}
+          disabled={exportGroupMutation.isPending}
+          data-testid="export-group-expenses-btn"
+        >
+          {exportGroupMutation.isPending ? (
+            <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+          ) : (
+            <Mail className="w-4 h-4 mr-1.5" />
+          )}
+          {exportGroupMutation.isPending ? "Sending..." : `Export ${group.name} expenses`}
+        </Button>
+      )}
 
       {/* Settle Up + Simplify Debts */}
       {expenses.length > 0 && (
