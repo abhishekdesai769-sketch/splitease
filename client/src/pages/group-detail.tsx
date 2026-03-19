@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, ArrowLeft, Trash2, Shuffle, Receipt, UserPlus, X, HandCoins, CheckCircle2 } from "lucide-react";
+import { Plus, ArrowLeft, Trash2, Shuffle, Receipt, UserPlus, X, HandCoins, CheckCircle2, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 import { useAuth } from "@/lib/auth";
@@ -32,6 +32,9 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
   const [settlePayerId, setSettlePayerId] = useState("");
   const [settleReceiverId, setSettleReceiverId] = useState("");
   const [settleAmount, setSettleAmount] = useState("");
+
+  // Delete expense confirmation
+  const [deleteExpenseId, setDeleteExpenseId] = useState<string | null>(null);
 
   const { data: group } = useQuery<Group>({ queryKey: ["/api/groups", groupId] });
   const { data: members = [] } = useQuery<SafeUser[]>({
@@ -95,9 +98,21 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/expenses/group", groupId] });
       queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
+      setDeleteExpenseId(null);
       toast({ title: "Expense removed" });
     },
+    onError: (err: Error) => {
+      let msg = err.message;
+      try { msg = JSON.parse(msg.split(": ").slice(1).join(": ")).error; } catch {}
+      toast({ title: "Error", description: msg, variant: "destructive" });
+      setDeleteExpenseId(null);
+    },
   });
+
+  // Can the current user delete this expense?
+  const canDeleteExpense = (expense: Expense) => {
+    return expense.addedById === user?.id || user?.isAdmin;
+  };
 
   const inviteMutation = useMutation({
     mutationFn: async () => {
@@ -613,6 +628,43 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
         </DialogContent>
       </Dialog>
 
+      {/* Delete Expense Confirmation Dialog */}
+      <Dialog open={!!deleteExpenseId} onOpenChange={(open) => { if (!open) setDeleteExpenseId(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Expense</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div className="flex items-center gap-3 rounded-lg bg-destructive/10 p-4">
+              <AlertTriangle className="w-5 h-5 text-destructive shrink-0" />
+              <p className="text-sm text-foreground">
+                Are you sure you want to delete this expense? This action cannot be undone.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => setDeleteExpenseId(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                className="flex-1"
+                onClick={() => {
+                  if (deleteExpenseId) deleteExpenseMutation.mutate(deleteExpenseId);
+                }}
+                disabled={deleteExpenseMutation.isPending}
+                data-testid="confirm-delete-group-expense"
+              >
+                {deleteExpenseMutation.isPending ? "Deleting..." : "Yes, Delete"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Expense list */}
       {expenses.length > 0 ? (
         <div className="space-y-2">
@@ -647,13 +699,16 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                   <span className="text-sm font-semibold text-foreground shrink-0">
                     ${expense.amount.toFixed(2)}
                   </span>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={() => deleteExpenseMutation.mutate(expense.id)}
-                  >
-                    <Trash2 className="w-4 h-4 text-muted-foreground" />
-                  </Button>
+                  {canDeleteExpense(expense) && (
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => setDeleteExpenseId(expense.id)}
+                      data-testid={`delete-group-expense-${expense.id}`}
+                    >
+                      <Trash2 className="w-4 h-4 text-muted-foreground" />
+                    </Button>
+                  )}
                 </div>
               </Card>
             ))}

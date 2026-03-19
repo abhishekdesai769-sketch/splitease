@@ -8,21 +8,28 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Plus, Trash2, Receipt, CheckCircle2, HandCoins } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Receipt, CheckCircle2, HandCoins, AlertTriangle, UserMinus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { calculateGroupBalances } from "@/lib/simplify";
 
 export default function FriendDetail({ friendId }: { friendId: string }) {
   const { user } = useAuth();
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   const [addExpenseOpen, setAddExpenseOpen] = useState(false);
   const [settleUpOpen, setSettleUpOpen] = useState(false);
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
   const [paidById, setPaidById] = useState("");
   const [splitType, setSplitType] = useState<"equal" | "they_pay" | "you_pay">("equal");
+
+  // Delete friend: 2-step confirmation
+  const [deleteFriendStep, setDeleteFriendStep] = useState<0 | 1 | 2>(0); // 0=closed, 1=first confirm, 2=final warning
+
+  // Delete expense confirmation
+  const [deleteExpenseId, setDeleteExpenseId] = useState<string | null>(null);
 
   const { data: friendsList = [] } = useQuery<SafeUser[]>({
     queryKey: ["/api/friends"],
@@ -112,7 +119,30 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/friends/expenses"] });
       queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
-      toast({ title: "Expense removed" });
+      setDeleteExpenseId(null);
+      toast({ title: "Expense deleted" });
+    },
+    onError: (err: Error) => {
+      let msg = err.message;
+      try { msg = JSON.parse(msg.split(": ").slice(1).join(": ")).error; } catch {}
+      toast({ title: "Error", description: msg, variant: "destructive" });
+      setDeleteExpenseId(null);
+    },
+  });
+
+  const removeFriendMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("DELETE", `/api/friends/${friendId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/friends"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/friends/expenses"] });
+      setDeleteFriendStep(0);
+      toast({ title: "Friend removed" });
+      setLocation("/friends");
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
     },
   });
 
@@ -121,6 +151,11 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
     setAmount("");
     setPaidById("");
     setSplitType("equal");
+  };
+
+  // Can the current user delete this expense?
+  const canDeleteExpense = (expense: Expense) => {
+    return expense.addedById === user?.id || user?.isAdmin;
   };
 
   if (!friend) {
@@ -343,6 +378,111 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
         </DialogContent>
       </Dialog>
 
+      {/* Delete Expense Confirmation Dialog */}
+      <Dialog open={!!deleteExpenseId} onOpenChange={(open) => { if (!open) setDeleteExpenseId(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Expense</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div className="flex items-center gap-3 rounded-lg bg-destructive/10 p-4">
+              <AlertTriangle className="w-5 h-5 text-destructive shrink-0" />
+              <p className="text-sm text-foreground">
+                Are you sure you want to delete this expense? This action cannot be undone.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => setDeleteExpenseId(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                className="flex-1"
+                onClick={() => {
+                  if (deleteExpenseId) deleteExpenseMutation.mutate(deleteExpenseId);
+                }}
+                disabled={deleteExpenseMutation.isPending}
+                data-testid="confirm-delete-expense"
+              >
+                {deleteExpenseMutation.isPending ? "Deleting..." : "Yes, Delete"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Friend 2-step Confirmation Dialog */}
+      <Dialog open={deleteFriendStep > 0} onOpenChange={(open) => { if (!open) setDeleteFriendStep(0); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {deleteFriendStep === 1 ? "Remove Friend" : "Final Warning"}
+            </DialogTitle>
+          </DialogHeader>
+          {deleteFriendStep === 1 && (
+            <div className="space-y-4 pt-2">
+              <div className="flex items-center gap-3 rounded-lg bg-destructive/10 p-4">
+                <AlertTriangle className="w-5 h-5 text-destructive shrink-0" />
+                <p className="text-sm text-foreground">
+                  Are you sure you want to remove <strong>{friend.name}</strong> from your friends?
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => setDeleteFriendStep(0)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="destructive"
+                  className="flex-1"
+                  onClick={() => setDeleteFriendStep(2)}
+                >
+                  Yes, Remove
+                </Button>
+              </div>
+            </div>
+          )}
+          {deleteFriendStep === 2 && (
+            <div className="space-y-4 pt-2">
+              <div className="rounded-lg bg-destructive/10 p-4 space-y-2">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="w-5 h-5 text-destructive shrink-0" />
+                  <p className="text-sm font-semibold text-destructive">This is permanent</p>
+                </div>
+                <p className="text-sm text-foreground">
+                  If you remove <strong>{friend.name}</strong>, all expense history between you two will also be deleted. This cannot be undone.
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => setDeleteFriendStep(0)}
+                >
+                  No, keep friend
+                </Button>
+                <Button
+                  variant="destructive"
+                  className="flex-1"
+                  onClick={() => removeFriendMutation.mutate()}
+                  disabled={removeFriendMutation.isPending}
+                  data-testid="confirm-delete-friend-final"
+                >
+                  {removeFriendMutation.isPending ? "Removing..." : "I understand, delete"}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* Expenses list */}
       {sortedExpenses.length > 0 ? (
         <div>
@@ -377,13 +517,16 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
                     <span className="text-sm font-semibold text-foreground shrink-0">
                       ${expense.amount.toFixed(2)}
                     </span>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={() => deleteExpenseMutation.mutate(expense.id)}
-                    >
-                      <Trash2 className="w-4 h-4 text-muted-foreground" />
-                    </Button>
+                    {canDeleteExpense(expense) && (
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => setDeleteExpenseId(expense.id)}
+                        data-testid={`delete-expense-${expense.id}`}
+                      >
+                        <Trash2 className="w-4 h-4 text-muted-foreground" />
+                      </Button>
+                    )}
                   </div>
                 </Card>
               );
@@ -401,6 +544,20 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
           </p>
         </Card>
       )}
+
+      {/* Remove Friend button — at the bottom, subtle */}
+      <div className="pt-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+          onClick={() => setDeleteFriendStep(1)}
+          data-testid="remove-friend-btn"
+        >
+          <UserMinus className="w-4 h-4 mr-1.5" />
+          Remove Friend
+        </Button>
+      </div>
     </div>
   );
 }

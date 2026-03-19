@@ -540,12 +540,19 @@ export async function registerRoutes(
   });
 
   app.delete("/api/expenses/:id", requireAuth, requireApproved, async (req, res) => {
-    // Only the person who added the expense or admin can delete it
     const userId = (req.session as any).userId;
     const user = await storage.getUser(userId);
+    if (!user) return res.status(401).json({ error: "User not found" });
 
-    // For now allow any authenticated user to delete (maintain backwards compat)
-    // Could restrict to addedById === userId || user.isAdmin
+    // Check expense exists
+    const expense = await storage.getExpense(req.params.id);
+    if (!expense) return res.status(404).json({ error: "Not found" });
+
+    // Only the person who added the expense or admin can delete
+    if (expense.addedById !== userId && !user.isAdmin) {
+      return res.status(403).json({ error: "Only the person who created this expense can delete it" });
+    }
+
     const deleted = await storage.deleteExpense(req.params.id);
     if (!deleted) return res.status(404).json({ error: "Not found" });
     res.status(204).send();

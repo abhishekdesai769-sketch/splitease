@@ -38,6 +38,7 @@ export interface IStorage {
   deleteGroup(id: string): Promise<boolean>;
 
   // Expenses
+  getExpense(id: string): Promise<Expense | undefined>;
   getExpensesByGroup(groupId: string): Promise<Expense[]>;
   getExpensesForUser(userId: string): Promise<Expense[]>;
   getDirectExpensesForUser(userId: string): Promise<Expense[]>;
@@ -162,6 +163,11 @@ export class PgStorage implements IStorage {
   }
 
   // Expenses
+  async getExpense(id: string): Promise<Expense | undefined> {
+    const [expense] = await db.select().from(expenses).where(eq(expenses.id, id));
+    return expense;
+  }
+
   async getExpensesByGroup(groupId: string): Promise<Expense[]> {
     return db.select().from(expenses).where(eq(expenses.groupId, groupId));
   }

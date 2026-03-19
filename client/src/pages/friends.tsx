@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { UserPlus, Receipt, Trash2, Plus, Users2, HandCoins, CheckCircle2, ChevronRight } from "lucide-react";
+import { UserPlus, Plus, Users2, HandCoins, CheckCircle2, ChevronRight } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 import { useAuth } from "@/lib/auth";
@@ -53,16 +53,6 @@ export default function Friends() {
       let msg = err.message;
       try { msg = JSON.parse(msg.split(": ").slice(1).join(": ")).error; } catch {}
       toast({ title: "Error", description: msg, variant: "destructive" });
-    },
-  });
-
-  const removeFriendMutation = useMutation({
-    mutationFn: async (friendId: string) => {
-      await apiRequest("DELETE", `/api/friends/${friendId}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/friends"] });
-      toast({ title: "Friend removed" });
     },
   });
 
@@ -121,17 +111,6 @@ export default function Friends() {
     },
     onError: (err: Error) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });
-    },
-  });
-
-  const deleteExpenseMutation = useMutation({
-    mutationFn: async (id: string) => {
-      await apiRequest("DELETE", `/api/expenses/${id}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/friends/expenses"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
-      toast({ title: "Expense removed" });
     },
   });
 
@@ -470,17 +449,7 @@ export default function Friends() {
                       Settle Up
                     </Button>
                   )}
-                  <div className="flex items-center gap-1">
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); removeFriendMutation.mutate(friend.id); }}
-                      data-testid={`remove-friend-${friend.id}`}
-                    >
-                      <Trash2 className="w-4 h-4 text-muted-foreground" />
-                    </Button>
-                    <ChevronRight className="w-4 h-4 text-muted-foreground" />
-                  </div>
+                  <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
                 </Card>
               </Link>
             );
