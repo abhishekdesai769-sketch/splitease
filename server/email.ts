@@ -32,6 +32,88 @@ async function sendEmail(
 }
 
 /**
+ * Send OTP code for email verification
+ */
+export async function sendOtpEmail(to: string, name: string, code: string) {
+  if (!resend) return;
+
+  const subject = `${code} is your SplitEase verification code`;
+
+  const html = `
+<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <tr><td align="center" style="padding:24px 16px;">
+    <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="max-width:520px;">
+      <tr><td style="padding-bottom:20px;">
+        <span style="font-size:18px;font-weight:700;color:#1a1a1a;letter-spacing:-0.3px;">Split</span><span style="font-size:18px;font-weight:700;color:#2dd4a8;letter-spacing:-0.3px;">Ease</span>
+      </td></tr>
+      <tr><td style="font-size:15px;color:#374151;padding-bottom:16px;">
+        Hi ${name},
+      </td></tr>
+      <tr><td style="font-size:15px;color:#374151;padding-bottom:16px;">
+        Your verification code is:
+      </td></tr>
+      <tr><td style="padding-bottom:16px;">
+        <table cellpadding="0" cellspacing="0" role="presentation" style="border:1px solid #e5e7eb;border-radius:10px;">
+          <tr><td style="padding:16px 32px;font-size:32px;font-weight:700;color:#111827;letter-spacing:8px;font-family:monospace;">
+            ${code}
+          </td></tr>
+        </table>
+      </td></tr>
+      <tr><td style="font-size:14px;color:#6b7280;padding-bottom:24px;">
+        This code expires in 10 minutes. If you didn't request this, you can safely ignore this email.
+      </td></tr>
+      <tr><td style="border-top:1px solid #f3f4f6;padding-top:16px;font-size:12px;color:#9ca3af;">
+        SplitEase &middot; Expense splitting made easy
+      </td></tr>
+    </table>
+  </td></tr>
+</table>`;
+
+  const text = `Hi ${name},\n\nYour SplitEase verification code is: ${code}\n\nThis code expires in 10 minutes.\n\n— SplitEase`;
+
+  sendEmail(to, subject, html, text);
+}
+
+/**
+ * Send password reset email
+ */
+export async function sendResetPasswordEmail(to: string, name: string, resetLink: string) {
+  if (!resend) return;
+
+  const subject = `Reset your SplitEase password`;
+
+  const html = `
+<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <tr><td align="center" style="padding:24px 16px;">
+    <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="max-width:520px;">
+      <tr><td style="padding-bottom:20px;">
+        <span style="font-size:18px;font-weight:700;color:#1a1a1a;letter-spacing:-0.3px;">Split</span><span style="font-size:18px;font-weight:700;color:#2dd4a8;letter-spacing:-0.3px;">Ease</span>
+      </td></tr>
+      <tr><td style="font-size:15px;color:#374151;padding-bottom:16px;">
+        Hi ${name},
+      </td></tr>
+      <tr><td style="font-size:15px;color:#374151;padding-bottom:16px;">
+        We received a request to reset your password. Click the link below to set a new one:
+      </td></tr>
+      <tr><td style="padding-bottom:16px;">
+        <a href="${resetLink}" style="font-size:14px;color:#2dd4a8;text-decoration:none;font-weight:500;">${resetLink}</a>
+      </td></tr>
+      <tr><td style="font-size:14px;color:#6b7280;padding-bottom:24px;">
+        This link expires in 1 hour. If you didn't request a password reset, you can safely ignore this email.
+      </td></tr>
+      <tr><td style="border-top:1px solid #f3f4f6;padding-top:16px;font-size:12px;color:#9ca3af;">
+        SplitEase &middot; Expense splitting made easy
+      </td></tr>
+    </table>
+  </td></tr>
+</table>`;
+
+  const text = `Hi ${name},\n\nWe received a request to reset your password. Visit this link to set a new one:\n\n${resetLink}\n\nThis link expires in 1 hour.\n\n— SplitEase`;
+
+  sendEmail(to, subject, html, text);
+}
+
+/**
  * Notify people involved in a new expense
  */
 export async function notifyExpenseCreated(opts: {

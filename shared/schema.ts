@@ -12,6 +12,25 @@ export const users = pgTable("users", {
   avatarColor: text("avatar_color").notNull(),
   isAdmin: boolean("is_admin").notNull().default(false),
   isApproved: boolean("is_approved").notNull().default(false), // admin must approve new users
+  isEmailVerified: boolean("is_email_verified").notNull().default(false),
+});
+
+// OTP codes for email verification
+export const otpCodes = pgTable("otp_codes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  email: text("email").notNull(),
+  code: text("code").notNull(),
+  expiresAt: text("expires_at").notNull(),
+  used: boolean("used").notNull().default(false),
+});
+
+// Password reset tokens
+export const resetTokens = pgTable("reset_tokens", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  token: text("token").notNull(),
+  expiresAt: text("expires_at").notNull(),
+  used: boolean("used").notNull().default(false),
 });
 
 export const insertUserSchema = createInsertSchema(users).omit({ id: true });
@@ -71,4 +90,18 @@ export const signupSchema = z.object({
 export const loginSchema = z.object({
   email: z.string().email("Invalid email"),
   password: z.string().min(1, "Password is required"),
+});
+
+export const verifyOtpSchema = z.object({
+  email: z.string().email(),
+  code: z.string().length(6, "Code must be 6 digits"),
+});
+
+export const forgotPasswordSchema = z.object({
+  email: z.string().email("Invalid email"),
+});
+
+export const resetPasswordSchema = z.object({
+  token: z.string().min(1),
+  password: z.string().min(6, "Password must be at least 6 characters").max(128, "Password too long"),
 });

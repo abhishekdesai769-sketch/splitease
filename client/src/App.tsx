@@ -15,6 +15,7 @@ import FriendDetail from "@/pages/friend-detail";
 import Expenses from "@/pages/expenses";
 import Admin from "@/pages/admin";
 import AuthPage from "@/pages/auth";
+import ResetPassword from "@/pages/reset-password";
 import NotFound from "@/pages/not-found";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -63,6 +64,11 @@ function AppRouter() {
   }
 
   if (!user) {
+    // Check if this is a reset-password route
+    const hash = window.location.hash;
+    if (hash.startsWith("#/reset-password")) {
+      return <ResetPassword />;
+    }
     return <AuthPage />;
   }
 

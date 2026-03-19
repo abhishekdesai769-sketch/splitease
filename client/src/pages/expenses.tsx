@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import type { Group, Expense, SafeUser } from "@shared/schema";
 import { Card } from "@/components/ui/card";
-import { Receipt } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Receipt, Download } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { Link } from "wouter";
 
@@ -56,11 +57,27 @@ export default function Expenses() {
 
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="text-xl font-semibold tracking-tight">All Expenses</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          {expenses.length} expenses · ${totalExpenses.toFixed(2)} total
-        </p>
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">All Expenses</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            {expenses.length} expenses · ${totalExpenses.toFixed(2)} total
+          </p>
+        </div>
+        {expenses.length > 0 && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              const API_BASE = "__PORT_5000__".startsWith("__") ? "" : "__PORT_5000__";
+              window.open(`${API_BASE}/api/export/expenses`, "_blank");
+            }}
+            data-testid="export-expenses-btn"
+          >
+            <Download className="w-4 h-4 mr-1.5" />
+            Export CSV
+          </Button>
+        )}
       </div>
 
       {sortedExpenses.length === 0 ? (

@@ -4,9 +4,9 @@ import session from "express-session";
 import createMemoryStore from "memorystore";
 import multer from "multer";
 import { storage } from "./storage";
-import { signupSchema, loginSchema } from "@shared/schema";
+import { signupSchema, loginSchema, verifyOtpSchema, forgotPasswordSchema, resetPasswordSchema } from "@shared/schema";
 import { createHash, randomBytes } from "crypto";
-import { notifyExpenseCreated } from "./email";
+import { notifyExpenseCreated, sendOtpEmail, sendResetPasswordEmail } from "./email";
 
 // Multer: memory-only storage for receipt uploads (max 10MB)
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -129,6 +129,28 @@ export async function registerRoutes(
   // ========== Auth (rate limited) ==========
   const authLimiter = rateLimit(15 * 60 * 1000, 20); // 20 attempts per 15 min
 
+  // Step 1: Send OTP to verify email before creating account
+  app.post("/api/auth/send-otp", authLimiter, async (req, res) => {
+    const { email, name } = req.body;
+    if (!email || !name) return res.status(400).json({ error: "Email and name are required" });
+
+    const cleanEmail = email.toLowerCase().trim();
+    const existing = await storage.getUserByEmail(cleanEmail);
+    if (existing) {
+      return res.status(409).json({ error: "An account with this email already exists" });
+    }
+
+    // Generate 6-digit OTP
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 minutes
+
+    await storage.createOtp({ email: cleanEmail, code, expiresAt });
+    sendOtpEmail(cleanEmail, sanitize(name, 100), code);
+
+    res.json({ message: "OTP sent" });
+  });
+
+  // Step 2: Verify OTP and create the account
   app.post("/api/auth/signup", authLimiter, async (req, res) => {
     const parsed = signupSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -136,8 +158,18 @@ export async function registerRoutes(
     }
 
     const { name, email, password } = parsed.data;
+    const otpCode = req.body.otpCode;
     const cleanName = sanitize(name, 100);
     const cleanEmail = email.toLowerCase().trim();
+
+    // Verify OTP
+    if (!otpCode) {
+      return res.status(400).json({ error: "Verification code is required" });
+    }
+    const validOtp = await storage.verifyOtp(cleanEmail, otpCode);
+    if (!validOtp) {
+      return res.status(400).json({ error: "Invalid or expired verification code" });
+    }
 
     const existing = await storage.getUserByEmail(cleanEmail);
     if (existing) {
@@ -155,6 +187,7 @@ export async function registerRoutes(
       avatarColor: AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)],
       isAdmin,
       isApproved,
+      isEmailVerified: true,
     });
 
     (req.session as any).userId = user.id;
@@ -200,6 +233,53 @@ export async function registerRoutes(
     }
     const { password: _, ...safeUser } = user;
     res.json(safeUser);
+  });
+
+  // ========== Forgot / Reset Password ==========
+  app.post("/api/auth/forgot-password", authLimiter, async (req, res) => {
+    const parsed = forgotPasswordSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Valid email is required" });
+    }
+
+    const cleanEmail = parsed.data.email.toLowerCase().trim();
+    const user = await storage.getUserByEmail(cleanEmail);
+
+    // Always return success to prevent email enumeration
+    if (!user) {
+      return res.json({ message: "If an account exists with that email, a reset link has been sent." });
+    }
+
+    const token = randomBytes(32).toString("hex");
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 hour
+
+    await storage.createResetToken({ userId: user.id, token, expiresAt });
+
+    // Build reset link — uses hash routing
+    const baseUrl = process.env.APP_URL || "https://splitease-81re.onrender.com";
+    const resetLink = `${baseUrl}/#/reset-password?token=${token}`;
+
+    sendResetPasswordEmail(cleanEmail, user.name, resetLink);
+
+    res.json({ message: "If an account exists with that email, a reset link has been sent." });
+  });
+
+  app.post("/api/auth/reset-password", authLimiter, async (req, res) => {
+    const parsed = resetPasswordSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.errors[0]?.message || "Invalid input" });
+    }
+
+    const { token, password } = parsed.data;
+    const resetToken = await storage.verifyResetToken(token);
+
+    if (!resetToken) {
+      return res.status(400).json({ error: "Invalid or expired reset link. Please request a new one." });
+    }
+
+    await storage.updateUserPassword(resetToken.userId, hashPassword(password));
+
+    res.json({ message: "Password has been reset successfully. You can now sign in." });
   });
 
   // ========== Users (search) — requires approved ==========
@@ -592,6 +672,52 @@ export async function registerRoutes(
     }
     const members = await storage.getUsersSafe(group.memberIds);
     res.json(members);
+  });
+
+  // ========== Data Export ==========
+  app.get("/api/export/expenses", requireAuth, requireApproved, async (req, res) => {
+    const userId = (req.session as any).userId;
+    const user = await storage.getUser(userId);
+    if (!user) return res.status(401).json({ error: "User not found" });
+
+    // Get all expenses for this user (direct + group)
+    const allExpenses = await storage.getExpensesForUser(userId);
+    const allFriends = await storage.getFriends(userId);
+    const allGroups = await storage.getGroupsForUser(userId);
+
+    // Build lookup maps
+    const userIds = new Set<string>();
+    allExpenses.forEach(e => {
+      userIds.add(e.paidById);
+      e.splitAmongIds.forEach(id => userIds.add(id));
+    });
+    const usersMap = new Map<string, string>();
+    if (userIds.size > 0) {
+      const users = await storage.getUsersSafe(Array.from(userIds));
+      users.forEach(u => usersMap.set(u.id, u.name));
+    }
+    const groupsMap = new Map<string, string>();
+    allGroups.forEach(g => groupsMap.set(g.id, g.name));
+
+    // Sort by date descending
+    const sorted = [...allExpenses].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+    // CSV header
+    const csvRows = ["Date,Description,Amount,Paid By,Split Among,Group,Type"];
+    for (const e of sorted) {
+      const date = new Date(e.date).toLocaleDateString("en-CA"); // YYYY-MM-DD
+      const desc = e.description.replace(/"/g, '""');
+      const paidBy = usersMap.get(e.paidById) || "Unknown";
+      const splitAmong = e.splitAmongIds.map(id => usersMap.get(id) || "Unknown").join("; ");
+      const group = e.groupId ? (groupsMap.get(e.groupId) || "Unknown Group") : "Direct";
+      const type = e.isSettlement ? "Settlement" : "Expense";
+      csvRows.push(`"${date}","${desc}",${e.amount.toFixed(2)},"${paidBy}","${splitAmong}","${group}","${type}"`);
+    }
+
+    const csv = csvRows.join("\n");
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader("Content-Disposition", `attachment; filename="splitease-expenses-${new Date().toISOString().split("T")[0]}.csv"`);
+    res.send(csv);
   });
 
   return httpServer;

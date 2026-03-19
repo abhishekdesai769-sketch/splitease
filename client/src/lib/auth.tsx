@@ -6,7 +6,10 @@ interface AuthContextType {
   user: SafeUser | null;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  signup: (name: string, email: string, password: string) => Promise<void>;
+  signup: (name: string, email: string, password: string, otpCode: string) => Promise<void>;
+  sendOtp: (name: string, email: string) => Promise<void>;
+  forgotPassword: (email: string) => Promise<string>;
+  resetPassword: (token: string, password: string) => Promise<string>;
   logout: () => Promise<void>;
 }
 
@@ -15,6 +18,9 @@ const AuthContext = createContext<AuthContextType>({
   isLoading: true,
   login: async () => {},
   signup: async () => {},
+  sendOtp: async () => {},
+  forgotPassword: async () => "",
+  resetPassword: async () => "",
   logout: async () => {},
 });
 
@@ -46,11 +52,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     queryClient.clear();
   }, []);
 
-  const signup = useCallback(async (name: string, email: string, password: string) => {
-    const res = await apiRequest("POST", "/api/auth/signup", { name, email, password });
+  const sendOtp = useCallback(async (name: string, email: string) => {
+    await apiRequest("POST", "/api/auth/send-otp", { name, email });
+  }, []);
+
+  const signup = useCallback(async (name: string, email: string, password: string, otpCode: string) => {
+    const res = await apiRequest("POST", "/api/auth/signup", { name, email, password, otpCode });
     const data = await res.json();
     setUser(data);
     queryClient.clear();
+  }, []);
+
+  const forgotPassword = useCallback(async (email: string) => {
+    const res = await apiRequest("POST", "/api/auth/forgot-password", { email });
+    const data = await res.json();
+    return data.message;
+  }, []);
+
+  const resetPassword = useCallback(async (token: string, password: string) => {
+    const res = await apiRequest("POST", "/api/auth/reset-password", { token, password });
+    const data = await res.json();
+    return data.message;
   }, []);
 
   const logout = useCallback(async () => {
@@ -60,7 +82,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, signup, logout }}>
+    <AuthContext.Provider value={{ user, isLoading, login, signup, sendOtp, forgotPassword, resetPassword, logout }}>
       {children}
     </AuthContext.Provider>
   );

@@ -1,7 +1,7 @@
 import { eq, and, or, ilike, inArray, ne } from "drizzle-orm";
 import { db } from "./db";
 import {
-  users, friends, groups, expenses,
+  users, friends, groups, expenses, otpCodes, resetTokens,
   type User, type InsertUser, type SafeUser,
   type Friend, type InsertFriend,
   type Group, type InsertGroup,
@@ -22,7 +22,16 @@ export interface IStorage {
   searchUsersByEmail(email: string, excludeId: string): Promise<SafeUser[]>;
   getAllUsers(): Promise<SafeUser[]>;
   updateUser(id: string, data: Partial<Pick<User, "isAdmin" | "isApproved" | "name">>): Promise<User | undefined>;
+  updateUserPassword(id: string, hashedPassword: string): Promise<void>;
   deleteUser(id: string): Promise<boolean>;
+
+  // OTP
+  createOtp(data: { email: string; code: string; expiresAt: string }): Promise<void>;
+  verifyOtp(email: string, code: string): Promise<boolean>;
+
+  // Reset tokens
+  createResetToken(data: { userId: string; token: string; expiresAt: string }): Promise<void>;
+  verifyResetToken(token: string): Promise<{ userId: string } | null>;
 
   // Friends
   getFriends(userId: string): Promise<SafeUser[]>;
@@ -89,12 +98,55 @@ export class PgStorage implements IStorage {
     return updated;
   }
 
+  async updateUserPassword(id: string, hashedPassword: string): Promise<void> {
+    await db.update(users).set({ password: hashedPassword }).where(eq(users.id, id));
+  }
+
   async deleteUser(id: string): Promise<boolean> {
     // Remove user from friends
     await db.delete(friends).where(or(eq(friends.userId, id), eq(friends.friendId, id)));
     // Remove user from group memberIds would be complex; just delete the user
     const result = await db.delete(users).where(eq(users.id, id)).returning();
     return result.length > 0;
+  }
+
+  // OTP
+  async createOtp(data: { email: string; code: string; expiresAt: string }): Promise<void> {
+    await db.insert(otpCodes).values(data);
+  }
+
+  async verifyOtp(email: string, code: string): Promise<boolean> {
+    const [otp] = await db.select().from(otpCodes).where(
+      and(
+        eq(otpCodes.email, email.toLowerCase()),
+        eq(otpCodes.code, code),
+        eq(otpCodes.used, false)
+      )
+    );
+    if (!otp) return false;
+    if (new Date(otp.expiresAt) < new Date()) return false;
+    // Mark as used
+    await db.update(otpCodes).set({ used: true }).where(eq(otpCodes.id, otp.id));
+    return true;
+  }
+
+  // Reset tokens
+  async createResetToken(data: { userId: string; token: string; expiresAt: string }): Promise<void> {
+    await db.insert(resetTokens).values(data);
+  }
+
+  async verifyResetToken(token: string): Promise<{ userId: string } | null> {
+    const [rt] = await db.select().from(resetTokens).where(
+      and(
+        eq(resetTokens.token, token),
+        eq(resetTokens.used, false)
+      )
+    );
+    if (!rt) return null;
+    if (new Date(rt.expiresAt) < new Date()) return null;
+    // Mark as used
+    await db.update(resetTokens).set({ used: true }).where(eq(resetTokens.id, rt.id));
+    return { userId: rt.userId };
   }
 
   // Friends
