@@ -5,6 +5,7 @@ import createMemoryStore from "memorystore";
 import { storage } from "./storage";
 import { signupSchema, loginSchema } from "@shared/schema";
 import { createHash, randomBytes } from "crypto";
+import { notifyExpenseCreated } from "./email";
 
 // ========== Security helpers ==========
 
@@ -310,6 +311,23 @@ export async function registerRoutes(
       isSettlement: !!isSettlement,
     });
     res.status(201).json(expense);
+
+    // Send email notifications (fire-and-forget)
+    try {
+      const payer = await storage.getUser(paidById);
+      const splitUsers = await storage.getUsersSafe(splitAmongIds);
+      const perPerson = parsedAmount / splitAmongIds.length;
+      if (payer) {
+        notifyExpenseCreated({
+          description: sanitize(description, 200),
+          amount: parsedAmount,
+          paidByName: payer.name,
+          paidByEmail: payer.email,
+          splitAmong: splitUsers.map((u) => ({ name: u.name, email: u.email, share: perPerson })),
+          isSettlement: !!isSettlement,
+        });
+      }
+    } catch (e) { /* ignore email errors */ }
   });
 
   // ========== Settle Up ==========
@@ -340,6 +358,22 @@ export async function registerRoutes(
       isSettlement: true,
     });
     res.status(201).json(expense);
+
+    // Send email notification for settlement (fire-and-forget)
+    try {
+      const payer = await storage.getUser(userId);
+      const receiver = await storage.getUser(friendId);
+      if (payer && receiver) {
+        notifyExpenseCreated({
+          description: "Settlement payment",
+          amount: parsedAmount,
+          paidByName: payer.name,
+          paidByEmail: payer.email,
+          splitAmong: [{ name: receiver.name, email: receiver.email, share: parsedAmount }],
+          isSettlement: true,
+        });
+      }
+    } catch (e) { /* ignore email errors */ }
   });
 
   // ========== Groups — requires approved ==========
@@ -480,6 +514,29 @@ export async function registerRoutes(
       isSettlement: !!isSettlement,
     });
     res.status(201).json(expense);
+
+    // Send email notifications for group expense (fire-and-forget)
+    try {
+      const payer = await storage.getUser(paidById);
+      const splitUsers = await storage.getUsersSafe(splitAmongIds);
+      const perPerson = parsedAmount / splitAmongIds.length;
+      let groupName: string | undefined;
+      if (groupId) {
+        const group = await storage.getGroup(groupId);
+        groupName = group?.name;
+      }
+      if (payer) {
+        notifyExpenseCreated({
+          description: sanitize(description, 200),
+          amount: parsedAmount,
+          paidByName: payer.name,
+          paidByEmail: payer.email,
+          splitAmong: splitUsers.map((u) => ({ name: u.name, email: u.email, share: perPerson })),
+          groupName,
+          isSettlement: !!isSettlement,
+        });
+      }
+    } catch (e) { /* ignore email errors */ }
   });
 
   app.delete("/api/expenses/:id", requireAuth, requireApproved, async (req, res) => {
