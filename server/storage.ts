@@ -1,4 +1,4 @@
-import { eq, and, or, ilike, inArray } from "drizzle-orm";
+import { eq, and, or, ilike, inArray, ne } from "drizzle-orm";
 import { db } from "./db";
 import {
   users, friends, groups, expenses,
@@ -20,6 +20,9 @@ export interface IStorage {
   createUser(user: InsertUser): Promise<User>;
   getUsersSafe(ids: string[]): Promise<SafeUser[]>;
   searchUsersByEmail(email: string, excludeId: string): Promise<SafeUser[]>;
+  getAllUsers(): Promise<SafeUser[]>;
+  updateUser(id: string, data: Partial<Pick<User, "isAdmin" | "isApproved" | "name">>): Promise<User | undefined>;
+  deleteUser(id: string): Promise<boolean>;
 
   // Friends
   getFriends(userId: string): Promise<SafeUser[]>;
@@ -69,16 +72,32 @@ export class PgStorage implements IStorage {
     const result = await db.select().from(users).where(
       and(
         ilike(users.email, `%${email}%`),
-        eq(users.id, excludeId) ? undefined : undefined
+        ne(users.id, excludeId)
       )
     );
-    // Filter out excludeId in JS since drizzle "not eq" syntax varies
-    return result.filter(u => u.id !== excludeId).map(toSafeUser);
+    return result.map(toSafeUser);
+  }
+
+  async getAllUsers(): Promise<SafeUser[]> {
+    const result = await db.select().from(users);
+    return result.map(toSafeUser);
+  }
+
+  async updateUser(id: string, data: Partial<Pick<User, "isAdmin" | "isApproved" | "name">>): Promise<User | undefined> {
+    const [updated] = await db.update(users).set(data).where(eq(users.id, id)).returning();
+    return updated;
+  }
+
+  async deleteUser(id: string): Promise<boolean> {
+    // Remove user from friends
+    await db.delete(friends).where(or(eq(friends.userId, id), eq(friends.friendId, id)));
+    // Remove user from group memberIds would be complex; just delete the user
+    const result = await db.delete(users).where(eq(users.id, id)).returning();
+    return result.length > 0;
   }
 
   // Friends
   async getFriends(userId: string): Promise<SafeUser[]> {
-    // Get all friend links where user is either side
     const links = await db.select().from(friends).where(
       or(eq(friends.userId, userId), eq(friends.friendId, userId))
     );
@@ -88,7 +107,6 @@ export class PgStorage implements IStorage {
   }
 
   async addFriend(userId: string, friendId: string): Promise<void> {
-    // Add bidirectional link (just one row, we query both directions)
     const existing = await this.areFriends(userId, friendId);
     if (existing) return;
     await db.insert(friends).values({ userId, friendId });
@@ -138,7 +156,6 @@ export class PgStorage implements IStorage {
   }
 
   async deleteGroup(id: string): Promise<boolean> {
-    // Delete expenses in this group first
     await db.delete(expenses).where(eq(expenses.groupId, id));
     const result = await db.delete(groups).where(eq(groups.id, id)).returning();
     return result.length > 0;
@@ -150,25 +167,18 @@ export class PgStorage implements IStorage {
   }
 
   async getExpensesForUser(userId: string): Promise<Expense[]> {
-    // Get all expenses from groups the user belongs to + direct expenses
     const userGroups = await this.getGroupsForUser(userId);
     const groupIds = userGroups.map(g => g.id);
 
     const allExpenses = await db.select().from(expenses);
     return allExpenses.filter(e => {
       if (e.groupId && groupIds.includes(e.groupId)) return true;
-      // Direct expense: user is payer or in split
       if (!e.groupId && (e.paidById === userId || e.splitAmongIds.includes(userId))) return true;
       return false;
     });
   }
 
   async getDirectExpensesForUser(userId: string): Promise<Expense[]> {
-    // Direct (non-group) expenses involving this user
-    const allDirect = await db.select().from(expenses).where(
-      eq(expenses.groupId, null as any) // null groupId = direct
-    );
-    // The above won't work well. Let's get all and filter.
     const all = await db.select().from(expenses);
     return all.filter(e =>
       !e.groupId && (e.paidById === userId || e.splitAmongIds.includes(userId))

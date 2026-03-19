@@ -1,4 +1,4 @@
-import { pgTable, text, varchar, real } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, real, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { sql } from "drizzle-orm";
@@ -10,6 +10,8 @@ export const users = pgTable("users", {
   email: text("email").notNull(), // mandatory, unique identity
   password: text("password").notNull(), // hashed
   avatarColor: text("avatar_color").notNull(),
+  isAdmin: boolean("is_admin").notNull().default(false),
+  isApproved: boolean("is_approved").notNull().default(false), // admin must approve new users
 });
 
 export const insertUserSchema = createInsertSchema(users).omit({ id: true });
@@ -52,6 +54,7 @@ export const expenses = pgTable("expenses", {
   groupId: varchar("group_id"), // null = direct between friends
   date: text("date").notNull(),
   addedById: varchar("added_by_id").notNull(), // who added this expense
+  isSettlement: boolean("is_settlement").notNull().default(false), // settle up entry
 });
 
 export const insertExpenseSchema = createInsertSchema(expenses).omit({ id: true });
@@ -60,9 +63,9 @@ export type Expense = typeof expenses.$inferSelect;
 
 // Signup/Login schemas (for validation)
 export const signupSchema = z.object({
-  name: z.string().min(1, "Name is required"),
-  email: z.string().email("Invalid email"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
+  name: z.string().min(1, "Name is required").max(100, "Name too long"),
+  email: z.string().email("Invalid email").max(255, "Email too long"),
+  password: z.string().min(6, "Password must be at least 6 characters").max(128, "Password too long"),
 });
 
 export const loginSchema = z.object({

@@ -1,20 +1,21 @@
 import { Link, useLocation } from "wouter";
-import { UsersRound, Receipt, LayoutDashboard, Users2, Sun, Moon, LogOut } from "lucide-react";
+import { UsersRound, Receipt, LayoutDashboard, Users2, Sun, Moon, LogOut, Shield } from "lucide-react";
 import { useTheme } from "@/lib/theme";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
-
-const navItems = [
-  { path: "/", icon: LayoutDashboard, label: "Dashboard" },
-  { path: "/friends", icon: Users2, label: "Friends" },
-  { path: "/groups", icon: UsersRound, label: "Groups" },
-  { path: "/expenses", icon: Receipt, label: "Expenses" },
-];
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const { theme, toggleTheme } = useTheme();
   const { user, logout } = useAuth();
+
+  const navItems = [
+    { path: "/", icon: LayoutDashboard, label: "Dashboard" },
+    { path: "/friends", icon: Users2, label: "Friends" },
+    { path: "/groups", icon: UsersRound, label: "Groups" },
+    { path: "/expenses", icon: Receipt, label: "Expenses" },
+    ...(user?.isAdmin ? [{ path: "/admin", icon: Shield, label: "Admin" }] : []),
+  ];
 
   return (
     <div className="min-h-screen bg-background flex flex-col">

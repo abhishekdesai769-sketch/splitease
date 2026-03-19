@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { UserPlus, Receipt, Trash2, Plus, Users2 } from "lucide-react";
+import { UserPlus, Receipt, Trash2, Plus, Users2, HandCoins, CheckCircle2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { calculateGroupBalances, simplifyDebts } from "@/lib/simplify";
@@ -18,6 +18,8 @@ export default function Friends() {
   const { toast } = useToast();
   const [addFriendOpen, setAddFriendOpen] = useState(false);
   const [addExpenseOpen, setAddExpenseOpen] = useState(false);
+  const [settleUpOpen, setSettleUpOpen] = useState(false);
+  const [settleUpFriend, setSettleUpFriend] = useState<{ id: string; name: string; amount: number } | null>(null);
   const [friendEmail, setFriendEmail] = useState("");
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
@@ -65,20 +67,14 @@ export default function Friends() {
 
   const addExpenseMutation = useMutation({
     mutationFn: async () => {
-      // Determine who actually paid and who is in the split
       let actualPaidById = paidById;
       let splitAmongIds: string[];
 
       if (splitType === "equal") {
-        // Both share the cost
         splitAmongIds = [paidById, splitWithId].filter((v, i, a) => a.indexOf(v) === i);
       } else if (splitType === "they_pay") {
-        // "They pay you" = you paid, they need to pay you the full amount
-        // payer = paidById, only the friend is in the split
         splitAmongIds = [splitWithId];
       } else {
-        // "You pay them" = they paid for you, you need to pay them back
-        // Flip: the friend is the payer, you are in the split
         actualPaidById = splitWithId;
         splitAmongIds = [paidById];
       }
@@ -103,6 +99,27 @@ export default function Friends() {
       let msg = err.message;
       try { msg = JSON.parse(msg.split(": ").slice(1).join(": ")).error; } catch {}
       toast({ title: "Error", description: msg, variant: "destructive" });
+    },
+  });
+
+  const settleUpMutation = useMutation({
+    mutationFn: async () => {
+      if (!settleUpFriend) throw new Error("No friend selected");
+      const res = await apiRequest("POST", "/api/settle-up", {
+        friendId: settleUpFriend.id,
+        amount: Math.abs(settleUpFriend.amount),
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/friends/expenses"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
+      setSettleUpOpen(false);
+      setSettleUpFriend(null);
+      toast({ title: "Settled up", description: "Payment recorded" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
     },
   });
 
@@ -149,6 +166,13 @@ export default function Friends() {
   const sortedExpenses = [...directExpenses].sort(
     (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
   );
+
+  const handleSettleUp = (friend: SafeUser) => {
+    const balance = getFriendBalance(friend.id);
+    if (balance === 0) return;
+    setSettleUpFriend({ id: friend.id, name: friend.name, amount: balance });
+    setSettleUpOpen(true);
+  };
 
   return (
     <div className="space-y-5">
@@ -357,12 +381,54 @@ export default function Friends() {
         </div>
       </div>
 
+      {/* Settle Up Dialog */}
+      <Dialog open={settleUpOpen} onOpenChange={(open) => { setSettleUpOpen(open); if (!open) setSettleUpFriend(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Settle Up</DialogTitle>
+          </DialogHeader>
+          {settleUpFriend && (
+            <div className="space-y-4 pt-2">
+              <div className="rounded-lg bg-muted/50 p-4 text-center space-y-2">
+                <p className="text-sm text-muted-foreground">
+                  {settleUpFriend.amount < 0 ? (
+                    <>You pay <span className="font-semibold text-foreground">{settleUpFriend.name}</span></>
+                  ) : (
+                    <><span className="font-semibold text-foreground">{settleUpFriend.name}</span> pays you</>
+                  )}
+                </p>
+                <p className="text-2xl font-bold text-primary">
+                  ${Math.abs(settleUpFriend.amount).toFixed(2)}
+                </p>
+              </div>
+              <p className="text-xs text-muted-foreground text-center">
+                This will record a payment that zeros out your balance with {settleUpFriend.name}.
+              </p>
+              <Button
+                className="w-full"
+                onClick={() => settleUpMutation.mutate()}
+                disabled={settleUpMutation.isPending}
+                data-testid="confirm-settle-up"
+              >
+                <CheckCircle2 className="w-4 h-4 mr-1.5" />
+                {settleUpMutation.isPending ? "Settling..." : "Confirm Settlement"}
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* Friends list with balances */}
       {friendsList.length > 0 ? (
         <div className="space-y-2">
           <h2 className="text-sm font-medium text-muted-foreground">Your Friends</h2>
           {friendsList.map((friend) => {
             const balance = getFriendBalance(friend.id);
+            const hasExpenses = directExpenses.some(
+              (e) =>
+                (e.paidById === user?.id && e.splitAmongIds.includes(friend.id)) ||
+                (e.paidById === friend.id && e.splitAmongIds.includes(user?.id || ""))
+            );
             return (
               <Card
                 key={friend.id}
@@ -388,12 +454,20 @@ export default function Friends() {
                     {balance > 0 ? `+$${balance.toFixed(2)}` : `-$${Math.abs(balance).toFixed(2)}`}
                   </span>
                 )}
-                {balance === 0 && directExpenses.some(
-                  (e) =>
-                    (e.paidById === user?.id && e.splitAmongIds.includes(friend.id)) ||
-                    (e.paidById === friend.id && e.splitAmongIds.includes(user?.id || ""))
-                ) && (
+                {balance === 0 && hasExpenses && (
                   <span className="text-xs text-muted-foreground shrink-0">settled</span>
+                )}
+                {balance !== 0 && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="shrink-0 text-xs"
+                    onClick={() => handleSettleUp(friend)}
+                    data-testid={`settle-up-${friend.id}`}
+                  >
+                    <HandCoins className="w-3.5 h-3.5 mr-1" />
+                    Settle Up
+                  </Button>
                 )}
                 <Button
                   size="icon"
@@ -462,15 +536,21 @@ export default function Friends() {
             {sortedExpenses.map((expense) => (
               <Card
                 key={expense.id}
-                className="p-3"
+                className={`p-3 ${expense.isSettlement ? "border-primary/30 bg-primary/5" : ""}`}
                 data-testid={`direct-expense-${expense.id}`}
               >
                 <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                    <Receipt className="w-4 h-4 text-primary" />
+                  <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${expense.isSettlement ? "bg-primary/20" : "bg-primary/10"}`}>
+                    {expense.isSettlement ? (
+                      <CheckCircle2 className="w-4 h-4 text-primary" />
+                    ) : (
+                      <Receipt className="w-4 h-4 text-primary" />
+                    )}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{expense.description}</p>
+                    <p className="text-sm font-medium truncate">
+                      {expense.isSettlement ? "Settlement" : expense.description}
+                    </p>
                     <p className="text-xs text-muted-foreground">
                       {getPersonName(expense.paidById)} paid · {new Date(expense.date).toLocaleDateString()}
                     </p>
