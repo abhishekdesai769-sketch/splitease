@@ -11,6 +11,7 @@ async function sendEmail(
   to: string,
   subject: string,
   html: string,
+  text: string,
   attachments?: { content: Buffer; filename: string }[]
 ) {
   if (!resend) return;
@@ -20,6 +21,7 @@ async function sendEmail(
       to,
       subject,
       html,
+      text,
       ...(attachments && attachments.length > 0
         ? { attachments: attachments.map((a) => ({ content: a.content, filename: a.filename })) }
         : {}),
@@ -56,68 +58,37 @@ export async function notifyExpenseCreated(opts: {
     if (person.email === opts.paidByEmail) continue;
 
     const subject = isSettlement
-      ? `💸 ${paidByName} settled up with you${groupName ? ` in ${groupName}` : ""}`
-      : `💰 New expense: ${description}${groupName ? ` in ${groupName}` : ""}`;
+      ? `${paidByName} settled up with you${groupName ? ` in ${groupName}` : ""}`
+      : `${paidByName} added an expense: ${description}${groupName ? ` in ${groupName}` : ""}`;
 
-    const receiptNote = hasReceipt
-      ? `<div style="background: #1a2028; border-radius: 8px; padding: 12px; margin-bottom: 16px; text-align: center;">
-           <p style="margin: 0; color: #8899a6; font-size: 13px;">📎 Receipt attached</p>
-         </div>`
+    const receiptLine = hasReceipt
+      ? `<p style="margin: 8px 0 0; font-size: 14px; color: #555;">Receipt is attached to this email.</p>`
       : "";
 
-    const html = `
-      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
-        <div style="background: #0f1419; border-radius: 12px; padding: 24px; color: #e7e9ea;">
-          <h2 style="margin: 0 0 16px; color: #2dd4a8; font-size: 18px;">
-            ${isSettlement ? "💸 Settlement Recorded" : "💰 New Expense Added"}
-          </h2>
-          
-          <div style="background: #1a2028; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
-            <p style="margin: 0 0 8px; color: #8899a6; font-size: 13px;">
-              ${typeLabel}${groupLabel}
-            </p>
-            <p style="margin: 0 0 4px; font-size: 16px; font-weight: 600; color: #e7e9ea;">
-              ${isSettlement ? "Settlement payment" : description}
-            </p>
-            <p style="margin: 0; font-size: 24px; font-weight: 700; color: #2dd4a8;">
-              $${amount.toFixed(2)}
-            </p>
-          </div>
-
-          <div style="background: #1a2028; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
-            ${isSettlement ? `
-              <p style="margin: 0; color: #e7e9ea; font-size: 14px;">
-                <strong>${paidByName}</strong> has settled up <strong>$${amount.toFixed(2)}</strong> with you.
-              </p>
-            ` : `
-              <p style="margin: 0 0 8px; color: #e7e9ea; font-size: 14px;">
-                <strong>${paidByName}</strong> paid <strong>$${amount.toFixed(2)}</strong>
-              </p>
-              <p style="margin: 0; color: #ff6b6b; font-size: 14px; font-weight: 600;">
-                Your share: $${person.share.toFixed(2)}
-              </p>
-            `}
-          </div>
-
-          ${receiptNote}
-
-          <a href="https://splitease-81re.onrender.com" 
-             style="display: block; text-align: center; background: #2dd4a8; color: #0f1419; padding: 12px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px;">
-            Open SplitEase
-          </a>
-        </div>
-        
-        <p style="text-align: center; color: #8899a6; font-size: 11px; margin-top: 16px;">
-          You're receiving this because someone added an expense involving you on SplitEase.
-        </p>
-      </div>
-    `;
+    // Plain, personal-style email — avoids Gmail Promotions filter.
+    // No background colors, no CTA buttons, no marketing layout.
+    const html = isSettlement
+      ? `<p>Hi ${person.name},</p>
+<p><strong>${paidByName}</strong> has settled up <strong>$${amount.toFixed(2)}</strong> with you${groupLabel}.</p>
+<p style="font-size: 14px; color: #555;">View details at <a href="https://splitease-81re.onrender.com">splitease-81re.onrender.com</a></p>
+<p style="font-size: 12px; color: #999; margin-top: 24px;">— SplitEase</p>`
+      : `<p>Hi ${person.name},</p>
+<p><strong>${paidByName}</strong> paid <strong>$${amount.toFixed(2)}</strong> for <strong>${description}</strong>${groupLabel}.</p>
+<p>Your share: <strong>$${person.share.toFixed(2)}</strong></p>
+${receiptLine}
+<p style="font-size: 14px; color: #555; margin-top: 16px;">View details at <a href="https://splitease-81re.onrender.com">splitease-81re.onrender.com</a></p>
+<p style="font-size: 12px; color: #999; margin-top: 24px;">— SplitEase</p>`;
 
     const attachments = hasReceipt
       ? [{ content: receiptBuffer, filename: receiptFilename }]
       : undefined;
 
+    // Plain text version — helps avoid Gmail Promotions filter
+    const text = isSettlement
+      ? `Hi ${person.name},\n\n${paidByName} has settled up $${amount.toFixed(2)} with you${groupName ? ` in ${groupName}` : ""}.\n\nView details at https://splitease-81re.onrender.com\n\n— SplitEase`
+      : `Hi ${person.name},\n\n${paidByName} paid $${amount.toFixed(2)} for ${description}${groupName ? ` in ${groupName}` : ""}.\nYour share: $${person.share.toFixed(2)}${hasReceipt ? "\n\nReceipt is attached to this email." : ""}\n\nView details at https://splitease-81re.onrender.com\n\n— SplitEase`;
+
     // Fire-and-forget — don't block the API response
-    sendEmail(person.email, subject, html, attachments);
+    sendEmail(person.email, subject, html, text, attachments);
   }
 }
