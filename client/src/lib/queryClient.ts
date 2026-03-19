@@ -25,6 +25,22 @@ export async function apiRequest(
   return res;
 }
 
+/** Send FormData (for file uploads) — no Content-Type header (browser sets boundary) */
+export async function apiFormRequest(
+  method: string,
+  url: string,
+  formData: FormData,
+): Promise<Response> {
+  const res = await fetch(`${API_BASE}${url}`, {
+    method,
+    body: formData,
+    credentials: "include",
+  });
+
+  await throwIfResNotOk(res);
+  return res;
+}
+
 type UnauthorizedBehavior = "returnNull" | "throw";
 export const getQueryFn: <T>(options: {
   on401: UnauthorizedBehavior;

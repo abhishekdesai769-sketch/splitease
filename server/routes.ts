@@ -2,10 +2,14 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import session from "express-session";
 import createMemoryStore from "memorystore";
+import multer from "multer";
 import { storage } from "./storage";
 import { signupSchema, loginSchema } from "@shared/schema";
 import { createHash, randomBytes } from "crypto";
 import { notifyExpenseCreated } from "./email";
+
+// Multer: memory-only storage for receipt uploads (max 10MB)
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 // ========== Security helpers ==========
 
@@ -287,9 +291,14 @@ export async function registerRoutes(
     res.json(directExpenses);
   });
 
-  app.post("/api/friends/expenses", requireAuth, requireApproved, async (req, res) => {
+  app.post("/api/friends/expenses", requireAuth, requireApproved, upload.single("receipt"), async (req, res) => {
     const userId = (req.session as any).userId;
-    const { description, amount, paidById, splitAmongIds, date, isSettlement } = req.body;
+    const { description, amount, paidById, date, isSettlement } = req.body;
+    // splitAmongIds comes as JSON string from FormData
+    let splitAmongIds = req.body.splitAmongIds;
+    if (typeof splitAmongIds === "string") {
+      try { splitAmongIds = JSON.parse(splitAmongIds); } catch { /* keep as-is */ }
+    }
 
     if (!description || !amount || !paidById || !splitAmongIds || !date) {
       return res.status(400).json({ error: "Missing required fields" });
@@ -312,6 +321,9 @@ export async function registerRoutes(
     });
     res.status(201).json(expense);
 
+    // Receipt from upload (held in memory only — not saved)
+    const receiptFile = req.file;
+
     // Send email notifications (fire-and-forget)
     try {
       const payer = await storage.getUser(paidById);
@@ -325,6 +337,8 @@ export async function registerRoutes(
           paidByEmail: payer.email,
           splitAmong: splitUsers.map((u) => ({ name: u.name, email: u.email, share: perPerson })),
           isSettlement: !!isSettlement,
+          receiptBuffer: receiptFile?.buffer,
+          receiptFilename: receiptFile?.originalname,
         });
       }
     } catch (e) { /* ignore email errors */ }
@@ -482,9 +496,14 @@ export async function registerRoutes(
     res.json(expensesList);
   });
 
-  app.post("/api/expenses", requireAuth, requireApproved, async (req, res) => {
+  app.post("/api/expenses", requireAuth, requireApproved, upload.single("receipt"), async (req, res) => {
     const userId = (req.session as any).userId;
-    const { description, amount, paidById, splitAmongIds, groupId, date, isSettlement } = req.body;
+    const { description, amount, paidById, groupId, date, isSettlement } = req.body;
+    // splitAmongIds comes as JSON string from FormData
+    let splitAmongIds = req.body.splitAmongIds;
+    if (typeof splitAmongIds === "string") {
+      try { splitAmongIds = JSON.parse(splitAmongIds); } catch { /* keep as-is */ }
+    }
 
     if (!description || !amount || !paidById || !splitAmongIds || !date) {
       return res.status(400).json({ error: "Missing required fields" });
@@ -515,6 +534,9 @@ export async function registerRoutes(
     });
     res.status(201).json(expense);
 
+    // Receipt from upload (held in memory only — not saved)
+    const receiptFile = req.file;
+
     // Send email notifications for group expense (fire-and-forget)
     try {
       const payer = await storage.getUser(paidById);
@@ -534,6 +556,8 @@ export async function registerRoutes(
           splitAmong: splitUsers.map((u) => ({ name: u.name, email: u.email, share: perPerson })),
           groupName,
           isSettlement: !!isSettlement,
+          receiptBuffer: receiptFile?.buffer,
+          receiptFilename: receiptFile?.originalname,
         });
       }
     } catch (e) { /* ignore email errors */ }

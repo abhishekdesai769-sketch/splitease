@@ -4,15 +4,25 @@ const resend = process.env.RESEND_API_KEY
   ? new Resend(process.env.RESEND_API_KEY)
   : null;
 
+const FROM_ADDRESS = "SplitEase <splitease@klarityit.ca>";
+
 // Silently skip if no API key configured (graceful degradation)
-async function sendEmail(to: string, subject: string, html: string) {
+async function sendEmail(
+  to: string,
+  subject: string,
+  html: string,
+  attachments?: { content: Buffer; filename: string }[]
+) {
   if (!resend) return;
   try {
     await resend.emails.send({
-      from: "SplitEase <onboarding@resend.dev>",
+      from: FROM_ADDRESS,
       to,
       subject,
       html,
+      ...(attachments && attachments.length > 0
+        ? { attachments: attachments.map((a) => ({ content: a.content, filename: a.filename })) }
+        : {}),
     });
   } catch (err) {
     console.error("Failed to send email to", to, err);
@@ -30,13 +40,16 @@ export async function notifyExpenseCreated(opts: {
   splitAmong: { name: string; email: string; share: number }[];
   groupName?: string;
   isSettlement?: boolean;
+  receiptBuffer?: Buffer;
+  receiptFilename?: string;
 }) {
   if (!resend) return;
 
-  const { description, amount, paidByName, splitAmong, groupName, isSettlement } = opts;
+  const { description, amount, paidByName, splitAmong, groupName, isSettlement, receiptBuffer, receiptFilename } = opts;
 
   const groupLabel = groupName ? ` in <strong>${groupName}</strong>` : "";
   const typeLabel = isSettlement ? "Settlement" : "Expense";
+  const hasReceipt = receiptBuffer && receiptFilename;
 
   for (const person of splitAmong) {
     // Don't email the payer about their own expense
@@ -45,6 +58,12 @@ export async function notifyExpenseCreated(opts: {
     const subject = isSettlement
       ? `💸 ${paidByName} settled up with you${groupName ? ` in ${groupName}` : ""}`
       : `💰 New expense: ${description}${groupName ? ` in ${groupName}` : ""}`;
+
+    const receiptNote = hasReceipt
+      ? `<div style="background: #1a2028; border-radius: 8px; padding: 12px; margin-bottom: 16px; text-align: center;">
+           <p style="margin: 0; color: #8899a6; font-size: 13px;">📎 Receipt attached</p>
+         </div>`
+      : "";
 
     const html = `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
@@ -80,6 +99,8 @@ export async function notifyExpenseCreated(opts: {
             `}
           </div>
 
+          ${receiptNote}
+
           <a href="https://splitease-81re.onrender.com" 
              style="display: block; text-align: center; background: #2dd4a8; color: #0f1419; padding: 12px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px;">
             Open SplitEase
@@ -92,7 +113,11 @@ export async function notifyExpenseCreated(opts: {
       </div>
     `;
 
+    const attachments = hasReceipt
+      ? [{ content: receiptBuffer, filename: receiptFilename }]
+      : undefined;
+
     // Fire-and-forget — don't block the API response
-    sendEmail(person.email, subject, html);
+    sendEmail(person.email, subject, html, attachments);
   }
 }

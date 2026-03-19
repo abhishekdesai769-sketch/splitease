@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, apiFormRequest, queryClient } from "@/lib/queryClient";
 import type { SafeUser, Expense } from "@shared/schema";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Plus, Trash2, Receipt, CheckCircle2, HandCoins, AlertTriangle, UserMinus } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Receipt, CheckCircle2, HandCoins, AlertTriangle, UserMinus, Camera, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
@@ -24,6 +24,7 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
   const [amount, setAmount] = useState("");
   const [paidById, setPaidById] = useState("");
   const [splitType, setSplitType] = useState<"equal" | "they_pay" | "you_pay">("equal");
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
 
   // Delete friend: 2-step confirmation
   const [deleteFriendStep, setDeleteFriendStep] = useState<0 | 1 | 2>(0); // 0=closed, 1=first confirm, 2=final warning
@@ -70,13 +71,17 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
         splitAmongIds = [user?.id || ""];
       }
 
-      const res = await apiRequest("POST", "/api/friends/expenses", {
-        description: description.trim(),
-        amount: parseFloat(amount),
-        paidById: actualPaidById,
-        splitAmongIds,
-        date: new Date().toISOString(),
-      });
+      const formData = new FormData();
+      formData.append("description", description.trim());
+      formData.append("amount", String(parseFloat(amount)));
+      formData.append("paidById", actualPaidById);
+      formData.append("splitAmongIds", JSON.stringify(splitAmongIds));
+      formData.append("date", new Date().toISOString());
+      if (receiptFile) {
+        formData.append("receipt", receiptFile);
+      }
+
+      const res = await apiFormRequest("POST", "/api/friends/expenses", formData);
       return res.json();
     },
     onSuccess: () => {
@@ -151,6 +156,7 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
     setAmount("");
     setPaidById("");
     setSplitType("equal");
+    setReceiptFile(null);
   };
 
   // Can the current user delete this expense?
@@ -294,6 +300,39 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
                   )}
                 </div>
               )}
+              {/* Receipt upload */}
+              <div className="space-y-2">
+                <Label>Receipt (optional)</Label>
+                {receiptFile ? (
+                  <div className="flex items-center gap-2 rounded-lg border border-border p-2.5">
+                    <Camera className="w-4 h-4 text-primary shrink-0" />
+                    <span className="text-sm truncate flex-1">{receiptFile.name}</span>
+                    <button
+                      type="button"
+                      className="text-muted-foreground hover:text-foreground"
+                      onClick={() => setReceiptFile(null)}
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <label className="flex items-center gap-2 rounded-lg border border-dashed border-muted-foreground/30 p-3 cursor-pointer hover:bg-muted/50 transition-colors">
+                    <Camera className="w-4 h-4 text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground">Attach receipt photo</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) setReceiptFile(file);
+                      }}
+                      data-testid="input-friend-receipt"
+                    />
+                  </label>
+                )}
+                <p className="text-xs text-muted-foreground">Photo will be sent via email to everyone in the split. Not stored.</p>
+              </div>
               <Button
                 type="submit"
                 className="w-full"
