@@ -11,6 +11,7 @@ import Dashboard from "@/pages/dashboard";
 import Friends from "@/pages/friends";
 import Groups from "@/pages/groups";
 import GroupDetail from "@/pages/group-detail";
+import FriendDetail from "@/pages/friend-detail";
 import Expenses from "@/pages/expenses";
 import Admin from "@/pages/admin";
 import AuthPage from "@/pages/auth";
@@ -75,6 +76,9 @@ function AppRouter() {
       <Switch>
         <Route path="/" component={Dashboard} />
         <Route path="/friends" component={Friends} />
+        <Route path="/friends/:id">
+          {(params) => <FriendDetail friendId={params.id} />}
+        </Route>
         <Route path="/groups" component={Groups} />
         <Route path="/groups/:id">
           {(params) => <GroupDetail groupId={params.id} />}

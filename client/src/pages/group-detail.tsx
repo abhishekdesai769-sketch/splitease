@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, ArrowLeft, Trash2, Shuffle, Receipt, UserPlus, X } from "lucide-react";
+import { Plus, ArrowLeft, Trash2, Shuffle, Receipt, UserPlus, X, HandCoins, CheckCircle2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 import { useAuth } from "@/lib/auth";
@@ -28,6 +28,10 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
   const [groupSplitType, setGroupSplitType] = useState<"equal" | "they_pay" | "you_pay">("equal");
 
   const [inviteEmail, setInviteEmail] = useState("");
+  const [settleUpOpen, setSettleUpOpen] = useState(false);
+  const [settlePayerId, setSettlePayerId] = useState("");
+  const [settleReceiverId, setSettleReceiverId] = useState("");
+  const [settleAmount, setSettleAmount] = useState("");
 
   const { data: group } = useQuery<Group>({ queryKey: ["/api/groups", groupId] });
   const { data: members = [] } = useQuery<SafeUser[]>({
@@ -114,6 +118,36 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
       let msg = err.message;
       try { msg = JSON.parse(msg.split(": ").slice(1).join(": ")).error; } catch {}
       toast({ title: "Error", description: msg, variant: "destructive" });
+    },
+  });
+
+  const groupSettleUpMutation = useMutation({
+    mutationFn: async () => {
+      // Create a settlement expense in this group
+      // paidById = the person making the payment (settling their debt)
+      // splitAmongIds = the person receiving the payment
+      const res = await apiRequest("POST", "/api/expenses", {
+        description: "Settlement payment",
+        amount: parseFloat(settleAmount),
+        paidById: settlePayerId,
+        splitAmongIds: [settleReceiverId],
+        groupId,
+        date: new Date().toISOString(),
+        isSettlement: true,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/expenses/group", groupId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
+      setSettleUpOpen(false);
+      setSettlePayerId("");
+      setSettleReceiverId("");
+      setSettleAmount("");
+      toast({ title: "Settled up", description: "Payment recorded in this group" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
     },
   });
 
@@ -426,19 +460,31 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
         </Dialog>
       </div>
 
-      {/* Simplify Debts */}
+      {/* Settle Up + Simplify Debts */}
       {expenses.length > 0 && (
         <div>
-          <Button
-            variant="secondary"
-            size="sm"
-            className="w-full mb-3"
-            onClick={() => setShowSimplified(!showSimplified)}
-            data-testid="simplify-debts-btn"
-          >
-            <Shuffle className="w-4 h-4 mr-1.5" />
-            {showSimplified ? "Hide Simplified Debts" : "Simplify Debts"}
-          </Button>
+          <div className="flex gap-2 mb-3">
+            <Button
+              variant="secondary"
+              size="sm"
+              className="flex-1"
+              onClick={() => setShowSimplified(!showSimplified)}
+              data-testid="simplify-debts-btn"
+            >
+              <Shuffle className="w-4 h-4 mr-1.5" />
+              {showSimplified ? "Hide Simplified" : "Simplify Debts"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1"
+              onClick={() => setSettleUpOpen(true)}
+              data-testid="group-settle-up-btn"
+            >
+              <HandCoins className="w-4 h-4 mr-1.5" />
+              Settle Up
+            </Button>
+          </div>
 
           {showSimplified && (
             <div className="space-y-2 mb-4">
@@ -477,6 +523,96 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
         </div>
       )}
 
+      {/* Group Settle Up Dialog */}
+      <Dialog open={settleUpOpen} onOpenChange={(open) => { setSettleUpOpen(open); if (!open) { setSettlePayerId(""); setSettleReceiverId(""); setSettleAmount(""); } }}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Settle Up in {group.name}</DialogTitle>
+          </DialogHeader>
+          <form
+            className="space-y-4 pt-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (settlePayerId && settleReceiverId && settleAmount && settlePayerId !== settleReceiverId) {
+                groupSettleUpMutation.mutate();
+              }
+            }}
+          >
+            <div className="space-y-2">
+              <Label>Who is paying?</Label>
+              <Select value={settlePayerId} onValueChange={setSettlePayerId}>
+                <SelectTrigger data-testid="settle-payer-select">
+                  <SelectValue placeholder="Select who is paying" />
+                </SelectTrigger>
+                <SelectContent>
+                  {members.map((m) => (
+                    <SelectItem key={m.id} value={m.id}>
+                      {m.id === user?.id ? `${m.name} (You)` : m.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Paying to</Label>
+              <Select value={settleReceiverId} onValueChange={setSettleReceiverId}>
+                <SelectTrigger data-testid="settle-receiver-select">
+                  <SelectValue placeholder="Select who receives" />
+                </SelectTrigger>
+                <SelectContent>
+                  {members
+                    .filter((m) => m.id !== settlePayerId)
+                    .map((m) => (
+                      <SelectItem key={m.id} value={m.id}>
+                        {m.id === user?.id ? `${m.name} (You)` : m.name}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Amount ($)</Label>
+              <Input
+                type="number"
+                step="0.01"
+                min="0.01"
+                placeholder="0.00"
+                value={settleAmount}
+                onChange={(e) => setSettleAmount(e.target.value)}
+                data-testid="settle-amount-input"
+              />
+            </div>
+            {settlePayerId && settleReceiverId && settleAmount && (
+              <div className="rounded-lg bg-muted/50 p-3 text-center space-y-1">
+                <p className="text-sm text-muted-foreground">
+                  <span className="font-semibold text-foreground">{getPersonName(settlePayerId)}</span>
+                  {" pay "}
+                  <span className="font-semibold text-foreground">{getPersonName(settleReceiverId)}</span>
+                </p>
+                <p className="text-xl font-bold text-primary">
+                  ${parseFloat(settleAmount).toFixed(2)}
+                </p>
+              </div>
+            )}
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={
+                !settlePayerId ||
+                !settleReceiverId ||
+                !settleAmount ||
+                settlePayerId === settleReceiverId ||
+                groupSettleUpMutation.isPending
+              }
+              data-testid="confirm-group-settle-up"
+            >
+              <CheckCircle2 className="w-4 h-4 mr-1.5" />
+              {groupSettleUpMutation.isPending ? "Settling..." : "Confirm Settlement"}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
       {/* Expense list */}
       {expenses.length > 0 ? (
         <div className="space-y-2">
@@ -484,15 +620,28 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
           {[...expenses]
             .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
             .map((expense) => (
-              <Card key={expense.id} className="p-3" data-testid={`expense-card-${expense.id}`}>
+              <Card
+                key={expense.id}
+                className={`p-3 ${expense.isSettlement ? "border-primary/30 bg-primary/5" : ""}`}
+                data-testid={`expense-card-${expense.id}`}
+              >
                 <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                    <Receipt className="w-4 h-4 text-primary" />
+                  <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${expense.isSettlement ? "bg-primary/20" : "bg-primary/10"}`}>
+                    {expense.isSettlement ? (
+                      <CheckCircle2 className="w-4 h-4 text-primary" />
+                    ) : (
+                      <Receipt className="w-4 h-4 text-primary" />
+                    )}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{expense.description}</p>
+                    <p className="text-sm font-medium truncate">
+                      {expense.isSettlement ? "Settlement" : expense.description}
+                    </p>
                     <p className="text-xs text-muted-foreground">
-                      {getPersonName(expense.paidById)} paid · split {expense.splitAmongIds.length} ways
+                      {expense.isSettlement
+                        ? `${getPersonName(expense.paidById)} paid ${getPersonName(expense.splitAmongIds[0])} · ${new Date(expense.date).toLocaleDateString()}`
+                        : `${getPersonName(expense.paidById)} paid · split ${expense.splitAmongIds.length} ways`
+                      }
                     </p>
                   </div>
                   <span className="text-sm font-semibold text-foreground shrink-0">

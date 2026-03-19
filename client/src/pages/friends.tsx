@@ -8,8 +8,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { UserPlus, Receipt, Trash2, Plus, Users2, HandCoins, CheckCircle2 } from "lucide-react";
+import { UserPlus, Receipt, Trash2, Plus, Users2, HandCoins, CheckCircle2, ChevronRight } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { Link } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { calculateGroupBalances, simplifyDebts } from "@/lib/simplify";
 
@@ -430,54 +431,58 @@ export default function Friends() {
                 (e.paidById === friend.id && e.splitAmongIds.includes(user?.id || ""))
             );
             return (
-              <Card
-                key={friend.id}
-                className="p-3 flex items-center gap-3"
-                data-testid={`friend-card-${friend.id}`}
-              >
-                <div
-                  className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-semibold shrink-0"
-                  style={{ backgroundColor: friend.avatarColor }}
+              <Link key={friend.id} href={`/friends/${friend.id}`}>
+                <Card
+                  className="p-3 flex items-center gap-3 hover-elevate cursor-pointer"
+                  data-testid={`friend-card-${friend.id}`}
                 >
-                  {friend.name[0]?.toUpperCase()}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{friend.name}</p>
-                  <p className="text-xs text-muted-foreground truncate">{friend.email}</p>
-                </div>
-                {balance !== 0 && (
-                  <span
-                    className={`text-sm font-semibold shrink-0 ${
-                      balance > 0 ? "text-primary" : "text-destructive"
-                    }`}
+                  <div
+                    className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-semibold shrink-0"
+                    style={{ backgroundColor: friend.avatarColor }}
                   >
-                    {balance > 0 ? `+$${balance.toFixed(2)}` : `-$${Math.abs(balance).toFixed(2)}`}
-                  </span>
-                )}
-                {balance === 0 && hasExpenses && (
-                  <span className="text-xs text-muted-foreground shrink-0">settled</span>
-                )}
-                {balance !== 0 && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="shrink-0 text-xs"
-                    onClick={() => handleSettleUp(friend)}
-                    data-testid={`settle-up-${friend.id}`}
-                  >
-                    <HandCoins className="w-3.5 h-3.5 mr-1" />
-                    Settle Up
-                  </Button>
-                )}
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  onClick={() => removeFriendMutation.mutate(friend.id)}
-                  data-testid={`remove-friend-${friend.id}`}
-                >
-                  <Trash2 className="w-4 h-4 text-muted-foreground" />
-                </Button>
-              </Card>
+                    {friend.name[0]?.toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{friend.name}</p>
+                    <p className="text-xs text-muted-foreground truncate">{friend.email}</p>
+                  </div>
+                  {balance !== 0 && (
+                    <span
+                      className={`text-sm font-semibold shrink-0 ${
+                        balance > 0 ? "text-primary" : "text-destructive"
+                      }`}
+                    >
+                      {balance > 0 ? `+$${balance.toFixed(2)}` : `-$${Math.abs(balance).toFixed(2)}`}
+                    </span>
+                  )}
+                  {balance === 0 && hasExpenses && (
+                    <span className="text-xs text-muted-foreground shrink-0">settled</span>
+                  )}
+                  {balance !== 0 && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="shrink-0 text-xs"
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleSettleUp(friend); }}
+                      data-testid={`settle-up-${friend.id}`}
+                    >
+                      <HandCoins className="w-3.5 h-3.5 mr-1" />
+                      Settle Up
+                    </Button>
+                  )}
+                  <div className="flex items-center gap-1">
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); removeFriendMutation.mutate(friend.id); }}
+                      data-testid={`remove-friend-${friend.id}`}
+                    >
+                      <Trash2 className="w-4 h-4 text-muted-foreground" />
+                    </Button>
+                    <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                  </div>
+                </Card>
+              </Link>
             );
           })}
         </div>
@@ -528,48 +533,11 @@ export default function Friends() {
         </div>
       )}
 
-      {/* Direct expenses list */}
-      {sortedExpenses.length > 0 && (
-        <div>
-          <h2 className="text-sm font-medium text-muted-foreground mb-2">Direct Expenses</h2>
-          <div className="space-y-2">
-            {sortedExpenses.map((expense) => (
-              <Card
-                key={expense.id}
-                className={`p-3 ${expense.isSettlement ? "border-primary/30 bg-primary/5" : ""}`}
-                data-testid={`direct-expense-${expense.id}`}
-              >
-                <div className="flex items-center gap-3">
-                  <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${expense.isSettlement ? "bg-primary/20" : "bg-primary/10"}`}>
-                    {expense.isSettlement ? (
-                      <CheckCircle2 className="w-4 h-4 text-primary" />
-                    ) : (
-                      <Receipt className="w-4 h-4 text-primary" />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">
-                      {expense.isSettlement ? "Settlement" : expense.description}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {getPersonName(expense.paidById)} paid · {new Date(expense.date).toLocaleDateString()}
-                    </p>
-                  </div>
-                  <span className="text-sm font-semibold text-foreground shrink-0">
-                    ${expense.amount.toFixed(2)}
-                  </span>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={() => deleteExpenseMutation.mutate(expense.id)}
-                  >
-                    <Trash2 className="w-4 h-4 text-muted-foreground" />
-                  </Button>
-                </div>
-              </Card>
-            ))}
-          </div>
-        </div>
+      {/* Hint to click friends */}
+      {friendsList.length > 0 && (
+        <p className="text-xs text-muted-foreground text-center">
+          Tap a friend to see all expenses and settle up
+        </p>
       )}
     </div>
   );
