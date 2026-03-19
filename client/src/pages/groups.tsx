@@ -1,24 +1,23 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { Person, Group, Expense } from "@shared/schema";
+import type { Group, Expense } from "@shared/schema";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { FolderPlus, UsersRound, Trash2, ChevronRight } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
+import { useAuth } from "@/lib/auth";
 
 export default function Groups() {
+  const { user } = useAuth();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [groupName, setGroupName] = useState("");
-  const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
 
-  const { data: people = [] } = useQuery<Person[]>({ queryKey: ["/api/people"] });
   const { data: groups = [] } = useQuery<Group[]>({ queryKey: ["/api/groups"] });
   const { data: expenses = [] } = useQuery<Expense[]>({ queryKey: ["/api/expenses"] });
 
@@ -26,16 +25,18 @@ export default function Groups() {
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/groups", {
         name: groupName.trim(),
-        memberIds: selectedMembers,
+        memberIds: [], // creator is added automatically on server
       });
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/groups"] });
       setGroupName("");
-      setSelectedMembers([]);
       setOpen(false);
       toast({ title: "Group created" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
     },
   });
 
@@ -45,15 +46,15 @@ export default function Groups() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/groups"] });
-      toast({ title: "Group removed" });
+      queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
+      toast({ title: "Group deleted" });
+    },
+    onError: (err: Error) => {
+      let msg = err.message;
+      try { msg = JSON.parse(msg.split(": ").slice(1).join(": ")).error; } catch {}
+      toast({ title: "Error", description: msg, variant: "destructive" });
     },
   });
-
-  const toggleMember = (id: string) => {
-    setSelectedMembers((prev) =>
-      prev.includes(id) ? prev.filter((m) => m !== id) : [...prev, id]
-    );
-  };
 
   const getGroupExpenseCount = (groupId: string) =>
     expenses.filter((e) => e.groupId === groupId).length;
@@ -61,18 +62,16 @@ export default function Groups() {
   const getGroupTotal = (groupId: string) =>
     expenses.filter((e) => e.groupId === groupId).reduce((sum, e) => sum + e.amount, 0);
 
-  const getPersonName = (id: string) => people.find((p) => p.id === id)?.name || "Unknown";
-
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-2">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Groups</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">{groups.length} groups created</p>
+          <p className="text-sm text-muted-foreground mt-0.5">{groups.length} groups</p>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
-            <Button size="sm" disabled={people.length < 2} data-testid="create-group-btn">
+            <Button size="sm" data-testid="create-group-btn">
               <FolderPlus className="w-4 h-4 mr-1.5" />
               Create
             </Button>
@@ -85,7 +84,7 @@ export default function Groups() {
               className="space-y-4 pt-2"
               onSubmit={(e) => {
                 e.preventDefault();
-                if (groupName.trim() && selectedMembers.length >= 2) createMutation.mutate();
+                if (groupName.trim()) createMutation.mutate();
               }}
             >
               <div className="space-y-2">
@@ -98,37 +97,13 @@ export default function Groups() {
                   data-testid="input-group-name"
                 />
               </div>
-              <div className="space-y-2">
-                <Label>Members (select at least 2)</Label>
-                <div className="space-y-2 max-h-48 overflow-y-auto">
-                  {people.map((person) => (
-                    <label
-                      key={person.id}
-                      className="flex items-center gap-3 p-2 rounded-lg cursor-pointer hover:bg-muted/50 transition-colors"
-                    >
-                      <Checkbox
-                        checked={selectedMembers.includes(person.id)}
-                        onCheckedChange={() => toggleMember(person.id)}
-                        data-testid={`checkbox-member-${person.id}`}
-                      />
-                      <div
-                        className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-semibold shrink-0"
-                        style={{ backgroundColor: person.avatarColor }}
-                      >
-                        {person.name[0]?.toUpperCase()}
-                      </div>
-                      <span className="text-sm">{person.name}</span>
-                    </label>
-                  ))}
-                </div>
-                {people.length === 0 && (
-                  <p className="text-sm text-muted-foreground">Add friends first to create a group.</p>
-                )}
-              </div>
+              <p className="text-xs text-muted-foreground">
+                You'll be added as a member automatically. You can invite friends by email after creating the group.
+              </p>
               <Button
                 type="submit"
                 className="w-full"
-                disabled={!groupName.trim() || selectedMembers.length < 2 || createMutation.isPending}
+                disabled={!groupName.trim() || createMutation.isPending}
                 data-testid="submit-group"
               >
                 {createMutation.isPending ? "Creating..." : "Create Group"}
@@ -145,9 +120,7 @@ export default function Groups() {
           </div>
           <h3 className="text-base font-semibold mb-1">No groups yet</h3>
           <p className="text-sm text-muted-foreground">
-            {people.length < 2
-              ? "Add at least 2 friends first to create a group."
-              : "Create a group to start splitting expenses together."}
+            Create a group and invite your friends to start splitting expenses.
           </p>
         </Card>
       ) : (
@@ -173,18 +146,20 @@ export default function Groups() {
                     </span>
                   )}
                   <div className="flex items-center gap-1">
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        deleteMutation.mutate(group.id);
-                      }}
-                      data-testid={`delete-group-${group.id}`}
-                    >
-                      <Trash2 className="w-4 h-4 text-muted-foreground" />
-                    </Button>
+                    {group.createdById === user?.id && (
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          deleteMutation.mutate(group.id);
+                        }}
+                        data-testid={`delete-group-${group.id}`}
+                      >
+                        <Trash2 className="w-4 h-4 text-muted-foreground" />
+                      </Button>
+                    )}
                     <ChevronRight className="w-4 h-4 text-muted-foreground" />
                   </div>
                 </Card>

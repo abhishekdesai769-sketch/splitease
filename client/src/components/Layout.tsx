@@ -1,12 +1,12 @@
 import { Link, useLocation } from "wouter";
-import { Users, UsersRound, Receipt, LayoutDashboard, Sun, Moon } from "lucide-react";
+import { UsersRound, Receipt, LayoutDashboard, Users2, Sun, Moon, LogOut } from "lucide-react";
 import { useTheme } from "@/lib/theme";
+import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
-import { PerplexityAttribution } from "@/components/PerplexityAttribution";
 
 const navItems = [
   { path: "/", icon: LayoutDashboard, label: "Dashboard" },
-  { path: "/friends", icon: Users, label: "Friends" },
+  { path: "/friends", icon: Users2, label: "Friends" },
   { path: "/groups", icon: UsersRound, label: "Groups" },
   { path: "/expenses", icon: Receipt, label: "Expenses" },
 ];
@@ -14,6 +14,7 @@ const navItems = [
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const { theme, toggleTheme } = useTheme();
+  const { user, logout } = useAuth();
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -30,15 +31,31 @@ export function Layout({ children }: { children: React.ReactNode }) {
               Split<span className="text-primary">Ease</span>
             </span>
           </div>
-          <Button
-            size="icon"
-            variant="ghost"
-            onClick={toggleTheme}
-            aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
-            data-testid="theme-toggle"
-          >
-            {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-          </Button>
+          <div className="flex items-center gap-1">
+            {user && (
+              <span className="text-xs text-muted-foreground mr-1 hidden sm:block truncate max-w-[120px]">
+                {user.name}
+              </span>
+            )}
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={toggleTheme}
+              aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+              data-testid="theme-toggle"
+            >
+              {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={logout}
+              aria-label="Sign out"
+              data-testid="logout-btn"
+            >
+              <LogOut className="w-4 h-4" />
+            </Button>
+          </div>
         </div>
       </header>
 
@@ -71,10 +88,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
           })}
         </div>
       </nav>
-
-      <footer className="pb-20 pt-4 text-center">
-        <PerplexityAttribution />
-      </footer>
     </div>
   );
 }

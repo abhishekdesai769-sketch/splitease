@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { Person, Group, Expense } from "@shared/schema";
+import type { Group, Expense, SafeUser } from "@shared/schema";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,36 +9,65 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, ArrowLeft, Trash2, Shuffle, Receipt, ImagePlus } from "lucide-react";
+import { Plus, ArrowLeft, Trash2, Shuffle, Receipt, UserPlus, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
+import { useAuth } from "@/lib/auth";
 import { calculateGroupBalances, simplifyDebts } from "@/lib/simplify";
 
 export default function GroupDetail({ groupId }: { groupId: string }) {
+  const { user } = useAuth();
   const { toast } = useToast();
   const [addOpen, setAddOpen] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
   const [showSimplified, setShowSimplified] = useState(false);
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
   const [paidById, setPaidById] = useState("");
   const [splitAmong, setSplitAmong] = useState<string[]>([]);
-  const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
+  const [groupSplitType, setGroupSplitType] = useState<"equal" | "they_pay" | "you_pay">("equal");
+
+  const [inviteEmail, setInviteEmail] = useState("");
 
   const { data: group } = useQuery<Group>({ queryKey: ["/api/groups", groupId] });
-  const { data: people = [] } = useQuery<Person[]>({ queryKey: ["/api/people"] });
-  const { data: expenses = [] } = useQuery<Expense[]>({ queryKey: ["/api/expenses/group", groupId] });
-
-  const members = people.filter((p) => group?.memberIds.includes(p.id));
+  const { data: members = [] } = useQuery<SafeUser[]>({
+    queryKey: ["/api/groups", groupId, "members"],
+    enabled: !!group,
+  });
+  const { data: expenses = [] } = useQuery<Expense[]>({
+    queryKey: ["/api/expenses/group", groupId],
+  });
 
   const createExpenseMutation = useMutation({
     mutationFn: async () => {
+      let actualPaidById = paidById;
+      let splitAmongIds: string[];
+
+      if (groupSplitType === "equal") {
+        // Split equally among all selected (payer can be included if checked)
+        splitAmongIds = splitAmong;
+      } else if (groupSplitType === "they_pay") {
+        // Selected people each owe their share of full amount back to the payer
+        // Payer is NOT in the split — only the selected people
+        splitAmongIds = splitAmong.filter(id => id !== paidById);
+      } else {
+        // "You pay them" — the payer needs to pay the selected people
+        // Flip: one of the selected people is treated as the lender
+        // Only the payer is in the split (they owe the full amount)
+        splitAmongIds = [paidById];
+        // The "paid by" becomes the first selected non-payer member
+        const lender = splitAmong.find(id => id !== paidById);
+        if (lender) actualPaidById = lender;
+      }
+
+      if (splitAmongIds.length === 0) splitAmongIds = splitAmong;
+
       const res = await apiRequest("POST", "/api/expenses", {
         description: description.trim(),
         amount: parseFloat(amount),
-        paidById,
-        splitAmongIds: splitAmong,
+        paidById: actualPaidById,
+        splitAmongIds,
         groupId,
-        receiptUrl: receiptPreview,
         date: new Date().toISOString(),
       });
       return res.json();
@@ -49,6 +78,9 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
       resetForm();
       setAddOpen(false);
       toast({ title: "Expense added" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
     },
   });
 
@@ -63,24 +95,51 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
     },
   });
 
+  const inviteMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/groups/${groupId}/members`, {
+        email: inviteEmail.trim().toLowerCase(),
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/groups", groupId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/groups", groupId, "members"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/groups"] });
+      setInviteEmail("");
+      setInviteOpen(false);
+      toast({ title: "Member added" });
+    },
+    onError: (err: Error) => {
+      let msg = err.message;
+      try { msg = JSON.parse(msg.split(": ").slice(1).join(": ")).error; } catch {}
+      toast({ title: "Error", description: msg, variant: "destructive" });
+    },
+  });
+
+  const removeMemberMutation = useMutation({
+    mutationFn: async (memberId: string) => {
+      await apiRequest("DELETE", `/api/groups/${groupId}/members/${memberId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/groups", groupId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/groups", groupId, "members"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/groups"] });
+      toast({ title: "Member removed" });
+    },
+    onError: (err: Error) => {
+      let msg = err.message;
+      try { msg = JSON.parse(msg.split(": ").slice(1).join(": ")).error; } catch {}
+      toast({ title: "Error", description: msg, variant: "destructive" });
+    },
+  });
+
   const resetForm = () => {
     setDescription("");
     setAmount("");
     setPaidById("");
     setSplitAmong([]);
-    setReceiptPreview(null);
-  };
-
-  const handleReceiptUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.size > 5 * 1024 * 1024) {
-      toast({ title: "File too large", description: "Max 5MB", variant: "destructive" });
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => setReceiptPreview(reader.result as string);
-    reader.readAsDataURL(file);
+    setGroupSplitType("equal");
   };
 
   const toggleSplit = (id: string) => {
@@ -96,8 +155,11 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
   // Balance calculations
   const balances = calculateGroupBalances(expenses);
   const settlements = simplifyDebts(balances);
-  const getPersonName = (id: string) => people.find((p) => p.id === id)?.name || "Unknown";
-  const getPersonColor = (id: string) => people.find((p) => p.id === id)?.avatarColor || "#666";
+  const getPersonName = (id: string) => {
+    if (id === user?.id) return "You";
+    return members.find((m) => m.id === id)?.name || "Someone";
+  };
+  const getPersonColor = (id: string) => members.find((m) => m.id === id)?.avatarColor || "#666";
 
   const totalGroupSpend = expenses.reduce((sum, e) => sum + e.amount, 0);
 
@@ -175,15 +237,46 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                   <SelectContent>
                     {members.map((m) => (
                       <SelectItem key={m.id} value={m.id}>
-                        {m.name}
+                        {m.id === user?.id ? `${m.name} (You)` : m.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
+              {/* How to split */}
+              <div className="space-y-2">
+                <Label>How to split</Label>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {(["equal", "they_pay", "you_pay"] as const).map((type) => {
+                    const labels = {
+                      equal: "Split equally",
+                      they_pay: "They pay you",
+                      you_pay: "You pay them",
+                    };
+                    return (
+                      <button
+                        key={type}
+                        type="button"
+                        className={`px-2 py-2.5 rounded-lg border text-xs font-medium transition-colors ${
+                          groupSplitType === type
+                            ? "border-primary bg-primary/10 text-primary"
+                            : "border-border text-muted-foreground hover:bg-muted/50"
+                        }`}
+                        onClick={() => setGroupSplitType(type)}
+                        data-testid={`group-split-type-${type}`}
+                      >
+                        {labels[type]}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <Label>Split among</Label>
+                  <Label>
+                    {groupSplitType === "equal" ? "Split among" : groupSplitType === "they_pay" ? "Who pays you" : "You pay who"}
+                  </Label>
                   <button
                     type="button"
                     className="text-xs text-primary font-medium"
@@ -193,50 +286,53 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                   </button>
                 </div>
                 <div className="space-y-1.5">
-                  {members.map((m) => (
-                    <label
-                      key={m.id}
-                      className="flex items-center gap-3 p-2 rounded-lg cursor-pointer hover:bg-muted/50 transition-colors"
-                    >
-                      <Checkbox
-                        checked={splitAmong.includes(m.id)}
-                        onCheckedChange={() => toggleSplit(m.id)}
-                      />
-                      <span className="text-sm">{m.name}</span>
-                      {splitAmong.includes(m.id) && amount && splitAmong.length > 0 && (
-                        <span className="text-xs text-muted-foreground ml-auto">
-                          ${(parseFloat(amount) / splitAmong.length).toFixed(2)}
+                  {members.map((m) => {
+                    // Calculate per-person amount for preview
+                    const effectiveSplit = groupSplitType === "they_pay"
+                      ? splitAmong.filter(id => id !== paidById)
+                      : groupSplitType === "you_pay"
+                        ? [paidById]
+                        : splitAmong;
+                    const perPerson = effectiveSplit.length > 0 && amount
+                      ? parseFloat(amount) / effectiveSplit.length
+                      : 0;
+                    const showAmount = splitAmong.includes(m.id) && amount && splitAmong.length > 0;
+
+                    return (
+                      <label
+                        key={m.id}
+                        className="flex items-center gap-3 p-2 rounded-lg cursor-pointer hover:bg-muted/50 transition-colors"
+                      >
+                        <Checkbox
+                          checked={splitAmong.includes(m.id)}
+                          onCheckedChange={() => toggleSplit(m.id)}
+                        />
+                        <span className="text-sm">
+                          {m.id === user?.id ? `${m.name} (You)` : m.name}
                         </span>
-                      )}
-                    </label>
-                  ))}
+                        {showAmount && effectiveSplit.includes(m.id) && (
+                          <span className="text-xs text-muted-foreground ml-auto">
+                            ${perPerson.toFixed(2)}
+                          </span>
+                        )}
+                      </label>
+                    );
+                  })}
                 </div>
               </div>
 
-              {/* Receipt upload */}
-              <div className="space-y-2">
-                <Label>Receipt (optional)</Label>
-                <div className="flex items-center gap-3">
-                  <label className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border cursor-pointer hover:bg-muted/50 transition-colors text-sm text-muted-foreground">
-                    <ImagePlus className="w-4 h-4" />
-                    {receiptPreview ? "Change photo" : "Upload photo"}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={handleReceiptUpload}
-                      data-testid="input-receipt"
-                    />
-                  </label>
-                  {receiptPreview && (
-                    <img
-                      src={receiptPreview}
-                      alt="Receipt preview"
-                      className="w-12 h-12 rounded-lg object-cover border border-border"
-                    />
-                  )}
+              {/* Preview summary */}
+              {amount && paidById && splitAmong.length > 0 && groupSplitType !== "equal" && (
+                <div className="rounded-lg bg-muted/50 p-3 text-center">
+                  <p className="text-sm text-muted-foreground">
+                    {groupSplitType === "they_pay" ? (
+                      <>Selected members pay {paidById === user?.id ? "you" : getPersonName(paidById)} the full <span className="font-semibold text-primary">${parseFloat(amount).toFixed(2)}</span></>
+                    ) : (
+                      <>{paidById === user?.id ? "You" : getPersonName(paidById)} pay{paidById === user?.id ? "" : "s"} selected member <span className="font-semibold text-destructive">${parseFloat(amount).toFixed(2)}</span></>
+                    )}
+                  </p>
                 </div>
-              </div>
+              )}
 
               <Button
                 type="submit"
@@ -257,10 +353,10 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
         </Dialog>
       </div>
 
-      {/* Members bar */}
+      {/* Members bar with invite button */}
       <div className="flex items-center gap-2 overflow-x-auto pb-1">
         {members.map((m) => (
-          <div key={m.id} className="flex flex-col items-center gap-1 shrink-0">
+          <div key={m.id} className="flex flex-col items-center gap-1 shrink-0 relative group">
             <div
               className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-semibold"
               style={{ backgroundColor: m.avatarColor }}
@@ -268,10 +364,66 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
               {m.name[0]?.toUpperCase()}
             </div>
             <span className="text-xs text-muted-foreground truncate max-w-[48px]">
-              {m.name.split(" ")[0]}
+              {m.id === user?.id ? "You" : m.name.split(" ")[0]}
             </span>
+            {m.id !== group.createdById && group.createdById === user?.id && (
+              <button
+                className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-destructive text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                onClick={() => removeMemberMutation.mutate(m.id)}
+                title="Remove member"
+              >
+                <X className="w-2.5 h-2.5" />
+              </button>
+            )}
           </div>
         ))}
+        <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
+          <DialogTrigger asChild>
+            <button
+              className="flex flex-col items-center gap-1 shrink-0"
+              data-testid="invite-member-btn"
+            >
+              <div className="w-9 h-9 rounded-full border-2 border-dashed border-muted-foreground/30 flex items-center justify-center">
+                <UserPlus className="w-4 h-4 text-muted-foreground" />
+              </div>
+              <span className="text-xs text-muted-foreground">Invite</span>
+            </button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Invite a Friend</DialogTitle>
+            </DialogHeader>
+            <form
+              className="space-y-4 pt-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (inviteEmail.trim()) inviteMutation.mutate();
+              }}
+            >
+              <div className="space-y-2">
+                <Label>Friend's Email</Label>
+                <Input
+                  type="email"
+                  placeholder="friend@example.com"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  data-testid="input-invite-email"
+                />
+                <p className="text-xs text-muted-foreground">
+                  They must have a SplitEase account. Share the app link with them to sign up.
+                </p>
+              </div>
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={!inviteEmail.trim() || inviteMutation.isPending}
+                data-testid="submit-invite"
+              >
+                {inviteMutation.isPending ? "Adding..." : "Add to Group"}
+              </Button>
+            </form>
+          </DialogContent>
+        </Dialog>
       </div>
 
       {/* Simplify Debts */}
@@ -288,10 +440,10 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
             {showSimplified ? "Hide Simplified Debts" : "Simplify Debts"}
           </Button>
 
-          {showSimplified && settlements.length > 0 && (
+          {showSimplified && (
             <div className="space-y-2 mb-4">
               <h3 className="text-sm font-medium text-muted-foreground">Simplified settlements:</h3>
-              {settlements.map((s, i) => (
+              {settlements.length > 0 ? settlements.map((s, i) => (
                 <Card key={i} className="p-3 flex items-center gap-2">
                   <div
                     className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-semibold shrink-0"
@@ -317,8 +469,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                     ${s.amount.toFixed(2)}
                   </span>
                 </Card>
-              ))}
-              {settlements.length === 0 && (
+              )) : (
                 <p className="text-sm text-muted-foreground text-center py-2">All settled up.</p>
               )}
             </div>
@@ -355,16 +506,6 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                     <Trash2 className="w-4 h-4 text-muted-foreground" />
                   </Button>
                 </div>
-                {expense.receiptUrl && (
-                  <div className="mt-2 ml-12">
-                    <img
-                      src={expense.receiptUrl}
-                      alt="Receipt"
-                      className="w-full max-w-[200px] rounded-lg border border-border cursor-pointer"
-                      onClick={() => window.open(expense.receiptUrl!, "_blank")}
-                    />
-                  </div>
-                )}
               </Card>
             ))}
         </div>
@@ -375,7 +516,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
           </div>
           <h3 className="text-base font-semibold mb-1">No expenses yet</h3>
           <p className="text-sm text-muted-foreground">
-            Add your first expense to this group.
+            Any group member can add expenses. Start splitting.
           </p>
         </Card>
       )}
@@ -393,7 +534,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                     b.amount > 0 ? "text-primary" : b.amount < 0 ? "text-destructive" : "text-muted-foreground"
                   }`}
                 >
-                  {b.amount > 0 ? "gets back" : b.amount < 0 ? "owes" : "settled"}{" "}
+                  {b.amount > 0 ? "gets back" : b.amount < 0 ? "pays" : "settled"}{" "}
                   {b.amount !== 0 && `$${Math.abs(b.amount).toFixed(2)}`}
                 </span>
               </div>
