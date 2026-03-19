@@ -62,22 +62,63 @@ export async function notifyExpenseCreated(opts: {
       : `${paidByName} added an expense: ${description}${groupName ? ` in ${groupName}` : ""}`;
 
     const receiptLine = hasReceipt
-      ? `<p style="margin: 8px 0 0; font-size: 14px; color: #555;">Receipt is attached to this email.</p>`
+      ? `<tr><td style="padding:12px 0 0;font-size:13px;color:#6b7280;">Receipt attached to this email.</td></tr>`
       : "";
 
-    // Plain, personal-style email — avoids Gmail Promotions filter.
-    // No background colors, no CTA buttons, no marketing layout.
-    const html = isSettlement
-      ? `<p>Hi ${person.name},</p>
-<p><strong>${paidByName}</strong> has settled up <strong>$${amount.toFixed(2)}</strong> with you${groupLabel}.</p>
-<p style="font-size: 14px; color: #555;">View details at <a href="https://splitease-81re.onrender.com">splitease-81re.onrender.com</a></p>
-<p style="font-size: 12px; color: #999; margin-top: 24px;">— SplitEase</p>`
-      : `<p>Hi ${person.name},</p>
-<p><strong>${paidByName}</strong> paid <strong>$${amount.toFixed(2)}</strong> for <strong>${description}</strong>${groupLabel}.</p>
-<p>Your share: <strong>$${person.share.toFixed(2)}</strong></p>
-${receiptLine}
-<p style="font-size: 14px; color: #555; margin-top: 16px;">View details at <a href="https://splitease-81re.onrender.com">splitease-81re.onrender.com</a></p>
-<p style="font-size: 12px; color: #999; margin-top: 24px;">— SplitEase</p>`;
+    // Modern transactional email — styled like a bank/Venmo notification.
+    // Key rules to stay in Primary: no big CTA buttons, no full-width colored
+    // backgrounds, keep HTML-to-text ratio balanced, include plain text alt.
+    const html = `
+<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <tr><td align="center" style="padding:24px 16px;">
+    <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="max-width:520px;">
+      <!-- Logo -->
+      <tr><td style="padding-bottom:20px;">
+        <span style="font-size:18px;font-weight:700;color:#1a1a1a;letter-spacing:-0.3px;">Split</span><span style="font-size:18px;font-weight:700;color:#2dd4a8;letter-spacing:-0.3px;">Ease</span>
+      </td></tr>
+      <!-- Greeting -->
+      <tr><td style="font-size:15px;color:#374151;padding-bottom:16px;">
+        Hi ${person.name},
+      </td></tr>
+      <!-- Amount card — light border, no heavy background -->
+      <tr><td style="padding-bottom:16px;">
+        <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="border:1px solid #e5e7eb;border-radius:10px;">
+          <tr><td style="padding:16px;">
+            <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+              <tr>
+                <td style="font-size:13px;color:#6b7280;padding-bottom:4px;">
+                  ${isSettlement ? "Settlement" : description}${groupName ? ` &middot; ${groupName}` : ""}
+                </td>
+              </tr>
+              <tr>
+                <td style="font-size:28px;font-weight:700;color:#111827;padding-bottom:8px;">
+                  $${amount.toFixed(2)}
+                </td>
+              </tr>
+              <tr>
+                <td style="font-size:14px;color:#374151;">
+                  ${isSettlement
+                    ? `<strong>${paidByName}</strong> settled up with you.`
+                    : `Paid by <strong>${paidByName}</strong> &middot; Your share: <strong style="color:#2dd4a8;">$${person.share.toFixed(2)}</strong>`
+                  }
+                </td>
+              </tr>
+              ${receiptLine}
+            </table>
+          </td></tr>
+        </table>
+      </td></tr>
+      <!-- Link -->
+      <tr><td style="padding-bottom:24px;">
+        <a href="https://splitease-81re.onrender.com" style="font-size:14px;color:#2dd4a8;text-decoration:none;font-weight:500;">View on SplitEase &rarr;</a>
+      </td></tr>
+      <!-- Footer -->
+      <tr><td style="border-top:1px solid #f3f4f6;padding-top:16px;font-size:12px;color:#9ca3af;">
+        You received this because an expense was added involving you on SplitEase.
+      </td></tr>
+    </table>
+  </td></tr>
+</table>`;
 
     const attachments = hasReceipt
       ? [{ content: receiptBuffer, filename: receiptFilename }]
