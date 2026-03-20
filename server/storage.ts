@@ -1,4 +1,4 @@
-import { eq, and, or, ilike, inArray, ne } from "drizzle-orm";
+import { eq, and, or, ilike, inArray, ne, isNull, isNotNull } from "drizzle-orm";
 import { db } from "./db";
 import {
   users, friends, groups, expenses, otpCodes, resetTokens,
@@ -42,9 +42,12 @@ export interface IStorage {
   // Groups
   getGroupsForUser(userId: string): Promise<Group[]>;
   getGroup(id: string): Promise<Group | undefined>;
+  getGroupIncludeDeleted(id: string): Promise<Group | undefined>;
   createGroup(group: InsertGroup): Promise<Group>;
   updateGroupMembers(id: string, memberIds: string[]): Promise<Group | undefined>;
   deleteGroup(id: string): Promise<boolean>;
+  getDeletedGroups(): Promise<Group[]>;
+  restoreGroup(id: string): Promise<Group | undefined>;
 
   // Expenses
   getExpense(id: string): Promise<Expense | undefined>;
@@ -53,6 +56,8 @@ export interface IStorage {
   getDirectExpensesForUser(userId: string): Promise<Expense[]>;
   createExpense(expense: InsertExpense): Promise<Expense>;
   deleteExpense(id: string): Promise<boolean>;
+  getDeletedExpenses(): Promise<Expense[]>;
+  restoreExpense(id: string): Promise<Expense | undefined>;
 }
 
 export class PgStorage implements IStorage {
@@ -186,11 +191,16 @@ export class PgStorage implements IStorage {
 
   // Groups
   async getGroupsForUser(userId: string): Promise<Group[]> {
-    const allGroups = await db.select().from(groups);
+    const allGroups = await db.select().from(groups).where(isNull(groups.deletedAt));
     return allGroups.filter(g => g.memberIds.includes(userId));
   }
 
   async getGroup(id: string): Promise<Group | undefined> {
+    const [group] = await db.select().from(groups).where(and(eq(groups.id, id), isNull(groups.deletedAt)));
+    return group;
+  }
+
+  async getGroupIncludeDeleted(id: string): Promise<Group | undefined> {
     const [group] = await db.select().from(groups).where(eq(groups.id, id));
     return group;
   }
@@ -209,26 +219,36 @@ export class PgStorage implements IStorage {
   }
 
   async deleteGroup(id: string): Promise<boolean> {
-    await db.delete(expenses).where(eq(expenses.groupId, id));
-    const result = await db.delete(groups).where(eq(groups.id, id)).returning();
+    await db.update(expenses).set({ deletedAt: new Date().toISOString() }).where(and(eq(expenses.groupId, id), isNull(expenses.deletedAt)));
+    const result = await db.update(groups).set({ deletedAt: new Date().toISOString() }).where(eq(groups.id, id)).returning();
     return result.length > 0;
+  }
+
+  async getDeletedGroups(): Promise<Group[]> {
+    return db.select().from(groups).where(isNotNull(groups.deletedAt));
+  }
+
+  async restoreGroup(id: string): Promise<Group | undefined> {
+    await db.update(expenses).set({ deletedAt: null }).where(eq(expenses.groupId, id));
+    const [restored] = await db.update(groups).set({ deletedAt: null }).where(eq(groups.id, id)).returning();
+    return restored;
   }
 
   // Expenses
   async getExpense(id: string): Promise<Expense | undefined> {
-    const [expense] = await db.select().from(expenses).where(eq(expenses.id, id));
+    const [expense] = await db.select().from(expenses).where(and(eq(expenses.id, id), isNull(expenses.deletedAt)));
     return expense;
   }
 
   async getExpensesByGroup(groupId: string): Promise<Expense[]> {
-    return db.select().from(expenses).where(eq(expenses.groupId, groupId));
+    return db.select().from(expenses).where(and(eq(expenses.groupId, groupId), isNull(expenses.deletedAt)));
   }
 
   async getExpensesForUser(userId: string): Promise<Expense[]> {
     const userGroups = await this.getGroupsForUser(userId);
     const groupIds = userGroups.map(g => g.id);
 
-    const allExpenses = await db.select().from(expenses);
+    const allExpenses = await db.select().from(expenses).where(isNull(expenses.deletedAt));
     return allExpenses.filter(e => {
       if (e.groupId && groupIds.includes(e.groupId)) return true;
       if (!e.groupId && (e.paidById === userId || e.splitAmongIds.includes(userId))) return true;
@@ -237,7 +257,7 @@ export class PgStorage implements IStorage {
   }
 
   async getDirectExpensesForUser(userId: string): Promise<Expense[]> {
-    const all = await db.select().from(expenses);
+    const all = await db.select().from(expenses).where(isNull(expenses.deletedAt));
     return all.filter(e =>
       !e.groupId && (e.paidById === userId || e.splitAmongIds.includes(userId))
     );
@@ -249,8 +269,17 @@ export class PgStorage implements IStorage {
   }
 
   async deleteExpense(id: string): Promise<boolean> {
-    const result = await db.delete(expenses).where(eq(expenses.id, id)).returning();
+    const result = await db.update(expenses).set({ deletedAt: new Date().toISOString() }).where(eq(expenses.id, id)).returning();
     return result.length > 0;
+  }
+
+  async getDeletedExpenses(): Promise<Expense[]> {
+    return db.select().from(expenses).where(isNotNull(expenses.deletedAt));
+  }
+
+  async restoreExpense(id: string): Promise<Expense | undefined> {
+    const [restored] = await db.update(expenses).set({ deletedAt: null }).where(eq(expenses.id, id)).returning();
+    return restored;
   }
 }
 

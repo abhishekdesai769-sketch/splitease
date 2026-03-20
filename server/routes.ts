@@ -421,6 +421,27 @@ export async function registerRoutes(
     res.status(204).send();
   });
 
+  // Get soft-deleted groups and expenses
+  app.get("/api/admin/deleted", requireAuth, requireAdmin, async (_req, res) => {
+    const deletedGroups = await storage.getDeletedGroups();
+    const deletedExpenses = await storage.getDeletedExpenses();
+    res.json({ groups: deletedGroups, expenses: deletedExpenses });
+  });
+
+  // Restore a soft-deleted group (and its expenses)
+  app.post("/api/admin/restore/group/:id", requireAuth, requireAdmin, async (req, res) => {
+    const restored = await storage.restoreGroup(req.params.id);
+    if (!restored) return res.status(404).json({ error: "Group not found" });
+    res.json(restored);
+  });
+
+  // Restore a soft-deleted expense
+  app.post("/api/admin/restore/expense/:id", requireAuth, requireAdmin, async (req, res) => {
+    const restored = await storage.restoreExpense(req.params.id);
+    if (!restored) return res.status(404).json({ error: "Expense not found" });
+    res.json(restored);
+  });
+
   // ========== Friends — requires approved ==========
   app.get("/api/friends", requireAuth, requireApproved, async (req, res) => {
     const userId = (req.session as any).userId;

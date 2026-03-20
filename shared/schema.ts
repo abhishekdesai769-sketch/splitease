@@ -57,6 +57,7 @@ export const groups = pgTable("groups", {
   name: text("name").notNull(),
   createdById: varchar("created_by_id").notNull(),
   memberIds: text("member_ids").array().notNull(), // array of user IDs
+  deletedAt: text("deleted_at").default(sql`NULL`),
 });
 
 export const insertGroupSchema = createInsertSchema(groups).omit({ id: true });
@@ -74,6 +75,7 @@ export const expenses = pgTable("expenses", {
   date: text("date").notNull(),
   addedById: varchar("added_by_id").notNull(), // who added this expense
   isSettlement: boolean("is_settlement").notNull().default(false), // settle up entry
+  deletedAt: text("deleted_at").default(sql`NULL`),
 });
 
 export const insertExpenseSchema = createInsertSchema(expenses).omit({ id: true });

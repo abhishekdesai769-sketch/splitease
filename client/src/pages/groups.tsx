@@ -7,13 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { FolderPlus, UsersRound, Trash2, ChevronRight } from "lucide-react";
+import { FolderPlus, UsersRound, ChevronRight } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
-import { useAuth } from "@/lib/auth";
 
 export default function Groups() {
-  const { user } = useAuth();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [groupName, setGroupName] = useState("");
@@ -37,22 +35,6 @@ export default function Groups() {
     },
     onError: (err: Error) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });
-    },
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: async (id: string) => {
-      await apiRequest("DELETE", `/api/groups/${id}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/groups"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
-      toast({ title: "Group deleted" });
-    },
-    onError: (err: Error) => {
-      let msg = err.message;
-      try { msg = JSON.parse(msg.split(": ").slice(1).join(": ")).error; } catch {}
-      toast({ title: "Error", description: msg, variant: "destructive" });
     },
   });
 
@@ -146,20 +128,6 @@ export default function Groups() {
                     </span>
                   )}
                   <div className="flex items-center gap-1">
-                    {group.createdById === user?.id && (
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          deleteMutation.mutate(group.id);
-                        }}
-                        data-testid={`delete-group-${group.id}`}
-                      >
-                        <Trash2 className="w-4 h-4 text-muted-foreground" />
-                      </Button>
-                    )}
                     <ChevronRight className="w-4 h-4 text-muted-foreground" />
                   </div>
                 </Card>

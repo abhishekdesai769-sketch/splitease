@@ -11,7 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Plus, ArrowLeft, Trash2, Shuffle, Receipt, UserPlus, X, HandCoins, CheckCircle2, AlertTriangle, Camera, Mail, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { calculateGroupBalances, simplifyDebts } from "@/lib/simplify";
 
@@ -36,6 +36,11 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
 
   // Delete expense confirmation
   const [deleteExpenseId, setDeleteExpenseId] = useState<string | null>(null);
+
+  // Delete group: 2-step confirmation
+  const [deleteGroupStep, setDeleteGroupStep] = useState<0 | 1 | 2>(0);
+
+  const [, setLocation] = useLocation();
 
   const { data: group } = useQuery<Group>({ queryKey: ["/api/groups", groupId] });
   const { data: members = [] } = useQuery<SafeUser[]>({
@@ -168,6 +173,24 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
     },
     onError: (err: Error) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const deleteGroupMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("DELETE", `/api/groups/${groupId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/groups"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
+      setDeleteGroupStep(0);
+      toast({ title: "Group deleted" });
+      setLocation("/groups");
+    },
+    onError: (err: Error) => {
+      let msg = err.message;
+      try { msg = JSON.parse(msg.split(": ").slice(1).join(": ")).error; } catch {}
+      toast({ title: "Error", description: msg, variant: "destructive" });
     },
   });
 
@@ -820,6 +843,90 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Delete Group 2-step Confirmation Dialog */}
+      <Dialog open={deleteGroupStep > 0} onOpenChange={(open) => { if (!open) setDeleteGroupStep(0); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {deleteGroupStep === 1 ? "Delete Group" : "Final Warning"}
+            </DialogTitle>
+          </DialogHeader>
+          {deleteGroupStep === 1 && (
+            <div className="space-y-4 pt-2">
+              <div className="flex items-center gap-3 rounded-lg bg-destructive/10 p-4">
+                <AlertTriangle className="w-5 h-5 text-destructive shrink-0" />
+                <p className="text-sm text-foreground">
+                  Are you sure you want to delete <strong>{group.name}</strong>?
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => setDeleteGroupStep(0)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="destructive"
+                  className="flex-1"
+                  onClick={() => setDeleteGroupStep(2)}
+                >
+                  Yes, Delete
+                </Button>
+              </div>
+            </div>
+          )}
+          {deleteGroupStep === 2 && (
+            <div className="space-y-4 pt-2">
+              <div className="rounded-lg bg-destructive/10 p-4 space-y-2">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="w-5 h-5 text-destructive shrink-0" />
+                  <p className="text-sm font-semibold text-destructive">This is permanent</p>
+                </div>
+                <p className="text-sm text-foreground">
+                  If you delete <strong>{group.name}</strong>, all expense history in this group will also be removed. This cannot be undone.
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => setDeleteGroupStep(0)}
+                >
+                  No, keep group
+                </Button>
+                <Button
+                  variant="destructive"
+                  className="flex-1"
+                  onClick={() => deleteGroupMutation.mutate()}
+                  disabled={deleteGroupMutation.isPending}
+                  data-testid="confirm-delete-group-final"
+                >
+                  {deleteGroupMutation.isPending ? "Deleting..." : "I understand, delete"}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Group button — at the bottom, subtle, only for creator or admin */}
+      {(group.createdById === user?.id || user?.isAdmin) && (
+        <div className="pt-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+            onClick={() => setDeleteGroupStep(1)}
+            data-testid="delete-group-btn"
+          >
+            <Trash2 className="w-4 h-4 mr-1.5" />
+            Delete Group
+          </Button>
         </div>
       )}
     </div>

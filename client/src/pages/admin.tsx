@@ -3,7 +3,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { SafeUser } from "@shared/schema";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Shield, UserCheck, UserX, Trash2 } from "lucide-react";
+import { Shield, UserCheck, UserX, Trash2, RotateCcw, FolderX, ReceiptText } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 
@@ -13,6 +13,40 @@ export default function Admin() {
 
   const { data: allUsers = [], isLoading } = useQuery<SafeUser[]>({
     queryKey: ["/api/admin/users"],
+  });
+
+  const { data: deletedData } = useQuery<{ groups: any[], expenses: any[] }>({ queryKey: ["/api/admin/deleted"] });
+
+  const restoreGroupMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest("POST", `/api/admin/restore/group/${id}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/deleted"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/groups"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
+      toast({ title: "Group restored" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const restoreExpenseMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest("POST", `/api/admin/restore/expense/${id}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/deleted"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/groups"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
+      toast({ title: "Expense restored" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
   });
 
   const approveMutation = useMutation({
@@ -190,6 +224,79 @@ export default function Admin() {
           ))}
         </div>
       )}
+
+      {/* Deleted Items */}
+      <div>
+        <h2 className="text-sm font-medium text-muted-foreground mb-2">
+          Deleted Items
+        </h2>
+        {(!deletedData || (deletedData.groups.length === 0 && deletedData.expenses.length === 0)) ? (
+          <Card className="p-4 text-center">
+            <p className="text-sm text-muted-foreground">No deleted items to restore</p>
+          </Card>
+        ) : (
+          <div className="space-y-4">
+            {deletedData.groups.length > 0 && (
+              <div>
+                <h3 className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1.5">
+                  <FolderX className="w-3.5 h-3.5" />
+                  Deleted Groups ({deletedData.groups.length})
+                </h3>
+                <div className="space-y-2">
+                  {deletedData.groups.map((g: any) => (
+                    <Card key={g.id} className="p-3 flex items-center gap-3 border-destructive/20 bg-destructive/5">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{g.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Deleted {g.deletedAt ? new Date(g.deletedAt).toLocaleDateString() : ""}
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => restoreGroupMutation.mutate(g.id)}
+                        disabled={restoreGroupMutation.isPending}
+                      >
+                        <RotateCcw className="w-3.5 h-3.5 mr-1" />
+                        Restore
+                      </Button>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            )}
+            {deletedData.expenses.length > 0 && (
+              <div>
+                <h3 className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1.5">
+                  <ReceiptText className="w-3.5 h-3.5" />
+                  Deleted Expenses ({deletedData.expenses.length})
+                </h3>
+                <div className="space-y-2">
+                  {deletedData.expenses.map((e: any) => (
+                    <Card key={e.id} className="p-3 flex items-center gap-3 border-destructive/20 bg-destructive/5">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{e.description}</p>
+                        <p className="text-xs text-muted-foreground">
+                          ${e.amount?.toFixed(2)} · Deleted {e.deletedAt ? new Date(e.deletedAt).toLocaleDateString() : ""}
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => restoreExpenseMutation.mutate(e.id)}
+                        disabled={restoreExpenseMutation.isPending}
+                      >
+                        <RotateCcw className="w-3.5 h-3.5 mr-1" />
+                        Restore
+                      </Button>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
