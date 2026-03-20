@@ -109,7 +109,7 @@ export async function registerRoutes(
 
   // Session setup with stronger config
   const MemoryStore = createMemoryStore(session);
-  const sessionSecret = process.env.SESSION_SECRET || "splitease-secret-" + randomBytes(16).toString("hex");
+  const sessionSecret = process.env.SESSION_SECRET || "spliiit-secret-" + randomBytes(16).toString("hex");
 
   app.use(
     session({

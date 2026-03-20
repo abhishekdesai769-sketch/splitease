@@ -516,7 +516,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                   data-testid="input-invite-email"
                 />
                 <p className="text-xs text-muted-foreground">
-                  They must have a SplitEase account. Share the app link with them to sign up.
+                  They must have a Spliiit account. Share the app link with them to sign up.
                 </p>
               </div>
               <Button

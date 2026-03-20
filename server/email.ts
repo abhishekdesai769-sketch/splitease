@@ -4,7 +4,30 @@ const resend = process.env.RESEND_API_KEY
   ? new Resend(process.env.RESEND_API_KEY)
   : null;
 
-const FROM_ADDRESS = "SplitEase <splitease@klarityit.ca>";
+const FROM_ADDRESS = "Spliiit <splitease@klarityit.ca>";
+
+// Inline logo for email templates — HTML table-based since email clients don't support SVG.
+// Renders the icon (three lines split by a dashed line) + "Spliiit" text.
+const EMAIL_LOGO = `<table cellpadding="0" cellspacing="0" role="presentation" style="margin-bottom:20px;">
+  <tr>
+    <td style="vertical-align:middle;padding-right:10px;">
+      <table cellpadding="0" cellspacing="0" role="presentation" style="width:32px;height:32px;border-radius:8px;background-color:rgba(45,212,168,0.12);">
+        <tr><td align="center" style="padding:6px 0;">
+          <table cellpadding="0" cellspacing="0" role="presentation" style="width:18px;">
+            <tr><td style="border-top:2px solid #2dd4a8;font-size:0;line-height:0;height:0;padding-bottom:3px;">&nbsp;</td></tr>
+            <tr><td style="border-top:2px solid #2dd4a8;font-size:0;line-height:0;height:0;padding-bottom:3px;">&nbsp;</td></tr>
+            <tr><td style="border-top:2px solid #2dd4a8;font-size:0;line-height:0;height:0;">&nbsp;</td></tr>
+          </table>
+        </td></tr>
+      </table>
+    </td>
+    <td style="vertical-align:middle;">
+      <span style="font-size:18px;font-weight:700;color:#1a1a1a;letter-spacing:-0.3px;">Spl</span><span style="font-size:18px;font-weight:700;color:#2dd4a8;letter-spacing:-0.3px;">iii</span><span style="font-size:18px;font-weight:700;color:#1a1a1a;letter-spacing:-0.3px;">t</span>
+    </td>
+  </tr>
+</table>`;
+
+const EMAIL_FOOTER = `Spliiit &middot; Expense splitting made easy`;
 
 // Silently skip if no API key configured (graceful degradation)
 async function sendEmail(
@@ -37,14 +60,14 @@ async function sendEmail(
 export async function sendOtpEmail(to: string, name: string, code: string) {
   if (!resend) return;
 
-  const subject = `${code} is your SplitEase verification code`;
+  const subject = `${code} is your Spliiit verification code`;
 
   const html = `
 <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
   <tr><td align="center" style="padding:24px 16px;">
     <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="max-width:520px;">
-      <tr><td style="padding-bottom:20px;">
-        <span style="font-size:18px;font-weight:700;color:#1a1a1a;letter-spacing:-0.3px;">Split</span><span style="font-size:18px;font-weight:700;color:#2dd4a8;letter-spacing:-0.3px;">Ease</span>
+      <tr><td>
+        ${EMAIL_LOGO}
       </td></tr>
       <tr><td style="font-size:15px;color:#374151;padding-bottom:16px;">
         Hi ${name},
@@ -63,13 +86,13 @@ export async function sendOtpEmail(to: string, name: string, code: string) {
         This code expires in 10 minutes. If you didn't request this, you can safely ignore this email.
       </td></tr>
       <tr><td style="border-top:1px solid #f3f4f6;padding-top:16px;font-size:12px;color:#9ca3af;">
-        SplitEase &middot; Expense splitting made easy
+        ${EMAIL_FOOTER}
       </td></tr>
     </table>
   </td></tr>
 </table>`;
 
-  const text = `Hi ${name},\n\nYour SplitEase verification code is: ${code}\n\nThis code expires in 10 minutes.\n\n— SplitEase`;
+  const text = `Hi ${name},\n\nYour Spliiit verification code is: ${code}\n\nThis code expires in 10 minutes.\n\n— Spliiit`;
 
   sendEmail(to, subject, html, text);
 }
@@ -80,14 +103,14 @@ export async function sendOtpEmail(to: string, name: string, code: string) {
 export async function sendResetPasswordEmail(to: string, name: string, resetLink: string) {
   if (!resend) return;
 
-  const subject = `Reset your SplitEase password`;
+  const subject = `Reset your Spliiit password`;
 
   const html = `
 <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
   <tr><td align="center" style="padding:24px 16px;">
     <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="max-width:520px;">
-      <tr><td style="padding-bottom:20px;">
-        <span style="font-size:18px;font-weight:700;color:#1a1a1a;letter-spacing:-0.3px;">Split</span><span style="font-size:18px;font-weight:700;color:#2dd4a8;letter-spacing:-0.3px;">Ease</span>
+      <tr><td>
+        ${EMAIL_LOGO}
       </td></tr>
       <tr><td style="font-size:15px;color:#374151;padding-bottom:16px;">
         Hi ${name},
@@ -102,13 +125,13 @@ export async function sendResetPasswordEmail(to: string, name: string, resetLink
         This link expires in 1 hour. If you didn't request a password reset, you can safely ignore this email.
       </td></tr>
       <tr><td style="border-top:1px solid #f3f4f6;padding-top:16px;font-size:12px;color:#9ca3af;">
-        SplitEase &middot; Expense splitting made easy
+        ${EMAIL_FOOTER}
       </td></tr>
     </table>
   </td></tr>
 </table>`;
 
-  const text = `Hi ${name},\n\nWe received a request to reset your password. Visit this link to set a new one:\n\n${resetLink}\n\nThis link expires in 1 hour.\n\n— SplitEase`;
+  const text = `Hi ${name},\n\nWe received a request to reset your password. Visit this link to set a new one:\n\n${resetLink}\n\nThis link expires in 1 hour.\n\n— Spliiit`;
 
   sendEmail(to, subject, html, text);
 }
@@ -121,16 +144,16 @@ export async function sendExportEmail(to: string, name: string, csvContent: stri
 
   const scopeLabel = scope === "all" ? "All Expenses" : scope;
   const dateStr = new Date().toISOString().split("T")[0];
-  const filename = `splitease-${scope.toLowerCase().replace(/\s+/g, "-")}-${dateStr}.csv`;
+  const filename = `spliiit-${scope.toLowerCase().replace(/\s+/g, "-")}-${dateStr}.csv`;
 
-  const subject = `Your SplitEase export: ${scopeLabel}`;
+  const subject = `Your Spliiit export: ${scopeLabel}`;
 
   const html = `
 <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
   <tr><td align="center" style="padding:24px 16px;">
     <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="max-width:520px;">
-      <tr><td style="padding-bottom:20px;">
-        <span style="font-size:18px;font-weight:700;color:#1a1a1a;letter-spacing:-0.3px;">Split</span><span style="font-size:18px;font-weight:700;color:#2dd4a8;letter-spacing:-0.3px;">Ease</span>
+      <tr><td>
+        ${EMAIL_LOGO}
       </td></tr>
       <tr><td style="font-size:15px;color:#374151;padding-bottom:16px;">
         Hi ${name},
@@ -142,13 +165,13 @@ export async function sendExportEmail(to: string, name: string, csvContent: stri
         Open the attached CSV in Excel, Google Sheets, or any spreadsheet app.
       </td></tr>
       <tr><td style="border-top:1px solid #f3f4f6;padding-top:16px;font-size:12px;color:#9ca3af;">
-        SplitEase &middot; Expense splitting made easy
+        ${EMAIL_FOOTER}
       </td></tr>
     </table>
   </td></tr>
 </table>`;
 
-  const text = `Hi ${name},\n\nYour expense export for ${scopeLabel} is attached as a CSV file.\n\nOpen the attached CSV in Excel, Google Sheets, or any spreadsheet app.\n\n— SplitEase`;
+  const text = `Hi ${name},\n\nYour expense export for ${scopeLabel} is attached as a CSV file.\n\nOpen the attached CSV in Excel, Google Sheets, or any spreadsheet app.\n\n— Spliiit`;
 
   const attachments = [
     { content: Buffer.from(csvContent, "utf-8"), filename },
@@ -175,8 +198,6 @@ export async function notifyExpenseCreated(opts: {
 
   const { description, amount, paidByName, splitAmong, groupName, isSettlement, receiptBuffer, receiptFilename } = opts;
 
-  const groupLabel = groupName ? ` in <strong>${groupName}</strong>` : "";
-  const typeLabel = isSettlement ? "Settlement" : "Expense";
   const hasReceipt = receiptBuffer && receiptFilename;
 
   for (const person of splitAmong) {
@@ -199,8 +220,8 @@ export async function notifyExpenseCreated(opts: {
   <tr><td align="center" style="padding:24px 16px;">
     <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="max-width:520px;">
       <!-- Logo -->
-      <tr><td style="padding-bottom:20px;">
-        <span style="font-size:18px;font-weight:700;color:#1a1a1a;letter-spacing:-0.3px;">Split</span><span style="font-size:18px;font-weight:700;color:#2dd4a8;letter-spacing:-0.3px;">Ease</span>
+      <tr><td>
+        ${EMAIL_LOGO}
       </td></tr>
       <!-- Greeting -->
       <tr><td style="font-size:15px;color:#374151;padding-bottom:16px;">
@@ -236,11 +257,11 @@ export async function notifyExpenseCreated(opts: {
       </td></tr>
       <!-- Link -->
       <tr><td style="padding-bottom:24px;">
-        <a href="https://splitease-81re.onrender.com" style="font-size:14px;color:#2dd4a8;text-decoration:none;font-weight:500;">View on SplitEase &rarr;</a>
+        <a href="https://splitease-81re.onrender.com" style="font-size:14px;color:#2dd4a8;text-decoration:none;font-weight:500;">View on Spliiit &rarr;</a>
       </td></tr>
       <!-- Footer -->
       <tr><td style="border-top:1px solid #f3f4f6;padding-top:16px;font-size:12px;color:#9ca3af;">
-        You received this because an expense was added involving you on SplitEase.
+        You received this because an expense was added involving you on Spliiit.
       </td></tr>
     </table>
   </td></tr>
@@ -252,8 +273,8 @@ export async function notifyExpenseCreated(opts: {
 
     // Plain text version — helps avoid Gmail Promotions filter
     const text = isSettlement
-      ? `Hi ${person.name},\n\n${paidByName} has settled up $${amount.toFixed(2)} with you${groupName ? ` in ${groupName}` : ""}.\n\nView details at https://splitease-81re.onrender.com\n\n— SplitEase`
-      : `Hi ${person.name},\n\n${paidByName} paid $${amount.toFixed(2)} for ${description}${groupName ? ` in ${groupName}` : ""}.\nYour share: $${person.share.toFixed(2)}${hasReceipt ? "\n\nReceipt is attached to this email." : ""}\n\nView details at https://splitease-81re.onrender.com\n\n— SplitEase`;
+      ? `Hi ${person.name},\n\n${paidByName} has settled up $${amount.toFixed(2)} with you${groupName ? ` in ${groupName}` : ""}.\n\nView details at https://splitease-81re.onrender.com\n\n— Spliiit`
+      : `Hi ${person.name},\n\n${paidByName} paid $${amount.toFixed(2)} for ${description}${groupName ? ` in ${groupName}` : ""}.\nYour share: $${person.share.toFixed(2)}${hasReceipt ? "\n\nReceipt is attached to this email." : ""}\n\nView details at https://splitease-81re.onrender.com\n\n— Spliiit`;
 
     // Fire-and-forget — don't block the API response
     sendEmail(person.email, subject, html, text, attachments);

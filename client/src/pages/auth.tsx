@@ -14,13 +14,13 @@ function Logo() {
   return (
     <div className="text-center space-y-2">
       <div className="flex items-center justify-center gap-2.5">
-        <svg width="36" height="36" viewBox="0 0 32 32" fill="none" aria-label="SplitEase logo">
+        <svg width="36" height="36" viewBox="0 0 32 32" fill="none" aria-label="Spliiit logo">
           <rect width="32" height="32" rx="8" fill="hsl(172 63% 45%)" fillOpacity="0.15" />
           <path d="M10 11h12M10 16h12M10 21h12" stroke="hsl(172 63% 45%)" strokeWidth="2" strokeLinecap="round" />
           <path d="M16 8v16" stroke="hsl(172 63% 45%)" strokeWidth="2" strokeLinecap="round" strokeDasharray="2 3" />
         </svg>
         <span className="text-xl font-semibold tracking-tight text-foreground">
-          Split<span className="text-primary">Ease</span>
+          Spl<span className="text-primary">iii</span>t
         </span>
       </div>
     </div>

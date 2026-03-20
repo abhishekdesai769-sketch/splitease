@@ -1,5 +1,5 @@
-// SplitEase Service Worker - enables "Add to Home Screen"
-const CACHE_NAME = 'splitease-v1';
+// Spliiit Service Worker - enables "Add to Home Screen"
+const CACHE_NAME = 'spliiit-v1';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();

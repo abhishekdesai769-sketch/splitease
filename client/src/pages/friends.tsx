@@ -383,7 +383,7 @@ export default function Friends() {
                     data-testid="input-friend-email"
                   />
                   <p className="text-xs text-muted-foreground">
-                    They must have a SplitEase account first.
+                    They must have a Spliiit account first.
                   </p>
                 </div>
                 <Button

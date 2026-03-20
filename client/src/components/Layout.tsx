@@ -23,13 +23,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-md">
         <div className="max-w-3xl mx-auto px-4 h-14 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2.5">
-            <svg width="28" height="28" viewBox="0 0 32 32" fill="none" aria-label="SplitEase logo">
+            <svg width="28" height="28" viewBox="0 0 32 32" fill="none" aria-label="Spliiit logo">
               <rect width="32" height="32" rx="8" fill="hsl(172 63% 45%)" fillOpacity="0.15" />
               <path d="M10 11h12M10 16h12M10 21h12" stroke="hsl(172 63% 45%)" strokeWidth="2" strokeLinecap="round" />
               <path d="M16 8v16" stroke="hsl(172 63% 45%)" strokeWidth="2" strokeLinecap="round" strokeDasharray="2 3" />
             </svg>
             <span className="text-base font-semibold tracking-tight text-foreground">
-              Split<span className="text-primary">Ease</span>
+              Spl<span className="text-primary">iii</span>t
             </span>
           </div>
           <div className="flex items-center gap-1">

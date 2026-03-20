@@ -152,7 +152,7 @@ export default function Dashboard() {
           <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
             <Receipt className="w-6 h-6 text-primary" />
           </div>
-          <h3 className="text-base font-semibold mb-1">Welcome to SplitEase</h3>
+          <h3 className="text-base font-semibold mb-1">Welcome to Spliiit</h3>
           <p className="text-sm text-muted-foreground mb-4">
             Add friends for 1-on-1 splits or create a group for trips and shared expenses.
           </p>
