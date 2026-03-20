@@ -789,8 +789,12 @@ export async function registerRoutes(
     res.json({ ok: true });
   });
 
-  app.post("/api/groups/:id/members", requireAuth, requireApproved, async (req, res) => {
+  // POST /api/groups/:id/invite — Create invite (replaces direct add)
+  app.post("/api/groups/:id/invite", requireAuth, requireApproved, async (req, res) => {
     const userId = (req.session as any).userId;
+    const inviter = await storage.getUser(userId);
+    if (!inviter) return res.status(401).json({ error: "User not found" });
+
     const group = await storage.getGroup(req.params.id);
     if (!group) return res.status(404).json({ error: "Group not found" });
     if (!group.memberIds.includes(userId)) {
@@ -809,10 +813,185 @@ export async function registerRoutes(
       return res.status(409).json({ error: "User is already a member" });
     }
 
-    const updated = await storage.updateGroupMembers(
-      group.id,
-      [...group.memberIds, targetUser.id]
-    );
+    // Check for existing pending invite
+    const existing = await storage.getPendingInvitesForGroup(group.id);
+    const dup = existing.find(i => i.inviteeId === targetUser.id);
+    if (dup) {
+      return res.status(409).json({ error: "There is already a pending invite for this user" });
+    }
+
+    const adminIds = group.adminIds || [];
+    const isOwner = group.createdById === userId;
+    const isGroupAdmin = adminIds.includes(userId);
+    const isGlobalAdmin = inviter.isAdmin;
+    const autoApprove = isOwner || isGroupAdmin || isGlobalAdmin;
+
+    const invite = await storage.createGroupInvite({
+      groupId: group.id,
+      inviterId: userId,
+      inviteeId: targetUser.id,
+      adminApproved: autoApprove,
+      adminApprovedBy: autoApprove ? userId : null,
+      inviteeAccepted: null,
+      status: "pending",
+      createdAt: new Date().toISOString(),
+    });
+
+    res.json({
+      ...invite,
+      inviterName: inviter.name,
+      inviteeName: targetUser.name,
+      inviteeEmail: targetUser.email,
+      groupName: group.name,
+    });
+  });
+
+  // GET /api/groups/:id/invites — Get pending invites for group
+  app.get("/api/groups/:id/invites", requireAuth, requireApproved, async (req, res) => {
+    const userId = (req.session as any).userId;
+    const group = await storage.getGroup(req.params.id);
+    if (!group) return res.status(404).json({ error: "Group not found" });
+    if (!group.memberIds.includes(userId)) {
+      return res.status(403).json({ error: "Not a member" });
+    }
+
+    const invites = await storage.getPendingInvitesForGroup(group.id);
+
+    // Enrich with user info
+    const enriched = await Promise.all(invites.map(async (invite) => {
+      const [inviter, invitee] = await Promise.all([
+        storage.getUser(invite.inviterId),
+        storage.getUser(invite.inviteeId),
+      ]);
+      return {
+        ...invite,
+        inviterName: inviter?.name || "Unknown",
+        inviteeName: invitee?.name || "Unknown",
+        inviteeEmail: invitee?.email || "",
+        groupName: group.name,
+      };
+    }));
+
+    res.json(enriched);
+  });
+
+  // GET /api/invites/incoming — Get incoming invites for current user
+  app.get("/api/invites/incoming", requireAuth, requireApproved, async (req, res) => {
+    const userId = (req.session as any).userId;
+    const invites = await storage.getPendingInvitesForUser(userId);
+
+    const enriched = await Promise.all(invites.map(async (invite) => {
+      const [inviter, group] = await Promise.all([
+        storage.getUser(invite.inviterId),
+        storage.getGroup(invite.groupId),
+      ]);
+      return {
+        ...invite,
+        inviterName: inviter?.name || "Unknown",
+        groupName: group?.name || "Unknown Group",
+      };
+    }));
+
+    res.json(enriched);
+  });
+
+  // POST /api/invites/:id/admin-approve
+  app.post("/api/invites/:id/admin-approve", requireAuth, requireApproved, async (req, res) => {
+    const userId = (req.session as any).userId;
+    const user = await storage.getUser(userId);
+    if (!user) return res.status(401).json({ error: "User not found" });
+
+    const invite = await storage.getGroupInvite(req.params.id);
+    if (!invite) return res.status(404).json({ error: "Invite not found" });
+    if (invite.status !== "pending") return res.status(400).json({ error: "Invite is no longer pending" });
+
+    const group = await storage.getGroup(invite.groupId);
+    if (!group) return res.status(404).json({ error: "Group not found" });
+
+    const adminIds = group.adminIds || [];
+    const isOwner = group.createdById === userId;
+    const isGroupAdmin = adminIds.includes(userId);
+    const isGlobalAdmin = user.isAdmin;
+
+    if (!isOwner && !isGroupAdmin && !isGlobalAdmin) {
+      return res.status(403).json({ error: "Only the group owner or an admin can approve invites" });
+    }
+
+    const updated = await storage.updateGroupInvite(invite.id, {
+      adminApproved: true,
+      adminApprovedBy: userId,
+    });
+    if (!updated) return res.status(500).json({ error: "Failed to update invite" });
+
+    // If invitee already accepted, complete the invite
+    if (updated.inviteeAccepted === true) {
+      await storage.updateGroupInvite(invite.id, { status: "completed" });
+      await storage.updateGroupMembers(group.id, [...group.memberIds, invite.inviteeId]);
+    }
+
+    res.json(updated);
+  });
+
+  // POST /api/invites/:id/admin-reject
+  app.post("/api/invites/:id/admin-reject", requireAuth, requireApproved, async (req, res) => {
+    const userId = (req.session as any).userId;
+    const user = await storage.getUser(userId);
+    if (!user) return res.status(401).json({ error: "User not found" });
+
+    const invite = await storage.getGroupInvite(req.params.id);
+    if (!invite) return res.status(404).json({ error: "Invite not found" });
+    if (invite.status !== "pending") return res.status(400).json({ error: "Invite is no longer pending" });
+
+    const group = await storage.getGroup(invite.groupId);
+    if (!group) return res.status(404).json({ error: "Group not found" });
+
+    const adminIds = group.adminIds || [];
+    const isOwner = group.createdById === userId;
+    const isGroupAdmin = adminIds.includes(userId);
+    const isGlobalAdmin = user.isAdmin;
+
+    if (!isOwner && !isGroupAdmin && !isGlobalAdmin) {
+      return res.status(403).json({ error: "Only the group owner or an admin can reject invites" });
+    }
+
+    const updated = await storage.updateGroupInvite(invite.id, { status: "rejected" });
+    res.json(updated);
+  });
+
+  // POST /api/invites/:id/accept
+  app.post("/api/invites/:id/accept", requireAuth, requireApproved, async (req, res) => {
+    const userId = (req.session as any).userId;
+
+    const invite = await storage.getGroupInvite(req.params.id);
+    if (!invite) return res.status(404).json({ error: "Invite not found" });
+    if (invite.inviteeId !== userId) return res.status(403).json({ error: "Not your invite" });
+    if (invite.status !== "pending") return res.status(400).json({ error: "Invite is no longer pending" });
+
+    const updated = await storage.updateGroupInvite(invite.id, { inviteeAccepted: true });
+    if (!updated) return res.status(500).json({ error: "Failed to update invite" });
+
+    // If admin already approved, complete the invite
+    if (updated.adminApproved === true) {
+      await storage.updateGroupInvite(invite.id, { status: "completed" });
+      const group = await storage.getGroup(invite.groupId);
+      if (group) {
+        await storage.updateGroupMembers(group.id, [...group.memberIds, invite.inviteeId]);
+      }
+    }
+
+    res.json(updated);
+  });
+
+  // POST /api/invites/:id/decline
+  app.post("/api/invites/:id/decline", requireAuth, requireApproved, async (req, res) => {
+    const userId = (req.session as any).userId;
+
+    const invite = await storage.getGroupInvite(req.params.id);
+    if (!invite) return res.status(404).json({ error: "Invite not found" });
+    if (invite.inviteeId !== userId) return res.status(403).json({ error: "Not your invite" });
+    if (invite.status !== "pending") return res.status(400).json({ error: "Invite is no longer pending" });
+
+    const updated = await storage.updateGroupInvite(invite.id, { status: "rejected" });
     res.json(updated);
   });
 

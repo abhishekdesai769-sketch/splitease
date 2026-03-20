@@ -1,11 +1,12 @@
 import { eq, and, or, ilike, inArray, ne, isNull, isNotNull, lt } from "drizzle-orm";
 import { db } from "./db";
 import {
-  users, friends, groups, expenses, otpCodes, resetTokens,
+  users, friends, groups, expenses, otpCodes, resetTokens, groupInvites,
   type User, type InsertUser, type SafeUser,
   type Friend, type InsertFriend,
   type Group, type InsertGroup,
   type Expense, type InsertExpense,
+  type GroupInvite, type InsertGroupInvite,
 } from "@shared/schema";
 
 function toSafeUser(user: User): SafeUser {
@@ -60,6 +61,13 @@ export interface IStorage {
   deleteExpense(id: string): Promise<boolean>;
   getDeletedExpenses(): Promise<Expense[]>;
   restoreExpense(id: string): Promise<Expense | undefined>;
+
+  // Group Invites
+  createGroupInvite(invite: InsertGroupInvite): Promise<GroupInvite>;
+  getGroupInvite(id: string): Promise<GroupInvite | undefined>;
+  getPendingInvitesForGroup(groupId: string): Promise<GroupInvite[]>;
+  getPendingInvitesForUser(userId: string): Promise<GroupInvite[]>;
+  updateGroupInvite(id: string, data: Partial<GroupInvite>): Promise<GroupInvite | undefined>;
 
   // Purge
   purgeExpiredDeleted(daysOld: number): Promise<{ groups: number; expenses: number }>;
@@ -301,6 +309,38 @@ export class PgStorage implements IStorage {
   async restoreExpense(id: string): Promise<Expense | undefined> {
     const [restored] = await db.update(expenses).set({ deletedAt: null }).where(eq(expenses.id, id)).returning();
     return restored;
+  }
+
+  // Group Invites
+  async createGroupInvite(invite: InsertGroupInvite): Promise<GroupInvite> {
+    const [created] = await db.insert(groupInvites).values(invite).returning();
+    return created;
+  }
+
+  async getGroupInvite(id: string): Promise<GroupInvite | undefined> {
+    const [invite] = await db.select().from(groupInvites).where(eq(groupInvites.id, id));
+    return invite;
+  }
+
+  async getPendingInvitesForGroup(groupId: string): Promise<GroupInvite[]> {
+    return db.select().from(groupInvites).where(
+      and(eq(groupInvites.groupId, groupId), eq(groupInvites.status, "pending"))
+    );
+  }
+
+  async getPendingInvitesForUser(userId: string): Promise<GroupInvite[]> {
+    return db.select().from(groupInvites).where(
+      and(
+        eq(groupInvites.inviteeId, userId),
+        eq(groupInvites.status, "pending"),
+        isNull(groupInvites.inviteeAccepted)
+      )
+    );
+  }
+
+  async updateGroupInvite(id: string, data: Partial<GroupInvite>): Promise<GroupInvite | undefined> {
+    const [updated] = await db.update(groupInvites).set(data).where(eq(groupInvites.id, id)).returning();
+    return updated;
   }
 
   // Purge: permanently delete soft-deleted items older than N days

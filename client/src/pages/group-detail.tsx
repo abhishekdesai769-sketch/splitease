@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, ArrowLeft, Trash2, Shuffle, Receipt, UserPlus, X, HandCoins, CheckCircle2, AlertTriangle, Camera, Mail, Loader2, Crown, Shield, LogOut, UserMinus } from "lucide-react";
+import { Plus, ArrowLeft, Trash2, Shuffle, Receipt, UserPlus, X, HandCoins, CheckCircle2, AlertTriangle, Camera, Mail, Loader2, Crown, Shield, LogOut, UserMinus, Clock, Check } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
@@ -129,18 +129,68 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
 
   const inviteMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/groups/${groupId}/members`, {
+      const res = await apiRequest("POST", `/api/groups/${groupId}/invite`, {
         email: inviteEmail.trim().toLowerCase(),
       });
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/groups", groupId] });
       queryClient.invalidateQueries({ queryKey: ["/api/groups", groupId, "members"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/groups", groupId, "invites"] });
       queryClient.invalidateQueries({ queryKey: ["/api/groups"] });
       setInviteEmail("");
       setInviteOpen(false);
-      toast({ title: "Member added" });
+      const isAdminSender = data.adminApproved;
+      toast({
+        title: "Invite sent",
+        description: isAdminSender
+          ? "Invite sent! Waiting for them to accept."
+          : "Invite sent! Waiting for approval.",
+      });
+    },
+    onError: (err: Error) => {
+      let msg = err.message;
+      try { msg = JSON.parse(msg.split(": ").slice(1).join(": ")).error; } catch {}
+      toast({ title: "Error", description: msg, variant: "destructive" });
+    },
+  });
+
+  // Pending invites for this group
+  const { data: pendingInvites = [] } = useQuery<any[]>({
+    queryKey: ["/api/groups", groupId, "invites"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/groups/${groupId}/invites`);
+      return res.json();
+    },
+  });
+
+  const approveInviteMutation = useMutation({
+    mutationFn: async (inviteId: string) => {
+      const res = await apiRequest("POST", `/api/invites/${inviteId}/admin-approve`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/groups", groupId, "invites"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/groups", groupId, "members"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/groups"] });
+      toast({ title: "Invite approved" });
+    },
+    onError: (err: Error) => {
+      let msg = err.message;
+      try { msg = JSON.parse(msg.split(": ").slice(1).join(": ")).error; } catch {}
+      toast({ title: "Error", description: msg, variant: "destructive" });
+    },
+  });
+
+  const rejectInviteMutation = useMutation({
+    mutationFn: async (inviteId: string) => {
+      const res = await apiRequest("POST", `/api/invites/${inviteId}/admin-reject`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/groups", groupId, "invites"] });
+      toast({ title: "Invite rejected" });
     },
     onError: (err: Error) => {
       let msg = err.message;
@@ -640,12 +690,85 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                 disabled={!inviteEmail.trim() || inviteMutation.isPending}
                 data-testid="submit-invite"
               >
-                {inviteMutation.isPending ? "Adding..." : "Add to Group"}
+                {inviteMutation.isPending ? "Sending..." : "Send Invite"}
               </Button>
             </form>
           </DialogContent>
         </Dialog>
       </div>
+
+      {/* Pending Invites Section */}
+      {pendingInvites.length > 0 && (() => {
+        const adminIds = group?.adminIds || [];
+        const isOwnerOrAdmin = group && (
+          group.createdById === user?.id ||
+          adminIds.includes(user?.id || "") ||
+          user?.isAdmin
+        );
+        return (
+          <div className="space-y-2">
+            <h3 className="text-sm font-semibold text-amber-500">Pending Invites</h3>
+            {pendingInvites.map((invite: any) => {
+              const waitingAdmin = !invite.adminApproved;
+              const waitingInvitee = invite.adminApproved && !invite.inviteeAccepted;
+              return (
+                <div
+                  key={invite.id}
+                  className="flex items-center justify-between gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2"
+                  data-testid={`pending-invite-${invite.id}`}
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">
+                      {invite.inviteeName}
+                      <span className="text-muted-foreground font-normal"> invited by {invite.inviterName}</span>
+                    </p>
+                    <div className="flex items-center gap-1 mt-0.5">
+                      {waitingAdmin && (
+                        <>
+                          <Clock className="w-3 h-3 text-amber-500" />
+                          <span className="text-xs text-amber-500">Waiting for admin approval</span>
+                        </>
+                      )}
+                      {waitingInvitee && (
+                        <>
+                          <Clock className="w-3 h-3 text-blue-400" />
+                          <span className="text-xs text-blue-400">Waiting for {invite.inviteeName} to accept</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  {isOwnerOrAdmin && waitingAdmin && (
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 w-7 p-0 text-green-500 hover:text-green-400 hover:bg-green-500/10"
+                        onClick={() => approveInviteMutation.mutate(invite.id)}
+                        disabled={approveInviteMutation.isPending}
+                        data-testid={`approve-invite-${invite.id}`}
+                        title="Approve invite"
+                      >
+                        <Check className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 w-7 p-0 text-destructive hover:text-red-400 hover:bg-destructive/10"
+                        onClick={() => rejectInviteMutation.mutate(invite.id)}
+                        disabled={rejectInviteMutation.isPending}
+                        data-testid={`reject-invite-${invite.id}`}
+                        title="Reject invite"
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
 
       {/* Export + Settle Up + Simplify Debts */}
       {expenses.length > 0 && (

@@ -83,6 +83,23 @@ export const insertExpenseSchema = createInsertSchema(expenses).omit({ id: true 
 export type InsertExpense = z.infer<typeof insertExpenseSchema>;
 export type Expense = typeof expenses.$inferSelect;
 
+// Group Invites
+export const groupInvites = pgTable("group_invites", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  groupId: varchar("group_id").notNull(),
+  inviterId: varchar("inviter_id").notNull(),
+  inviteeId: varchar("invitee_id").notNull(),
+  adminApproved: boolean("admin_approved").notNull().default(false),
+  adminApprovedBy: varchar("admin_approved_by"),
+  inviteeAccepted: boolean("invitee_accepted"),
+  status: varchar("status").notNull().default("pending"), // pending, completed, rejected
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertGroupInviteSchema = createInsertSchema(groupInvites).omit({ id: true });
+export type InsertGroupInvite = z.infer<typeof insertGroupInviteSchema>;
+export type GroupInvite = typeof groupInvites.$inferSelect;
+
 // Signup/Login schemas (for validation)
 export const signupSchema = z.object({
   name: z.string().min(1, "Name is required").max(100, "Name too long"),

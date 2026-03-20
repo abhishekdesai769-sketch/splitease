@@ -3,11 +3,25 @@ import { UsersRound, Receipt, LayoutDashboard, Users2, Sun, Moon, LogOut, Shield
 import { useTheme } from "@/lib/theme";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
+import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const { theme, toggleTheme } = useTheme();
   const { user, logout } = useAuth();
+
+  // Incoming invite count for notification badge
+  const { data: incomingInvites = [] } = useQuery<any[]>({
+    queryKey: ["/api/invites/incoming"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/invites/incoming");
+      return res.json();
+    },
+    enabled: !!user,
+    refetchInterval: 30000, // poll every 30s for badge freshness
+  });
+  const inviteCount = incomingInvites.length;
 
   const navItems = [
     { path: "/", icon: LayoutDashboard, label: "Dashboard" },
@@ -81,7 +95,18 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   }`}
                   data-testid={`nav-${item.label.toLowerCase()}`}
                 >
-                  <item.icon className="w-5 h-5" />
+                  <div className="relative">
+                    <item.icon className="w-5 h-5" />
+                    {item.label === "Dashboard" && inviteCount > 0 && (
+                      <span
+                        className="absolute -top-1.5 -right-1.5 min-w-[14px] h-[14px] rounded-full bg-red-500 flex items-center justify-center text-white"
+                        style={{ fontSize: "9px", lineHeight: 1, padding: "0 2px" }}
+                        data-testid="invite-badge"
+                      >
+                        {inviteCount > 9 ? "9+" : inviteCount}
+                      </span>
+                    )}
+                  </div>
                   <span className="text-xs font-medium">{item.label}</span>
                 </button>
               </Link>

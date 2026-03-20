@@ -1,10 +1,13 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import type { Group, Expense, SafeUser } from "@shared/schema";
 import { Card } from "@/components/ui/card";
-import { UsersRound, Receipt, Users2, TrendingDown, TrendingUp } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { UsersRound, Receipt, Users2, TrendingDown, TrendingUp, MailPlus, Check, X } from "lucide-react";
 import { Link } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { calculateGroupBalances, simplifyDebts } from "@/lib/simplify";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 function StatCard({ icon: Icon, label, value, href, color }: { icon: any; label: string; value: string; href?: string; color?: string }) {
   const inner = (
@@ -26,9 +29,52 @@ function StatCard({ icon: Icon, label, value, href, color }: { icon: any; label:
 
 export default function Dashboard() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const { data: groups = [] } = useQuery<Group[]>({ queryKey: ["/api/groups"] });
   const { data: expenses = [] } = useQuery<Expense[]>({ queryKey: ["/api/expenses"] });
   const { data: friendsList = [] } = useQuery<SafeUser[]>({ queryKey: ["/api/friends"] });
+
+  // Incoming group invites
+  const { data: incomingInvites = [] } = useQuery<any[]>({
+    queryKey: ["/api/invites/incoming"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/invites/incoming");
+      return res.json();
+    },
+  });
+
+  const acceptInviteMutation = useMutation({
+    mutationFn: async (inviteId: string) => {
+      const res = await apiRequest("POST", `/api/invites/${inviteId}/accept`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/invites/incoming"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/groups"] });
+      toast({ title: "Invite accepted", description: "You've joined the group!" });
+    },
+    onError: (err: Error) => {
+      let msg = err.message;
+      try { msg = JSON.parse(msg.split(": ").slice(1).join(": ")).error; } catch {}
+      toast({ title: "Error", description: msg, variant: "destructive" });
+    },
+  });
+
+  const declineInviteMutation = useMutation({
+    mutationFn: async (inviteId: string) => {
+      const res = await apiRequest("POST", `/api/invites/${inviteId}/decline`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/invites/incoming"] });
+      toast({ title: "Invite declined" });
+    },
+    onError: (err: Error) => {
+      let msg = err.message;
+      try { msg = JSON.parse(msg.split(": ").slice(1).join(": ")).error; } catch {}
+      toast({ title: "Error", description: msg, variant: "destructive" });
+    },
+  });
 
   // Get recent expenses (last 5)
   const recentExpenses = [...expenses]
@@ -82,6 +128,57 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
+      {/* Incoming Group Invites — shown at top if any */}
+      {incomingInvites.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <MailPlus className="w-4 h-4 text-primary" />
+            <h2 className="text-base font-semibold">Group Invites</h2>
+          </div>
+          {incomingInvites.map((invite: any) => (
+            <Card
+              key={invite.id}
+              className="p-3 border-primary/30 bg-primary/5"
+              data-testid={`incoming-invite-${invite.id}`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium">
+                    <span className="text-primary">{invite.inviterName}</span>
+                    {" invited you to "}
+                    <span className="font-semibold">{invite.groupName}</span>
+                  </p>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <Button
+                    size="sm"
+                    variant="default"
+                    className="h-7 px-2 text-xs"
+                    onClick={() => acceptInviteMutation.mutate(invite.id)}
+                    disabled={acceptInviteMutation.isPending || declineInviteMutation.isPending}
+                    data-testid={`accept-invite-${invite.id}`}
+                  >
+                    <Check className="w-3 h-3 mr-1" />
+                    Accept
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 px-2 text-xs text-muted-foreground"
+                    onClick={() => declineInviteMutation.mutate(invite.id)}
+                    disabled={acceptInviteMutation.isPending || declineInviteMutation.isPending}
+                    data-testid={`decline-invite-${invite.id}`}
+                  >
+                    <X className="w-3 h-3 mr-1" />
+                    Decline
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
+
       <div>
         <h1 className="text-xl font-semibold tracking-tight">
           Hey, {user?.name?.split(" ")[0] || "there"}
