@@ -24,7 +24,7 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
   const [copied, setCopied] = useState(false);
 
   const APP_URL = "https://splitease-81re.onrender.com";
-  const inviteText = `Hey! I use Spliiit to split expenses with friends and groups — it's free. Join me: ${APP_URL}`;
+  const inviteText = `Hey! I use Spliiit to split expenses with friends and groups. Check it out: ${APP_URL}`;
 
   const handleCopyLink = async () => {
     try {
@@ -156,7 +156,7 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
                 <div>
                   <p className="text-sm font-medium">Enjoying Spliiit?</p>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    Spliiit is free forever. If you'd like to support us, tips are always appreciated.
+                    If you'd like to support our work, tips are always appreciated.
                   </p>
                 </div>
 
