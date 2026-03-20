@@ -123,6 +123,85 @@ export async function registerRoutes(
     ]);
   });
 
+  // Privacy Policy page (public, no auth required)
+  app.get("/privacy", (_req, res) => {
+    res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy Policy — Spliiit</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0a0f0d; color: #d1d5db; line-height: 1.7; padding: 2rem 1.25rem; }
+    .container { max-width: 680px; margin: 0 auto; }
+    h1 { color: #f9fafb; font-size: 1.75rem; margin-bottom: 0.25rem; }
+    .tagline { color: #4fd1c5; font-size: 0.875rem; margin-bottom: 0.5rem; }
+    .updated { color: #6b7280; font-size: 0.8rem; margin-bottom: 2rem; }
+    h2 { color: #f9fafb; font-size: 1.1rem; margin-top: 2rem; margin-bottom: 0.5rem; }
+    p, li { font-size: 0.925rem; margin-bottom: 0.75rem; }
+    ul { padding-left: 1.25rem; }
+    li { margin-bottom: 0.4rem; }
+    a { color: #4fd1c5; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .footer { margin-top: 3rem; padding-top: 1.5rem; border-top: 1px solid #1f2937; color: #6b7280; font-size: 0.8rem; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Privacy Policy</h1>
+    <p class="tagline">Spliiit — Expense splitting made easy</p>
+    <p class="updated">Last updated: March 20, 2026</p>
+
+    <h2>Introduction</h2>
+    <p>Spliiit is operated by Klarity IT Corp. This privacy policy explains how we collect, use, and protect your information when you use our app.</p>
+
+    <h2>Information We Collect</h2>
+    <ul>
+      <li><strong>Account information:</strong> Your name, email address, and password (stored securely as a hash) when you create an account.</li>
+      <li><strong>Expense data:</strong> Descriptions, amounts, dates, and group/friend associations for expenses you create or are part of.</li>
+      <li><strong>Usage data:</strong> Basic server logs including IP addresses and timestamps for security and troubleshooting purposes.</li>
+    </ul>
+
+    <h2>How We Use Your Information</h2>
+    <ul>
+      <li>To provide and maintain the expense splitting service</li>
+      <li>To send you transaction notifications and account verification emails</li>
+      <li>To authenticate your identity and secure your account</li>
+      <li>To enable expense sharing with friends and groups</li>
+    </ul>
+
+    <h2>Information Sharing</h2>
+    <p>We do not sell, trade, or share your personal information with third parties, except:</p>
+    <ul>
+      <li>With other Spliiit users you choose to split expenses with (they see your name and email)</li>
+      <li>With our email service provider (Resend) to deliver transactional emails</li>
+      <li>If required by law or to protect our legal rights</li>
+    </ul>
+
+    <h2>Data Storage &amp; Security</h2>
+    <p>Your data is stored on secure servers. Passwords are hashed and never stored in plain text. We use HTTPS encryption for all data in transit.</p>
+
+    <h2>Data Retention</h2>
+    <p>Your expense data is retained for as long as your account is active. You can request deletion of your account and associated data by contacting us.</p>
+
+    <h2>Children's Privacy</h2>
+    <p>Spliiit is not intended for children under 13. We do not knowingly collect information from children under 13.</p>
+
+    <h2>Changes to This Policy</h2>
+    <p>We may update this policy from time to time. Changes will be posted on this page with an updated date.</p>
+
+    <h2>Contact Us</h2>
+    <p>If you have questions about this privacy policy, contact us at <a href="mailto:inquiries@klarityit.ca">inquiries@klarityit.ca</a>.</p>
+
+    <div class="footer">
+      <p>&copy; 2026 Klarity IT Corp. All rights reserved.</p>
+    </div>
+  </div>
+</body>
+</html>`);
+  });
+
   // Session setup with stronger config
   const MemoryStore = createMemoryStore(session);
   const sessionSecret = process.env.SESSION_SECRET || "spliiit-secret-" + randomBytes(16).toString("hex");
