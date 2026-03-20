@@ -7,13 +7,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { apiRequest } from "@/lib/queryClient";
-import { Headphones, Send, Loader2, CheckCircle2, ExternalLink } from "lucide-react";
+import { Headphones, Send, Loader2, CheckCircle2, ExternalLink, UserPlus, Copy, Check, MessageCircle, Mail } from "lucide-react";
 
 export function SupportDrawer({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
-  const [view, setView] = useState<"menu" | "support" | "sent">("menu");
+  const [view, setView] = useState<"menu" | "support" | "invite" | "sent">("menu");
 
   // Support form state
   const [name, setName] = useState(user?.name || "");
@@ -21,6 +21,28 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const APP_URL = "https://splitease-81re.onrender.com";
+  const inviteText = `Hey! I use Spliiit to split expenses with friends and groups — it's free. Join me: ${APP_URL}`;
+
+  const handleCopyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(APP_URL);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Fallback
+      const el = document.createElement("textarea");
+      el.value = APP_URL;
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand("copy");
+      document.body.removeChild(el);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
 
   const resetForm = () => {
     setSubject("");
@@ -103,6 +125,21 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
               <div>
                 <p className="text-sm font-medium">Contact Support</p>
                 <p className="text-xs text-muted-foreground">Report issues or ask questions</p>
+              </div>
+            </button>
+
+            {/* Invite a Friend */}
+            <button
+              onClick={() => setView("invite")}
+              className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-muted/50 transition-colors text-left group"
+              data-testid="menu-invite-friend"
+            >
+              <div className="w-9 h-9 rounded-lg bg-emerald-500/10 flex items-center justify-center flex-shrink-0">
+                <UserPlus className="w-4.5 h-4.5 text-emerald-500" />
+              </div>
+              <div>
+                <p className="text-sm font-medium">Invite a Friend</p>
+                <p className="text-xs text-muted-foreground">Share Spliiit with your friends</p>
               </div>
             </button>
 
@@ -232,6 +269,85 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
                 )}
               </Button>
             </form>
+          </div>
+        )}
+
+        {/* ===== INVITE VIEW ===== */}
+        {view === "invite" && (
+          <div className="flex-1 flex flex-col px-5">
+            <button
+              onClick={() => setView("menu")}
+              className="text-xs text-muted-foreground hover:text-foreground mb-3 self-start"
+            >
+              ← Back
+            </button>
+
+            <h3 className="text-sm font-semibold mb-2">Invite a Friend</h3>
+            <p className="text-xs text-muted-foreground mb-5">
+              Share Spliiit with friends so you can split expenses together.
+            </p>
+
+            {/* Copy Link */}
+            <button
+              onClick={handleCopyLink}
+              className="flex items-center gap-3 px-3 py-3 rounded-lg border border-border hover:bg-muted/50 transition-colors text-left mb-3"
+              data-testid="invite-copy-link"
+            >
+              <div className="w-9 h-9 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
+                {copied ? <Check className="w-4 h-4 text-primary" /> : <Copy className="w-4 h-4 text-muted-foreground" />}
+              </div>
+              <div>
+                <p className="text-sm font-medium">{copied ? "Link Copied" : "Copy Link"}</p>
+                <p className="text-xs text-muted-foreground truncate max-w-[200px]">{APP_URL}</p>
+              </div>
+            </button>
+
+            {/* WhatsApp */}
+            <a
+              href={`https://wa.me/?text=${encodeURIComponent(inviteText)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-3 px-3 py-3 rounded-lg border border-border hover:bg-muted/50 transition-colors text-left mb-3"
+              data-testid="invite-whatsapp"
+            >
+              <div className="w-9 h-9 rounded-lg bg-green-500/10 flex items-center justify-center flex-shrink-0">
+                <MessageCircle className="w-4 h-4 text-green-500" />
+              </div>
+              <div>
+                <p className="text-sm font-medium">WhatsApp</p>
+                <p className="text-xs text-muted-foreground">Send via WhatsApp</p>
+              </div>
+            </a>
+
+            {/* SMS / Text */}
+            <a
+              href={`sms:?body=${encodeURIComponent(inviteText)}`}
+              className="flex items-center gap-3 px-3 py-3 rounded-lg border border-border hover:bg-muted/50 transition-colors text-left mb-3"
+              data-testid="invite-sms"
+            >
+              <div className="w-9 h-9 rounded-lg bg-blue-500/10 flex items-center justify-center flex-shrink-0">
+                <Send className="w-4 h-4 text-blue-500" />
+              </div>
+              <div>
+                <p className="text-sm font-medium">Text Message</p>
+                <p className="text-xs text-muted-foreground">Send via SMS</p>
+              </div>
+            </a>
+
+            {/* Email */}
+            <a
+              href={`mailto:?subject=${encodeURIComponent("Join me on Spliiit")}&body=${encodeURIComponent(inviteText)}`}
+              className="flex items-center gap-3 px-3 py-3 rounded-lg border border-border hover:bg-muted/50 transition-colors text-left mb-3"
+              data-testid="invite-email"
+            >
+              <div className="w-9 h-9 rounded-lg bg-amber-500/10 flex items-center justify-center flex-shrink-0">
+                <Mail className="w-4 h-4 text-amber-500" />
+              </div>
+              <div>
+                <p className="text-sm font-medium">Email</p>
+                <p className="text-xs text-muted-foreground">Send via email</p>
+              </div>
+            </a>
           </div>
         )}
 
