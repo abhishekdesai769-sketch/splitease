@@ -658,8 +658,135 @@ export async function registerRoutes(
       name: sanitize(name, 100),
       createdById: userId,
       memberIds: allMembers,
+      adminIds: [],
     });
     res.status(201).json(group);
+  });
+
+  // ========== Group roles: promote/demote/leave ==========
+
+  // Helper: compute a member's balance in a group
+  function getGroupMemberBalance(groupExpenses: any[], memberId: string): number {
+    let balance = 0;
+    for (const e of groupExpenses) {
+      const splitCount = e.splitAmongIds.length;
+      if (splitCount === 0) continue;
+      const perPerson = e.amount / splitCount;
+      if (e.paidById === memberId) balance += e.amount;
+      if (e.splitAmongIds.includes(memberId)) balance -= perPerson;
+    }
+    return Math.round(balance * 100) / 100;
+  }
+
+  // POST /api/groups/:id/promote/:memberId — owner or global admin only
+  app.post("/api/groups/:id/promote/:memberId", requireAuth, requireApproved, async (req, res) => {
+    const userId = (req.session as any).userId;
+    const user = await storage.getUser(userId);
+    if (!user) return res.status(401).json({ error: "User not found" });
+
+    const group = await storage.getGroup(req.params.id);
+    if (!group) return res.status(404).json({ error: "Group not found" });
+
+    const isOwner = group.createdById === userId;
+    const isGlobalAdmin = user.isAdmin;
+
+    if (!isOwner && !isGlobalAdmin) {
+      return res.status(403).json({ error: "Only the group owner can promote members" });
+    }
+
+    const memberId = req.params.memberId;
+    if (!group.memberIds.includes(memberId)) {
+      return res.status(400).json({ error: "User is not a member of this group" });
+    }
+    if (memberId === group.createdById) {
+      return res.status(400).json({ error: "The owner is already the highest role" });
+    }
+    const adminIds = group.adminIds || [];
+    if (adminIds.includes(memberId)) {
+      return res.status(400).json({ error: "Member is already an admin" });
+    }
+
+    const updated = await storage.updateGroupAdmins(group.id, [...adminIds, memberId]);
+    res.json(updated);
+  });
+
+  // POST /api/groups/:id/demote/:memberId — owner or global admin only
+  app.post("/api/groups/:id/demote/:memberId", requireAuth, requireApproved, async (req, res) => {
+    const userId = (req.session as any).userId;
+    const user = await storage.getUser(userId);
+    if (!user) return res.status(401).json({ error: "User not found" });
+
+    const group = await storage.getGroup(req.params.id);
+    if (!group) return res.status(404).json({ error: "Group not found" });
+
+    const isOwner = group.createdById === userId;
+    const isGlobalAdmin = user.isAdmin;
+
+    if (!isOwner && !isGlobalAdmin) {
+      return res.status(403).json({ error: "Only the group owner can demote admins" });
+    }
+
+    const memberId = req.params.memberId;
+    if (memberId === group.createdById) {
+      return res.status(400).json({ error: "Cannot demote the group owner" });
+    }
+
+    const adminIds = group.adminIds || [];
+    if (!adminIds.includes(memberId)) {
+      return res.status(400).json({ error: "Member is not an admin" });
+    }
+
+    const updated = await storage.updateGroupAdmins(group.id, adminIds.filter(id => id !== memberId));
+    res.json(updated);
+  });
+
+  // POST /api/groups/:id/leave — any member can leave
+  app.post("/api/groups/:id/leave", requireAuth, requireApproved, async (req, res) => {
+    const userId = (req.session as any).userId;
+    const user = await storage.getUser(userId);
+    if (!user) return res.status(401).json({ error: "User not found" });
+
+    const group = await storage.getGroup(req.params.id);
+    if (!group) return res.status(404).json({ error: "Group not found" });
+
+    if (!group.memberIds.includes(userId)) {
+      return res.status(400).json({ error: "You are not a member of this group" });
+    }
+
+    // Balance check — server-side
+    const groupExpenses = await storage.getExpensesByGroup(group.id);
+    const balance = getGroupMemberBalance(groupExpenses, userId);
+    if (balance !== 0) {
+      return res.status(400).json({
+        error: `You have unsettled balances in this group ($${Math.abs(balance).toFixed(2)} ${balance > 0 ? "owed to you" : "you owe"}). Please settle up before leaving.`,
+        balance,
+      });
+    }
+
+    // Admin/owner check — if leaving person is the only admin/owner, block
+    const adminIds = group.adminIds || [];
+    const isOwner = group.createdById === userId;
+    const isAdmin = adminIds.includes(userId);
+
+    if (isOwner || isAdmin) {
+      // Check if there's anyone else with elevated role
+      const otherAdmins = adminIds.filter(id => id !== userId);
+      // If they're owner, check if there are any other admins remaining
+      if (isOwner && otherAdmins.length === 0) {
+        return res.status(400).json({
+          error: "You must assign another admin before leaving as the group owner.",
+        });
+      }
+      // If they're an admin (but not owner), and there are no other admins AND no owner — but owner always exists
+      // So if they're admin (not owner), they can always leave (owner remains)
+    }
+
+    // Remove from memberIds and adminIds
+    const newMemberIds = group.memberIds.filter(id => id !== userId);
+    const newAdminIds = adminIds.filter(id => id !== userId);
+    await storage.updateGroupMembersAndAdmins(group.id, newMemberIds, newAdminIds);
+
+    res.json({ ok: true });
   });
 
   app.post("/api/groups/:id/members", requireAuth, requireApproved, async (req, res) => {
@@ -691,27 +818,70 @@ export async function registerRoutes(
 
   app.delete("/api/groups/:id/members/:memberId", requireAuth, requireApproved, async (req, res) => {
     const userId = (req.session as any).userId;
+    const user = await storage.getUser(userId);
+    if (!user) return res.status(401).json({ error: "User not found" });
+
     const group = await storage.getGroup(req.params.id);
     if (!group) return res.status(404).json({ error: "Group not found" });
     if (!group.memberIds.includes(userId)) {
       return res.status(403).json({ error: "Not a member" });
     }
-    if (req.params.memberId === group.createdById) {
-      return res.status(400).json({ error: "Cannot remove the group creator" });
+
+    const adminIds = group.adminIds || [];
+    const isOwner = group.createdById === userId;
+    const isGroupAdmin = adminIds.includes(userId);
+    const isGlobalAdmin = user.isAdmin;
+
+    // Only owner, group admin, or global admin can remove members
+    if (!isOwner && !isGroupAdmin && !isGlobalAdmin) {
+      return res.status(403).json({ error: "Only the group owner or an admin can remove members" });
     }
 
-    const newMembers = group.memberIds.filter((id) => id !== req.params.memberId);
-    const updated = await storage.updateGroupMembers(group.id, newMembers);
+    const memberId = req.params.memberId;
+
+    // Can't remove the owner
+    if (memberId === group.createdById) {
+      return res.status(400).json({ error: "Cannot remove the group owner" });
+    }
+
+    // Admin can't remove other admins (only owner or global admin can)
+    if (!isOwner && !isGlobalAdmin && adminIds.includes(memberId)) {
+      return res.status(403).json({ error: "Only the group owner can remove other admins" });
+    }
+
+    // Balance check — block if member has unsettled balance
+    const groupExpenses = await storage.getExpensesByGroup(group.id);
+    const balance = getGroupMemberBalance(groupExpenses, memberId);
+    if (balance !== 0) {
+      return res.status(400).json({
+        error: `This member has unsettled balances ($${Math.abs(balance).toFixed(2)} ${balance > 0 ? "owed to them" : "they owe"}). Please settle up before removing.`,
+        balance,
+      });
+    }
+
+    const newMembers = group.memberIds.filter((id) => id !== memberId);
+    const newAdminIds = adminIds.filter((id) => id !== memberId);
+    const updated = await storage.updateGroupMembersAndAdmins(group.id, newMembers, newAdminIds);
     res.json(updated);
   });
 
   app.delete("/api/groups/:id", requireAuth, requireApproved, async (req, res) => {
     const userId = (req.session as any).userId;
+    const user = await storage.getUser(userId);
+    if (!user) return res.status(401).json({ error: "User not found" });
+
     const group = await storage.getGroup(req.params.id);
     if (!group) return res.status(404).json({ error: "Not found" });
-    if (group.createdById !== userId) {
-      return res.status(403).json({ error: "Only the group creator can delete it" });
+
+    const adminIds = group.adminIds || [];
+    const isOwner = group.createdById === userId;
+    const isGroupAdmin = adminIds.includes(userId);
+    const isGlobalAdmin = user.isAdmin;
+
+    if (!isOwner && !isGroupAdmin && !isGlobalAdmin) {
+      return res.status(403).json({ error: "Only the group owner or an admin can delete it" });
     }
+
     await storage.deleteGroup(req.params.id);
     res.status(204).send();
   });

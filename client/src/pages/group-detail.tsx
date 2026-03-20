@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, ArrowLeft, Trash2, Shuffle, Receipt, UserPlus, X, HandCoins, CheckCircle2, AlertTriangle, Camera, Mail, Loader2 } from "lucide-react";
+import { Plus, ArrowLeft, Trash2, Shuffle, Receipt, UserPlus, X, HandCoins, CheckCircle2, AlertTriangle, Camera, Mail, Loader2, Crown, Shield, LogOut, UserMinus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
@@ -39,6 +39,9 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
 
   // Delete group: 2-step confirmation
   const [deleteGroupStep, setDeleteGroupStep] = useState<0 | 1 | 2>(0);
+
+  // Member action dialog state
+  const [memberActionMember, setMemberActionMember] = useState<SafeUser | null>(null);
 
   const [, setLocation] = useLocation();
 
@@ -220,12 +223,70 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
       queryClient.invalidateQueries({ queryKey: ["/api/groups", groupId] });
       queryClient.invalidateQueries({ queryKey: ["/api/groups", groupId, "members"] });
       queryClient.invalidateQueries({ queryKey: ["/api/groups"] });
+      setMemberActionMember(null);
       toast({ title: "Member removed" });
     },
     onError: (err: Error) => {
       let msg = err.message;
       try { msg = JSON.parse(msg.split(": ").slice(1).join(": ")).error; } catch {}
       toast({ title: "Error", description: msg, variant: "destructive" });
+    },
+  });
+
+  const promoteMutation = useMutation({
+    mutationFn: async (memberId: string) => {
+      const res = await apiRequest("POST", `/api/groups/${groupId}/promote/${memberId}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/groups", groupId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/groups", groupId, "members"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/groups"] });
+      setMemberActionMember(null);
+      toast({ title: "Member promoted to Admin" });
+    },
+    onError: (err: Error) => {
+      let msg = err.message;
+      try { msg = JSON.parse(msg.split(": ").slice(1).join(": ")).error; } catch {}
+      toast({ title: "Error", description: msg, variant: "destructive" });
+    },
+  });
+
+  const demoteMutation = useMutation({
+    mutationFn: async (memberId: string) => {
+      const res = await apiRequest("POST", `/api/groups/${groupId}/demote/${memberId}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/groups", groupId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/groups", groupId, "members"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/groups"] });
+      setMemberActionMember(null);
+      toast({ title: "Admin demoted to Member" });
+    },
+    onError: (err: Error) => {
+      let msg = err.message;
+      try { msg = JSON.parse(msg.split(": ").slice(1).join(": ")).error; } catch {}
+      toast({ title: "Error", description: msg, variant: "destructive" });
+    },
+  });
+
+  const leaveGroupMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/groups/${groupId}/leave`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/groups"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/groups", groupId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/groups", groupId, "members"] });
+      toast({ title: "You left the group" });
+      setLocation("/groups");
+    },
+    onError: (err: Error) => {
+      let msg = err.message;
+      try { msg = JSON.parse(msg.split(": ").slice(1).join(": ")).error; } catch {}
+      toast({ title: "Cannot leave group", description: msg, variant: "destructive" });
     },
   });
 
@@ -256,6 +317,25 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
     return members.find((m) => m.id === id)?.name || "Someone";
   };
   const getPersonColor = (id: string) => members.find((m) => m.id === id)?.avatarColor || "#666";
+
+  // Role helpers
+  const adminIds = group?.adminIds || [];
+  const isMeOwner = group?.createdById === user?.id;
+  const isMeAdmin = adminIds.includes(user?.id || "");
+  const isMeGlobalAdmin = user?.isAdmin;
+
+  const getMemberRole = (memberId: string): "owner" | "admin" | "member" => {
+    if (memberId === group?.createdById) return "owner";
+    if ((group?.adminIds || []).includes(memberId)) return "admin";
+    return "member";
+  };
+
+  // Whether current user can perform actions on a given member
+  const canActOnMember = (memberId: string): boolean => {
+    if (!group) return false;
+    if (memberId === user?.id) return false; // Can't act on yourself via member dialog
+    return isMeOwner || isMeAdmin || !!isMeGlobalAdmin;
+  };
 
   const totalGroupSpend = expenses.reduce((sum, e) => sum + e.amount, 0);
 
@@ -484,28 +564,40 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
 
       {/* Members bar with invite button */}
       <div className="flex items-center gap-2 overflow-x-auto pb-1">
-        {members.map((m) => (
-          <div key={m.id} className="flex flex-col items-center gap-1 shrink-0 relative group">
+        {members.map((m) => {
+          const role = getMemberRole(m.id);
+          const canAct = canActOnMember(m.id);
+          return (
             <div
-              className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-semibold"
-              style={{ backgroundColor: m.avatarColor }}
+              key={m.id}
+              className={`flex flex-col items-center gap-1 shrink-0 relative ${canAct ? "cursor-pointer" : ""}`}
+              onClick={() => { if (canAct) setMemberActionMember(m); }}
+              data-testid={`member-avatar-${m.id}`}
             >
-              {m.name[0]?.toUpperCase()}
+              <div className="relative">
+                <div
+                  className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-semibold"
+                  style={{ backgroundColor: m.avatarColor }}
+                >
+                  {m.name[0]?.toUpperCase()}
+                </div>
+                {role === "owner" && (
+                  <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-yellow-500 flex items-center justify-center" title="Owner">
+                    <Crown className="w-2.5 h-2.5 text-white" />
+                  </span>
+                )}
+                {role === "admin" && (
+                  <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-primary flex items-center justify-center" title="Admin">
+                    <Shield className="w-2.5 h-2.5 text-white" />
+                  </span>
+                )}
+              </div>
+              <span className="text-xs text-muted-foreground truncate max-w-[48px]">
+                {m.id === user?.id ? "You" : m.name.split(" ")[0]}
+              </span>
             </div>
-            <span className="text-xs text-muted-foreground truncate max-w-[48px]">
-              {m.id === user?.id ? "You" : m.name.split(" ")[0]}
-            </span>
-            {m.id !== group.createdById && group.createdById === user?.id && (
-              <button
-                className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-destructive text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                onClick={() => removeMemberMutation.mutate(m.id)}
-                title="Remove member"
-              >
-                <X className="w-2.5 h-2.5" />
-              </button>
-            )}
-          </div>
-        ))}
+          );
+        })}
         <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
           <DialogTrigger asChild>
             <button
@@ -914,9 +1006,87 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
         </DialogContent>
       </Dialog>
 
-      {/* Delete Group button — at the bottom, subtle, only for creator or admin */}
-      {(group.createdById === user?.id || user?.isAdmin) && (
-        <div className="pt-2">
+      {/* Member Action Dialog */}
+      <Dialog open={!!memberActionMember} onOpenChange={(open) => { if (!open) setMemberActionMember(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {memberActionMember?.name}
+              {memberActionMember && (
+                <span className="ml-2 text-xs font-normal text-muted-foreground">
+                  {getMemberRole(memberActionMember.id) === "owner" ? "Owner" : getMemberRole(memberActionMember.id) === "admin" ? "Admin" : "Member"}
+                </span>
+              )}
+            </DialogTitle>
+          </DialogHeader>
+          {memberActionMember && (
+            <div className="space-y-2 pt-2">
+              {/* Promote to Admin — owner only, for members */}
+              {(isMeOwner || isMeGlobalAdmin) && getMemberRole(memberActionMember.id) === "member" && (
+                <Button
+                  variant="outline"
+                  className="w-full justify-start"
+                  onClick={() => promoteMutation.mutate(memberActionMember.id)}
+                  disabled={promoteMutation.isPending}
+                  data-testid={`promote-member-${memberActionMember.id}`}
+                >
+                  <Shield className="w-4 h-4 mr-2 text-primary" />
+                  {promoteMutation.isPending ? "Promoting..." : "Promote to Admin"}
+                </Button>
+              )}
+              {/* Demote to Member — owner only, for admins */}
+              {(isMeOwner || isMeGlobalAdmin) && getMemberRole(memberActionMember.id) === "admin" && (
+                <Button
+                  variant="outline"
+                  className="w-full justify-start"
+                  onClick={() => demoteMutation.mutate(memberActionMember.id)}
+                  disabled={demoteMutation.isPending}
+                  data-testid={`demote-member-${memberActionMember.id}`}
+                >
+                  <UserMinus className="w-4 h-4 mr-2 text-muted-foreground" />
+                  {demoteMutation.isPending ? "Demoting..." : "Demote to Member"}
+                </Button>
+              )}
+              {/* Remove from Group — owner/admin, not for owner or other admins (unless you're owner) */}
+              {getMemberRole(memberActionMember.id) !== "owner" &&
+                (isMeOwner || isMeGlobalAdmin || (isMeAdmin && getMemberRole(memberActionMember.id) === "member")) && (
+                <Button
+                  variant="outline"
+                  className="w-full justify-start text-destructive hover:text-destructive hover:bg-destructive/10"
+                  onClick={() => removeMemberMutation.mutate(memberActionMember.id)}
+                  disabled={removeMemberMutation.isPending}
+                  data-testid={`remove-member-${memberActionMember.id}`}
+                >
+                  <X className="w-4 h-4 mr-2" />
+                  {removeMemberMutation.isPending ? "Removing..." : "Remove from Group"}
+                </Button>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Leave Group + Delete Group buttons at the bottom */}
+      <div className="pt-2 space-y-1">
+        {/* Leave Group — shown for all members */}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full text-muted-foreground hover:text-foreground hover:bg-muted/50"
+          onClick={() => leaveGroupMutation.mutate()}
+          disabled={leaveGroupMutation.isPending}
+          data-testid="leave-group-btn"
+        >
+          {leaveGroupMutation.isPending ? (
+            <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+          ) : (
+            <LogOut className="w-4 h-4 mr-1.5" />
+          )}
+          {leaveGroupMutation.isPending ? "Leaving..." : "Leave Group"}
+        </Button>
+
+        {/* Delete Group button — owner, admin, or global admin */}
+        {(group.createdById === user?.id || (group.adminIds || []).includes(user?.id || "") || user?.isAdmin) && (
           <Button
             variant="ghost"
             size="sm"
@@ -927,8 +1097,8 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
             <Trash2 className="w-4 h-4 mr-1.5" />
             Delete Group
           </Button>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

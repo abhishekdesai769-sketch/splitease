@@ -45,6 +45,8 @@ export interface IStorage {
   getGroupIncludeDeleted(id: string): Promise<Group | undefined>;
   createGroup(group: InsertGroup): Promise<Group>;
   updateGroupMembers(id: string, memberIds: string[]): Promise<Group | undefined>;
+  updateGroupAdmins(id: string, adminIds: string[]): Promise<Group | undefined>;
+  updateGroupMembersAndAdmins(id: string, memberIds: string[], adminIds: string[]): Promise<Group | undefined>;
   deleteGroup(id: string): Promise<boolean>;
   getDeletedGroups(): Promise<Group[]>;
   restoreGroup(id: string): Promise<Group | undefined>;
@@ -216,6 +218,22 @@ export class PgStorage implements IStorage {
   async updateGroupMembers(id: string, memberIds: string[]): Promise<Group | undefined> {
     const [updated] = await db.update(groups)
       .set({ memberIds })
+      .where(eq(groups.id, id))
+      .returning();
+    return updated;
+  }
+
+  async updateGroupAdmins(id: string, adminIds: string[]): Promise<Group | undefined> {
+    const [updated] = await db.update(groups)
+      .set({ adminIds })
+      .where(eq(groups.id, id))
+      .returning();
+    return updated;
+  }
+
+  async updateGroupMembersAndAdmins(id: string, memberIds: string[], adminIds: string[]): Promise<Group | undefined> {
+    const [updated] = await db.update(groups)
+      .set({ memberIds, adminIds })
       .where(eq(groups.id, id))
       .returning();
     return updated;

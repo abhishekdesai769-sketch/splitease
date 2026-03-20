@@ -57,6 +57,7 @@ export const groups = pgTable("groups", {
   name: text("name").notNull(),
   createdById: varchar("created_by_id").notNull(),
   memberIds: text("member_ids").array().notNull(), // array of user IDs
+  adminIds: text("admin_ids").array().notNull().default(sql`'{}'`), // array of admin user IDs
   deletedAt: text("deleted_at").default(sql`NULL`),
 });
 
