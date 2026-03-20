@@ -107,6 +107,23 @@ export async function registerRoutes(
   // Trust proxy (Render runs behind a reverse proxy)
   app.set("trust proxy", 1);
 
+  // Digital Asset Links for Google Play TWA verification
+  app.get("/.well-known/assetlinks.json", (_req, res) => {
+    res.json([
+      {
+        relation: ["delegate_permission/common.handle_all_urls"],
+        target: {
+          namespace: "android_app",
+          package_name: "ca.klarityit.spliiit",
+          sha256_cert_fingerprints: [
+            // Replace with actual fingerprint after building TWA with Bubblewrap
+            "__SIGNING_KEY_FINGERPRINT__"
+          ]
+        }
+      }
+    ]);
+  });
+
   // Session setup with stronger config
   const MemoryStore = createMemoryStore(session);
   const sessionSecret = process.env.SESSION_SECRET || "spliiit-secret-" + randomBytes(16).toString("hex");
