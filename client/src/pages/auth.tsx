@@ -157,127 +157,143 @@ export default function AuthPage() {
     setView(v);
   };
 
-  // ===== LOGIN =====
-  if (view === "login") {
+  // ===== LOGIN & SIGNUP (tabbed) =====
+  if (view === "login" || view === "signup") {
+    const isLogin = view === "login";
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <div className="w-full max-w-sm space-y-6">
-          <Logo />
-          <p className="text-sm text-muted-foreground text-center">Welcome back</p>
+          <div className="text-center space-y-1">
+            <Logo />
+            <p className="text-sm text-muted-foreground">Expense splitting made easy</p>
+          </div>
 
-          <Card className="p-6">
-            <form onSubmit={handleLogin} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="login-email">Email</Label>
-                <Input
-                  id="login-email" type="email" placeholder="you@example.com"
-                  value={email} onChange={(e) => setEmail(e.target.value)}
-                  required data-testid="input-email"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="login-password">Password</Label>
-                  <button
-                    type="button"
-                    className="text-xs text-primary hover:underline"
-                    onClick={() => switchTo("forgot")}
-                    data-testid="forgot-password-link"
-                  >
-                    Forgot password?
-                  </button>
-                </div>
-                <PasswordField
-                  id="login-password" value={password} onChange={setPassword}
-                  placeholder="Enter password" show={showPassword}
-                  onToggle={() => setShowPassword(!showPassword)} testId="input-password"
-                  minLen={1}
-                />
-              </div>
-
-              <Button type="submit" className="w-full" disabled={loading} data-testid="auth-submit">
-                {loading ? "Signing in..." : "Sign In"}
-              </Button>
-            </form>
-          </Card>
-
-          <p className="text-center text-sm text-muted-foreground">
-            Don't have an account?{" "}
-            <button className="text-primary font-medium hover:underline" onClick={() => switchTo("signup")} data-testid="auth-toggle">
-              Sign Up
-            </button>
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  // ===== SIGNUP =====
-  if (view === "signup") {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <div className="w-full max-w-sm space-y-6">
-          <Logo />
-          <p className="text-sm text-muted-foreground text-center">Create your account</p>
-
-          <Card className="p-6">
-            <form onSubmit={handleSendOtp} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="signup-name">Name</Label>
-                <Input
-                  id="signup-name" placeholder="Your name"
-                  value={name} onChange={(e) => setName(e.target.value)}
-                  required data-testid="input-name"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="signup-email">Email</Label>
-                <Input
-                  id="signup-email" type="email" placeholder="you@example.com"
-                  value={email} onChange={(e) => setEmail(e.target.value)}
-                  required data-testid="input-email"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="signup-password">Password</Label>
-                <PasswordField
-                  id="signup-password" value={password} onChange={setPassword}
-                  placeholder="At least 6 characters" show={showPassword}
-                  onToggle={() => setShowPassword(!showPassword)} testId="input-password"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="signup-confirm">Confirm Password</Label>
-                <PasswordField
-                  id="signup-confirm" value={confirmPassword} onChange={setConfirmPassword}
-                  placeholder="Re-enter password" show={showConfirmPassword}
-                  onToggle={() => setShowConfirmPassword(!showConfirmPassword)} testId="input-confirm-password"
-                />
-                {confirmPassword && password !== confirmPassword && (
-                  <p className="text-xs text-destructive">Passwords don't match</p>
-                )}
-              </div>
-
-              <Button
-                type="submit" className="w-full"
-                disabled={loading || !name.trim() || !email.trim() || password.length < 6 || password !== confirmPassword}
-                data-testid="auth-submit"
+          <Card className="p-6 space-y-5">
+            {/* Tab switcher */}
+            <div className="flex rounded-lg bg-muted/50 p-1">
+              <button
+                type="button"
+                className={`flex-1 text-sm font-medium py-2 rounded-md transition-colors ${
+                  isLogin
+                    ? "bg-primary/15 text-primary"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+                onClick={() => switchTo("login")}
+                data-testid="tab-signin"
               >
-                {loading ? "Sending code..." : "Continue"}
-              </Button>
-            </form>
-          </Card>
+                Sign In
+              </button>
+              <button
+                type="button"
+                className={`flex-1 text-sm font-medium py-2 rounded-md transition-colors ${
+                  !isLogin
+                    ? "bg-primary/15 text-primary"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+                onClick={() => switchTo("signup")}
+                data-testid="tab-signup"
+              >
+                Sign Up
+              </button>
+            </div>
 
-          <p className="text-center text-sm text-muted-foreground">
-            Already have an account?{" "}
-            <button className="text-primary font-medium hover:underline" onClick={() => switchTo("login")} data-testid="auth-toggle">
-              Sign In
-            </button>
-          </p>
+            {isLogin ? (
+              /* ---- Sign In form ---- */
+              <form onSubmit={handleLogin} className="space-y-4">
+                <div>
+                  <h2 className="text-lg font-semibold">Welcome back</h2>
+                  <p className="text-sm text-muted-foreground">Sign in to your Spliiit account</p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="login-email">Email</Label>
+                  <Input
+                    id="login-email" type="email" placeholder="you@example.com"
+                    value={email} onChange={(e) => setEmail(e.target.value)}
+                    required data-testid="input-email"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="login-password">Password</Label>
+                  <PasswordField
+                    id="login-password" value={password} onChange={setPassword}
+                    placeholder="Enter your password" show={showPassword}
+                    onToggle={() => setShowPassword(!showPassword)} testId="input-password"
+                    minLen={1}
+                  />
+                </div>
+
+                <Button type="submit" className="w-full" disabled={loading} data-testid="auth-submit">
+                  {loading ? "Signing in..." : "Sign In"}
+                </Button>
+
+                <button
+                  type="button"
+                  className="w-full text-sm text-primary hover:underline"
+                  onClick={() => switchTo("forgot")}
+                  data-testid="forgot-password-link"
+                >
+                  Forgot password?
+                </button>
+              </form>
+            ) : (
+              /* ---- Sign Up form ---- */
+              <form onSubmit={handleSendOtp} className="space-y-4">
+                <div>
+                  <h2 className="text-lg font-semibold">Create account</h2>
+                  <p className="text-sm text-muted-foreground">Get started with Spliiit for free</p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="signup-name">Name</Label>
+                  <Input
+                    id="signup-name" placeholder="Your name"
+                    value={name} onChange={(e) => setName(e.target.value)}
+                    required data-testid="input-name"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="signup-email">Email</Label>
+                  <Input
+                    id="signup-email" type="email" placeholder="you@example.com"
+                    value={email} onChange={(e) => setEmail(e.target.value)}
+                    required data-testid="input-email"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="signup-password">Password</Label>
+                  <PasswordField
+                    id="signup-password" value={password} onChange={setPassword}
+                    placeholder="At least 6 characters" show={showPassword}
+                    onToggle={() => setShowPassword(!showPassword)} testId="input-password"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="signup-confirm">Confirm Password</Label>
+                  <PasswordField
+                    id="signup-confirm" value={confirmPassword} onChange={setConfirmPassword}
+                    placeholder="Re-enter password" show={showConfirmPassword}
+                    onToggle={() => setShowConfirmPassword(!showConfirmPassword)} testId="input-confirm-password"
+                  />
+                  {confirmPassword && password !== confirmPassword && (
+                    <p className="text-xs text-destructive">Passwords don't match</p>
+                  )}
+                </div>
+
+                <Button
+                  type="submit" className="w-full"
+                  disabled={loading || !name.trim() || !email.trim() || password.length < 6 || password !== confirmPassword}
+                  data-testid="auth-submit"
+                >
+                  {loading ? "Sending code..." : "Continue"}
+                </Button>
+              </form>
+            )}
+          </Card>
         </div>
       </div>
     );
