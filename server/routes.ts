@@ -116,8 +116,7 @@ export async function registerRoutes(
           namespace: "android_app",
           package_name: "ca.klarityit.spliiit",
           sha256_cert_fingerprints: [
-            // Replace with actual fingerprint after building TWA with Bubblewrap
-            "__SIGNING_KEY_FINGERPRINT__"
+            "67:63:BD:34:40:80:D5:A3:EB:7C:A4:0B:AB:D5:25:32:DE:60:5F:F6:0E:AC:1F:B2:12:D9:F0:0F:83:07:B6:90"
           ]
         }
       }
