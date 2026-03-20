@@ -4,3 +4,11 @@ dist
 server/public
 vite.config.ts.*
 *.tar.gz
+
+# Environment / secrets — NEVER commit
+.env
+.env.*
+*.env
+migrate*.mjs
+migrate*.js
+migrate*.ts

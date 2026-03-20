@@ -5,7 +5,7 @@ import createMemoryStore from "memorystore";
 import multer from "multer";
 import { storage } from "./storage";
 import { signupSchema, loginSchema, verifyOtpSchema, forgotPasswordSchema, resetPasswordSchema } from "@shared/schema";
-import { createHash, randomBytes } from "crypto";
+import { createHash, randomBytes, scryptSync, timingSafeEqual } from "crypto";
 import { notifyExpenseCreated, sendOtpEmail, sendResetPasswordEmail, sendExportEmail } from "./email";
 
 // Multer: memory-only storage for receipt uploads (max 10MB)
@@ -13,12 +13,29 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 
 
 // ========== Security helpers ==========
 
+// scrypt-based password hashing (industry-standard, brute-force resistant)
 function hashPassword(password: string): string {
-  return createHash("sha256").update(password).digest("hex");
+  const salt = randomBytes(16).toString("hex");
+  const derived = scryptSync(password, salt, 64).toString("hex");
+  return `scrypt:${salt}:${derived}`;
 }
 
-function verifyPassword(password: string, hash: string): boolean {
-  return hashPassword(password) === hash;
+// Verify password — supports both new scrypt hashes and legacy SHA-256 hashes
+function verifyPassword(password: string, storedHash: string): boolean {
+  if (storedHash.startsWith("scrypt:")) {
+    // New format: scrypt:<salt>:<hash>
+    const [, salt, hash] = storedHash.split(":");
+    const derived = scryptSync(password, salt, 64).toString("hex");
+    return timingSafeEqual(Buffer.from(hash, "hex"), Buffer.from(derived, "hex"));
+  }
+  // Legacy SHA-256 fallback (existing users) — constant-time comparison
+  const sha256 = createHash("sha256").update(password).digest("hex");
+  return timingSafeEqual(Buffer.from(sha256, "hex"), Buffer.from(storedHash, "hex"));
+}
+
+// Detect if a hash needs upgrading from legacy SHA-256 to scrypt
+function needsHashUpgrade(storedHash: string): boolean {
+  return !storedHash.startsWith("scrypt:");
 }
 
 // Rate limiter (in-memory, per IP)
@@ -106,6 +123,10 @@ export async function registerRoutes(
 
   // Trust proxy (Render runs behind a reverse proxy)
   app.set("trust proxy", 1);
+
+  // Global API rate limiter: 200 requests per minute per IP (prevents abuse on all endpoints)
+  const globalApiLimiter = rateLimit(60 * 1000, 200);
+  app.use("/api", globalApiLimiter);
 
   // Digital Asset Links for Google Play TWA verification
   app.get("/.well-known/assetlinks.json", (_req, res) => {
@@ -213,7 +234,7 @@ export async function registerRoutes(
       saveUninitialized: false,
       store: new MemoryStore({ checkPeriod: 86400000 }),
       cookie: {
-        secure: false, // Render handles HTTPS at proxy level
+        secure: process.env.NODE_ENV === "production", // HTTPS-only in prod (Render terminates TLS at proxy)
         httpOnly: true, // prevents JS access to cookie
         maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
         sameSite: "lax", // CSRF protection
@@ -303,6 +324,12 @@ export async function registerRoutes(
     if (!user || !verifyPassword(password, user.password)) {
       // Generic message to prevent email enumeration
       return res.status(401).json({ error: "Invalid email or password" });
+    }
+
+    // Transparently upgrade legacy SHA-256 hash to scrypt on successful login
+    if (needsHashUpgrade(user.password)) {
+      const upgraded = hashPassword(password);
+      await storage.updateUserPassword(user.id, upgraded);
     }
 
     (req.session as any).userId = user.id;

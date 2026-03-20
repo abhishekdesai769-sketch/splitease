@@ -1,10 +1,23 @@
 import express, { type Request, Response, NextFunction } from "express";
+import helmet from "helmet";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 
 const app = express();
 const httpServer = createServer(app);
+
+// ===== Security headers via Helmet =====
+app.use(
+  helmet({
+    contentSecurityPolicy: false, // handled by app's own CSP if needed
+    crossOriginEmbedderPolicy: false, // allow embedding in TWA / Play Store
+    crossOriginOpenerPolicy: false,
+  })
+);
+
+// Disable X-Powered-By (redundant with helmet, but explicit)
+app.disable("x-powered-by");
 
 declare module "http" {
   interface IncomingMessage {
