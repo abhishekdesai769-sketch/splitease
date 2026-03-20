@@ -1,21 +1,90 @@
+import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { SafeUser } from "@shared/schema";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Shield, UserCheck, UserX, Trash2, RotateCcw, FolderX, ReceiptText } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import {
+  Shield, UserCheck, UserX, Trash2, RotateCcw, FolderX, ReceiptText,
+  Search, Clock, AlertTriangle
+} from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
+
+interface EnrichedGroup {
+  id: string;
+  name: string;
+  createdById: string;
+  createdByName: string;
+  createdByEmail: string;
+  memberIds: string[];
+  memberNames: string[];
+  deletedAt: string | null;
+}
+
+interface EnrichedExpense {
+  id: string;
+  description: string;
+  amount: number;
+  paidById: string;
+  paidByName: string;
+  paidByEmail: string;
+  addedById: string;
+  addedByName: string;
+  groupId: string | null;
+  date: string;
+  deletedAt: string | null;
+}
+
+function getDaysRemaining(deletedAt: string | null): number {
+  if (!deletedAt) return 30;
+  const deleted = new Date(deletedAt);
+  const expiry = new Date(deleted);
+  expiry.setDate(expiry.getDate() + 30);
+  const now = new Date();
+  const diff = Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+  return Math.max(0, diff);
+}
+
+function DaysRemainingBadge({ deletedAt }: { deletedAt: string | null }) {
+  const days = getDaysRemaining(deletedAt);
+  const isUrgent = days <= 7;
+  const isCritical = days <= 3;
+
+  return (
+    <span
+      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+        isCritical
+          ? "bg-red-500/20 text-red-400"
+          : isUrgent
+          ? "bg-amber-500/20 text-amber-400"
+          : "bg-muted text-muted-foreground"
+      }`}
+    >
+      {isCritical ? (
+        <AlertTriangle className="w-3 h-3" />
+      ) : (
+        <Clock className="w-3 h-3" />
+      )}
+      {days}d left
+    </span>
+  );
+}
 
 export default function Admin() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const [searchQuery, setSearchQuery] = useState("");
 
   const { data: allUsers = [], isLoading } = useQuery<SafeUser[]>({
     queryKey: ["/api/admin/users"],
   });
 
-  const { data: deletedData } = useQuery<{ groups: any[], expenses: any[] }>({ queryKey: ["/api/admin/deleted"] });
+  const { data: deletedData } = useQuery<{
+    groups: EnrichedGroup[];
+    expenses: EnrichedExpense[];
+  }>({ queryKey: ["/api/admin/deleted"] });
 
   const restoreGroupMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -92,6 +161,42 @@ export default function Admin() {
 
   const pendingUsers = allUsers.filter((u) => !u.isApproved && !u.isAdmin);
   const approvedUsers = allUsers.filter((u) => u.isApproved || u.isAdmin);
+
+  // Filter deleted items by search query
+  const q = searchQuery.toLowerCase().trim();
+
+  const filteredGroups = useMemo(() => {
+    if (!deletedData?.groups) return [];
+    if (!q) return deletedData.groups;
+    return deletedData.groups.filter(
+      (g) =>
+        g.name.toLowerCase().includes(q) ||
+        g.createdByName.toLowerCase().includes(q) ||
+        g.createdByEmail.toLowerCase().includes(q) ||
+        g.memberNames.some((m) => m.toLowerCase().includes(q))
+    );
+  }, [deletedData?.groups, q]);
+
+  const filteredExpenses = useMemo(() => {
+    if (!deletedData?.expenses) return [];
+    if (!q) return deletedData.expenses;
+    return deletedData.expenses.filter(
+      (e) =>
+        e.description.toLowerCase().includes(q) ||
+        e.paidByName.toLowerCase().includes(q) ||
+        e.paidByEmail.toLowerCase().includes(q) ||
+        e.addedByName.toLowerCase().includes(q) ||
+        String(e.amount).includes(q)
+    );
+  }, [deletedData?.expenses, q]);
+
+  const hasDeletedItems =
+    (deletedData?.groups?.length ?? 0) > 0 ||
+    (deletedData?.expenses?.length ?? 0) > 0;
+
+  const totalFiltered = filteredGroups.length + filteredExpenses.length;
+  const totalDeleted =
+    (deletedData?.groups?.length ?? 0) + (deletedData?.expenses?.length ?? 0);
 
   return (
     <div className="space-y-5">
@@ -225,74 +330,149 @@ export default function Admin() {
         </div>
       )}
 
-      {/* Deleted Items */}
+      {/* Deleted Items — Recycle Bin */}
       <div>
         <h2 className="text-sm font-medium text-muted-foreground mb-2">
-          Deleted Items
+          Recycle Bin
         </h2>
-        {(!deletedData || (deletedData.groups.length === 0 && deletedData.expenses.length === 0)) ? (
+        <p className="text-xs text-muted-foreground mb-3">
+          Deleted items are kept for 30 days, then permanently removed.
+        </p>
+
+        {!hasDeletedItems ? (
           <Card className="p-4 text-center">
             <p className="text-sm text-muted-foreground">No deleted items to restore</p>
           </Card>
         ) : (
-          <div className="space-y-4">
-            {deletedData.groups.length > 0 && (
+          <div className="space-y-3">
+            {/* Search */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                placeholder="Search by name, email, description..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 h-9 text-sm"
+                data-testid="deleted-search"
+              />
+            </div>
+
+            {q && (
+              <p className="text-xs text-muted-foreground">
+                Showing {totalFiltered} of {totalDeleted} deleted items
+              </p>
+            )}
+
+            {/* Deleted Groups */}
+            {filteredGroups.length > 0 && (
               <div>
                 <h3 className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1.5">
                   <FolderX className="w-3.5 h-3.5" />
-                  Deleted Groups ({deletedData.groups.length})
+                  Deleted Groups ({filteredGroups.length})
                 </h3>
                 <div className="space-y-2">
-                  {deletedData.groups.map((g: any) => (
-                    <Card key={g.id} className="p-3 flex items-center gap-3 border-destructive/20 bg-destructive/5">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{g.name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          Deleted {g.deletedAt ? new Date(g.deletedAt).toLocaleDateString() : ""}
-                        </p>
+                  {filteredGroups.map((g) => (
+                    <Card
+                      key={g.id}
+                      className="p-3 border-destructive/20 bg-destructive/5"
+                      data-testid={`deleted-group-${g.id}`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-0.5">
+                            <p className="text-sm font-medium truncate">{g.name}</p>
+                            <DaysRemainingBadge deletedAt={g.deletedAt} />
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            Created by {g.createdByName} · {g.memberNames.length} members
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Deleted{" "}
+                            {g.deletedAt
+                              ? new Date(g.deletedAt).toLocaleDateString("en-US", {
+                                  month: "short",
+                                  day: "numeric",
+                                  year: "numeric",
+                                })
+                              : ""}
+                          </p>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => restoreGroupMutation.mutate(g.id)}
+                          disabled={restoreGroupMutation.isPending}
+                          data-testid={`restore-group-${g.id}`}
+                        >
+                          <RotateCcw className="w-3.5 h-3.5 mr-1" />
+                          Restore
+                        </Button>
                       </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => restoreGroupMutation.mutate(g.id)}
-                        disabled={restoreGroupMutation.isPending}
-                      >
-                        <RotateCcw className="w-3.5 h-3.5 mr-1" />
-                        Restore
-                      </Button>
                     </Card>
                   ))}
                 </div>
               </div>
             )}
-            {deletedData.expenses.length > 0 && (
+
+            {/* Deleted Expenses */}
+            {filteredExpenses.length > 0 && (
               <div>
                 <h3 className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1.5">
                   <ReceiptText className="w-3.5 h-3.5" />
-                  Deleted Expenses ({deletedData.expenses.length})
+                  Deleted Expenses ({filteredExpenses.length})
                 </h3>
                 <div className="space-y-2">
-                  {deletedData.expenses.map((e: any) => (
-                    <Card key={e.id} className="p-3 flex items-center gap-3 border-destructive/20 bg-destructive/5">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{e.description}</p>
-                        <p className="text-xs text-muted-foreground">
-                          ${e.amount?.toFixed(2)} · Deleted {e.deletedAt ? new Date(e.deletedAt).toLocaleDateString() : ""}
-                        </p>
+                  {filteredExpenses.map((e) => (
+                    <Card
+                      key={e.id}
+                      className="p-3 border-destructive/20 bg-destructive/5"
+                      data-testid={`deleted-expense-${e.id}`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-0.5">
+                            <p className="text-sm font-medium truncate">
+                              {e.description}
+                            </p>
+                            <DaysRemainingBadge deletedAt={e.deletedAt} />
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            ${e.amount?.toFixed(2)} · Paid by {e.paidByName}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Deleted{" "}
+                            {e.deletedAt
+                              ? new Date(e.deletedAt).toLocaleDateString("en-US", {
+                                  month: "short",
+                                  day: "numeric",
+                                  year: "numeric",
+                                })
+                              : ""}
+                          </p>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => restoreExpenseMutation.mutate(e.id)}
+                          disabled={restoreExpenseMutation.isPending}
+                          data-testid={`restore-expense-${e.id}`}
+                        >
+                          <RotateCcw className="w-3.5 h-3.5 mr-1" />
+                          Restore
+                        </Button>
                       </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => restoreExpenseMutation.mutate(e.id)}
-                        disabled={restoreExpenseMutation.isPending}
-                      >
-                        <RotateCcw className="w-3.5 h-3.5 mr-1" />
-                        Restore
-                      </Button>
                     </Card>
                   ))}
                 </div>
               </div>
+            )}
+
+            {q && totalFiltered === 0 && (
+              <Card className="p-4 text-center">
+                <p className="text-sm text-muted-foreground">
+                  No deleted items match "{searchQuery}"
+                </p>
+              </Card>
             )}
           </div>
         )}

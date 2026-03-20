@@ -421,11 +421,52 @@ export async function registerRoutes(
     res.status(204).send();
   });
 
-  // Get soft-deleted groups and expenses
+  // Get soft-deleted groups and expenses (enriched with user names)
   app.get("/api/admin/deleted", requireAuth, requireAdmin, async (_req, res) => {
+    // Auto-purge items older than 30 days on every fetch
+    await storage.purgeExpiredDeleted(30);
+
     const deletedGroups = await storage.getDeletedGroups();
     const deletedExpenses = await storage.getDeletedExpenses();
-    res.json({ groups: deletedGroups, expenses: deletedExpenses });
+
+    // Collect all user IDs we need to look up
+    const userIds = new Set<string>();
+    deletedGroups.forEach(g => {
+      userIds.add(g.createdById);
+      g.memberIds.forEach((m: string) => userIds.add(m));
+    });
+    deletedExpenses.forEach(e => {
+      userIds.add(e.paidById);
+      userIds.add(e.addedById);
+    });
+
+    const userList = await storage.getUsersSafe(Array.from(userIds));
+    const userMap: Record<string, { name: string; email: string }> = {};
+    userList.forEach(u => { userMap[u.id] = { name: u.name, email: u.email }; });
+
+    // Enrich groups
+    const enrichedGroups = deletedGroups.map(g => ({
+      ...g,
+      createdByName: userMap[g.createdById]?.name || "Unknown",
+      createdByEmail: userMap[g.createdById]?.email || "",
+      memberNames: g.memberIds.map((m: string) => userMap[m]?.name || "Unknown"),
+    }));
+
+    // Enrich expenses
+    const enrichedExpenses = deletedExpenses.map(e => ({
+      ...e,
+      paidByName: userMap[e.paidById]?.name || "Unknown",
+      paidByEmail: userMap[e.paidById]?.email || "",
+      addedByName: userMap[e.addedById]?.name || "Unknown",
+    }));
+
+    res.json({ groups: enrichedGroups, expenses: enrichedExpenses });
+  });
+
+  // Manual purge endpoint
+  app.post("/api/admin/purge-deleted", requireAuth, requireAdmin, async (_req, res) => {
+    const result = await storage.purgeExpiredDeleted(30);
+    res.json({ purged: result });
   });
 
   // Restore a soft-deleted group (and its expenses)

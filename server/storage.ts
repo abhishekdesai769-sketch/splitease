@@ -1,4 +1,4 @@
-import { eq, and, or, ilike, inArray, ne, isNull, isNotNull } from "drizzle-orm";
+import { eq, and, or, ilike, inArray, ne, isNull, isNotNull, lt } from "drizzle-orm";
 import { db } from "./db";
 import {
   users, friends, groups, expenses, otpCodes, resetTokens,
@@ -58,6 +58,9 @@ export interface IStorage {
   deleteExpense(id: string): Promise<boolean>;
   getDeletedExpenses(): Promise<Expense[]>;
   restoreExpense(id: string): Promise<Expense | undefined>;
+
+  // Purge
+  purgeExpiredDeleted(daysOld: number): Promise<{ groups: number; expenses: number }>;
 }
 
 export class PgStorage implements IStorage {
@@ -280,6 +283,25 @@ export class PgStorage implements IStorage {
   async restoreExpense(id: string): Promise<Expense | undefined> {
     const [restored] = await db.update(expenses).set({ deletedAt: null }).where(eq(expenses.id, id)).returning();
     return restored;
+  }
+
+  // Purge: permanently delete soft-deleted items older than N days
+  async purgeExpiredDeleted(daysOld: number): Promise<{ groups: number; expenses: number }> {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - daysOld);
+    const cutoffStr = cutoff.toISOString();
+
+    // Delete expired expenses first (including those in expired groups)
+    const expiredExpenses = await db.delete(expenses)
+      .where(and(isNotNull(expenses.deletedAt), lt(expenses.deletedAt, cutoffStr)))
+      .returning();
+
+    // Delete expired groups
+    const expiredGroups = await db.delete(groups)
+      .where(and(isNotNull(groups.deletedAt), lt(groups.deletedAt, cutoffStr)))
+      .returning();
+
+    return { groups: expiredGroups.length, expenses: expiredExpenses.length };
   }
 }
 
