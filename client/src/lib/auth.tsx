@@ -50,6 +50,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const data = await res.json();
     setUser(data);
     queryClient.clear();
+    // Always navigate to dashboard after login to avoid stale hash routes (e.g. /#/admin)
+    window.location.hash = "#/";
   }, []);
 
   const sendOtp = useCallback(async (name: string, email: string) => {
@@ -61,6 +63,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const data = await res.json();
     setUser(data);
     queryClient.clear();
+    // Always navigate to dashboard after signup
+    window.location.hash = "#/";
   }, []);
 
   const forgotPassword = useCallback(async (email: string) => {

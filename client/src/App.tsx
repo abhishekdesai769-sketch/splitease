@@ -1,4 +1,4 @@
-import { Switch, Route, Router } from "wouter";
+import { Switch, Route, Router, Redirect } from "wouter";
 import { useHashLocation } from "wouter/use-hash-location";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -90,7 +90,11 @@ function AppRouter() {
           {(params) => <GroupDetail groupId={params.id} />}
         </Route>
         <Route path="/expenses" component={Expenses} />
-        {user.isAdmin && <Route path="/admin" component={Admin} />}
+        {user.isAdmin ? (
+          <Route path="/admin" component={Admin} />
+        ) : (
+          <Route path="/admin">{() => <Redirect to="/" />}</Route>
+        )}
         <Route component={NotFound} />
       </Switch>
     </Layout>
