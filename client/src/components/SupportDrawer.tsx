@@ -131,7 +131,7 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
 
                 {/* Buy Me a Coffee (supports Apple Pay) */}
                 <a
-                  href="https://buymeacoffee.com/klarityit"
+                  href="https://buymeacoffee.com/spliiit"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline font-medium"
