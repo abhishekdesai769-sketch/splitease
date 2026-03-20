@@ -339,3 +339,108 @@ export async function sendSupportEmail(opts: {
   // Send to support inbox with reply-to set to user's email
   await sendEmail(SUPPORT_EMAIL, `[Support] ${subject}`, html, text);
 }
+
+/**
+ * Notify the invitee that someone wants to add them to a group
+ */
+export async function sendInviteToInviteeEmail(opts: {
+  inviteeName: string;
+  inviteeEmail: string;
+  inviterName: string;
+  groupName: string;
+}) {
+  if (!resend) return;
+  const { inviteeName, inviteeEmail, inviterName, groupName } = opts;
+  const APP_URL = "https://splitease-81re.onrender.com";
+
+  const subject = `${inviterName} invited you to join ${groupName} on Spliiit`;
+
+  const html = `
+<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <tr><td align="center" style="padding:24px 16px;">
+    <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="max-width:520px;">
+      <tr><td>${EMAIL_LOGO}</td></tr>
+      <tr><td style="font-size:15px;color:#374151;padding-bottom:16px;">
+        Hi ${inviteeName},
+      </td></tr>
+      <tr><td style="padding-bottom:16px;">
+        <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="border:1px solid #e5e7eb;border-radius:10px;">
+          <tr><td style="padding:16px;">
+            <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+              <tr><td style="font-size:14px;color:#374151;">
+                <strong>${inviterName}</strong> has invited you to join the group <strong>${groupName}</strong>.
+              </td></tr>
+              <tr><td style="font-size:13px;color:#6b7280;padding-top:8px;">
+                Open Spliiit to accept or decline this invitation.
+              </td></tr>
+            </table>
+          </td></tr>
+        </table>
+      </td></tr>
+      <tr><td style="padding-bottom:24px;">
+        <a href="${APP_URL}" style="font-size:14px;color:#2dd4a8;text-decoration:none;font-weight:500;">View on Spliiit &rarr;</a>
+      </td></tr>
+      <tr><td style="border-top:1px solid #f3f4f6;padding-top:16px;font-size:12px;color:#9ca3af;">
+        ${EMAIL_FOOTER}
+      </td></tr>
+    </table>
+  </td></tr>
+</table>`;
+
+  const text = `Hi ${inviteeName},\n\n${inviterName} has invited you to join the group "${groupName}" on Spliiit.\n\nOpen the app to accept or decline: ${APP_URL}\n\n\u2014 Spliiit`;
+
+  sendEmail(inviteeEmail, subject, html, text);
+}
+
+/**
+ * Notify the group admin(s) that a member wants to add someone
+ */
+export async function sendInviteToAdminEmail(opts: {
+  adminName: string;
+  adminEmail: string;
+  inviterName: string;
+  inviteeName: string;
+  groupName: string;
+}) {
+  if (!resend) return;
+  const { adminName, adminEmail, inviterName, inviteeName, groupName } = opts;
+  const APP_URL = "https://splitease-81re.onrender.com";
+
+  const subject = `${inviterName} wants to add ${inviteeName} to ${groupName}`;
+
+  const html = `
+<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <tr><td align="center" style="padding:24px 16px;">
+    <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="max-width:520px;">
+      <tr><td>${EMAIL_LOGO}</td></tr>
+      <tr><td style="font-size:15px;color:#374151;padding-bottom:16px;">
+        Hi ${adminName},
+      </td></tr>
+      <tr><td style="padding-bottom:16px;">
+        <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="border:1px solid #e5e7eb;border-radius:10px;">
+          <tr><td style="padding:16px;">
+            <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+              <tr><td style="font-size:14px;color:#374151;">
+                <strong>${inviterName}</strong> wants to add <strong>${inviteeName}</strong> to the group <strong>${groupName}</strong>.
+              </td></tr>
+              <tr><td style="font-size:13px;color:#6b7280;padding-top:8px;">
+                Open Spliiit to approve or reject this request.
+              </td></tr>
+            </table>
+          </td></tr>
+        </table>
+      </td></tr>
+      <tr><td style="padding-bottom:24px;">
+        <a href="${APP_URL}" style="font-size:14px;color:#2dd4a8;text-decoration:none;font-weight:500;">View on Spliiit &rarr;</a>
+      </td></tr>
+      <tr><td style="border-top:1px solid #f3f4f6;padding-top:16px;font-size:12px;color:#9ca3af;">
+        ${EMAIL_FOOTER}
+      </td></tr>
+    </table>
+  </td></tr>
+</table>`;
+
+  const text = `Hi ${adminName},\n\n${inviterName} wants to add ${inviteeName} to the group "${groupName}" on Spliiit.\n\nOpen the app to approve or reject: ${APP_URL}\n\n\u2014 Spliiit`;
+
+  sendEmail(adminEmail, subject, html, text);
+}

@@ -6,7 +6,7 @@ import multer from "multer";
 import { storage } from "./storage";
 import { signupSchema, loginSchema, verifyOtpSchema, forgotPasswordSchema, resetPasswordSchema } from "@shared/schema";
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from "crypto";
-import { notifyExpenseCreated, sendOtpEmail, sendResetPasswordEmail, sendExportEmail, sendSupportEmail } from "./email";
+import { notifyExpenseCreated, sendOtpEmail, sendResetPasswordEmail, sendExportEmail, sendSupportEmail, sendInviteToInviteeEmail, sendInviteToAdminEmail } from "./email";
 
 // Multer: memory-only storage for receipt uploads (max 10MB)
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -871,6 +871,44 @@ export async function registerRoutes(
       inviteeEmail: targetUser.email,
       groupName: group.name,
     });
+
+    // Fire-and-forget email notifications
+    // 1. Always notify the invitee
+    sendInviteToInviteeEmail({
+      inviteeName: targetUser.name,
+      inviteeEmail: targetUser.email,
+      inviterName: inviter.name,
+      groupName: group.name,
+    });
+
+    // 2. If inviter is NOT an admin/owner, notify the group owner + admins for approval
+    if (!autoApprove) {
+      // Notify group owner
+      const owner = await storage.getUser(group.createdById);
+      if (owner && owner.id !== userId) {
+        sendInviteToAdminEmail({
+          adminName: owner.name,
+          adminEmail: owner.email,
+          inviterName: inviter.name,
+          inviteeName: targetUser.name,
+          groupName: group.name,
+        });
+      }
+      // Notify group admins
+      for (const adminId of adminIds) {
+        if (adminId === userId || adminId === group.createdById) continue; // skip inviter & owner (already notified)
+        const admin = await storage.getUser(adminId);
+        if (admin) {
+          sendInviteToAdminEmail({
+            adminName: admin.name,
+            adminEmail: admin.email,
+            inviterName: inviter.name,
+            inviteeName: targetUser.name,
+            groupName: group.name,
+          });
+        }
+      }
+    }
   });
 
   // GET /api/groups/:id/invites — Get pending invites for group
