@@ -6,7 +6,7 @@ import multer from "multer";
 import { storage } from "./storage";
 import { signupSchema, loginSchema, verifyOtpSchema, forgotPasswordSchema, resetPasswordSchema } from "@shared/schema";
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from "crypto";
-import { notifyExpenseCreated, sendOtpEmail, sendResetPasswordEmail, sendExportEmail } from "./email";
+import { notifyExpenseCreated, sendOtpEmail, sendResetPasswordEmail, sendExportEmail, sendSupportEmail } from "./email";
 
 // Multer: memory-only storage for receipt uploads (max 10MB)
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -1286,6 +1286,34 @@ export async function registerRoutes(
     } catch (err) {
       console.error("Export email failed:", err);
       res.status(500).json({ error: "Failed to send export email. Please try again." });
+    }
+  });
+
+  // ========== Support Contact ==========
+  const supportLimiter = rateLimit(60 * 60 * 1000, 5); // 5 support requests per hour per IP
+
+  app.post("/api/support", requireAuth, supportLimiter, async (req, res) => {
+    const { name, email, subject, message } = req.body;
+    if (!name || !email || !subject || !message) {
+      return res.status(400).json({ error: "All fields are required" });
+    }
+    if (message.length > 2000) {
+      return res.status(400).json({ error: "Message is too long (max 2000 characters)" });
+    }
+
+    const userId = (req.session as any).userId;
+    try {
+      await sendSupportEmail({
+        fromName: sanitize(name, 100),
+        fromEmail: sanitize(email, 200),
+        subject: sanitize(subject, 200),
+        message: sanitize(message, 2000),
+        userId,
+      });
+      res.json({ message: "Support request sent. We'll get back to you soon!" });
+    } catch (err) {
+      console.error("Support email failed:", err);
+      res.status(500).json({ error: "Failed to send. Please try again later." });
     }
   });
 

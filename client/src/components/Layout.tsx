@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { SupportDrawer } from "@/components/SupportDrawer";
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
@@ -36,16 +37,22 @@ export function Layout({ children }: { children: React.ReactNode }) {
       {/* Top header */}
       <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-md">
         <div className="max-w-3xl mx-auto px-4 h-14 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2.5">
-            <svg width="28" height="28" viewBox="0 0 32 32" fill="none" aria-label="Spliiit logo">
-              <rect width="32" height="32" rx="8" fill="hsl(172 63% 45%)" fillOpacity="0.15" />
-              <path d="M10 11h12M10 16h12M10 21h12" stroke="hsl(172 63% 45%)" strokeWidth="2" strokeLinecap="round" />
-              <path d="M16 8v16" stroke="hsl(172 63% 45%)" strokeWidth="2" strokeLinecap="round" strokeDasharray="2 3" />
-            </svg>
-            <span className="text-base font-semibold tracking-tight text-foreground">
-              Spl<span className="text-primary">iii</span>t
-            </span>
-          </div>
+          <SupportDrawer>
+            <button
+              className="flex items-center gap-2.5 hover:opacity-80 transition-opacity"
+              aria-label="Open menu"
+              data-testid="logo-menu-trigger"
+            >
+              <svg width="28" height="28" viewBox="0 0 32 32" fill="none" aria-label="Spliiit logo">
+                <rect width="32" height="32" rx="8" fill="hsl(172 63% 45%)" fillOpacity="0.15" />
+                <path d="M10 11h12M10 16h12M10 21h12" stroke="hsl(172 63% 45%)" strokeWidth="2" strokeLinecap="round" />
+                <path d="M16 8v16" stroke="hsl(172 63% 45%)" strokeWidth="2" strokeLinecap="round" strokeDasharray="2 3" />
+              </svg>
+              <span className="text-base font-semibold tracking-tight text-foreground">
+                Spl<span className="text-primary">iii</span>t
+              </span>
+            </button>
+          </SupportDrawer>
           <div className="flex items-center gap-1">
             {user && (
               <span className="text-xs text-muted-foreground mr-1 hidden sm:block truncate max-w-[120px]">

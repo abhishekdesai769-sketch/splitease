@@ -280,3 +280,62 @@ export async function notifyExpenseCreated(opts: {
     sendEmail(person.email, subject, html, text, attachments);
   }
 }
+
+/**
+ * Forward a support request to the Spliiit support mailbox
+ */
+export async function sendSupportEmail(opts: {
+  fromName: string;
+  fromEmail: string;
+  subject: string;
+  message: string;
+  userId?: string;
+}) {
+  if (!resend) return;
+
+  const { fromName, fromEmail, subject, message, userId } = opts;
+  const SUPPORT_EMAIL = "spliiit@klarityit.ca";
+
+  const html = `
+<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <tr><td align="center" style="padding:24px 16px;">
+    <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="max-width:520px;">
+      <tr><td>
+        ${EMAIL_LOGO}
+      </td></tr>
+      <tr><td style="font-size:13px;color:#6b7280;padding-bottom:8px;">
+        Support request from <strong style="color:#111827;">${fromName}</strong> &lt;${fromEmail}&gt;${userId ? ` (ID: ${userId})` : ""}
+      </td></tr>
+      <tr><td style="padding-bottom:16px;">
+        <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="border:1px solid #e5e7eb;border-radius:10px;">
+          <tr><td style="padding:16px;">
+            <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+              <tr>
+                <td style="font-size:16px;font-weight:600;color:#111827;padding-bottom:8px;">
+                  ${subject}
+                </td>
+              </tr>
+              <tr>
+                <td style="font-size:14px;color:#374151;white-space:pre-wrap;">
+                  ${message.replace(/</g, "&lt;").replace(/>/g, "&gt;")}
+                </td>
+              </tr>
+            </table>
+          </td></tr>
+        </table>
+      </td></tr>
+      <tr><td style="font-size:13px;color:#6b7280;">
+        Reply directly to this email to respond to the user.
+      </td></tr>
+      <tr><td style="border-top:1px solid #f3f4f6;padding-top:16px;margin-top:16px;font-size:12px;color:#9ca3af;">
+        ${EMAIL_FOOTER}
+      </td></tr>
+    </table>
+  </td></tr>
+</table>`;
+
+  const text = `Support request from ${fromName} <${fromEmail}>${userId ? ` (ID: ${userId})` : ""}\n\nSubject: ${subject}\n\n${message}\n\n— Spliiit Support System`;
+
+  // Send to support inbox with reply-to set to user's email
+  await sendEmail(SUPPORT_EMAIL, `[Support] ${subject}`, html, text);
+}
