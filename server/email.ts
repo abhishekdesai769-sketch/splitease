@@ -4,7 +4,7 @@ const resend = process.env.RESEND_API_KEY
   ? new Resend(process.env.RESEND_API_KEY)
   : null;
 
-const FROM_ADDRESS = "Spliiit <splitease@klarityit.ca>";
+const FROM_ADDRESS = "Spliiit <spliiit@klarityit.ca>";
 
 // Inline logo for email templates — HTML table-based since email clients don't support SVG.
 // Renders the icon (three lines split by a dashed line) + "Spliiit" text.
