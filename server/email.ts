@@ -8,15 +8,30 @@ const FROM_ADDRESS = "Spliiit <spliiit@klarityit.ca>";
 
 // Inline logo for email templates — HTML table-based since email clients don't support SVG.
 // Renders the icon (three lines split by a dashed line) + "Spliiit" text.
-const EMAIL_LOGO = `<table cellpadding="0" cellspacing="0" role="presentation" style="margin-bottom:20px;">
+const EMAIL_LOGO = `
+<table cellpadding="0" cellspacing="0" border="0" style="margin-bottom:20px;">
   <tr>
     <td style="vertical-align:middle;padding-right:10px;">
-      <table cellpadding="0" cellspacing="0" role="presentation" style="width:32px;height:32px;border-radius:8px;background-color:rgba(45,212,168,0.12);">
-        <tr><td align="center" style="padding:6px 0;">
-          <table cellpadding="0" cellspacing="0" role="presentation" style="width:18px;">
-            <tr><td style="border-top:2px solid #2dd4a8;font-size:0;line-height:0;height:0;padding-bottom:3px;">&nbsp;</td></tr>
-            <tr><td style="border-top:2px solid #2dd4a8;font-size:0;line-height:0;height:0;padding-bottom:3px;">&nbsp;</td></tr>
-            <tr><td style="border-top:2px solid #2dd4a8;font-size:0;line-height:0;height:0;">&nbsp;</td></tr>
+      <table cellpadding="0" cellspacing="0" border="0" style="width:36px;height:36px;border-radius:8px;background-color:#1a2e2a;" role="img" aria-label="Spliiit logo">
+        <tr><td style="padding:6px 5px;">
+          <table cellpadding="0" cellspacing="0" border="0" style="width:100%;">
+            <tr>
+              <td style="width:30%;height:0;border-top:2px solid #2dd4a8;font-size:0;line-height:0;">&nbsp;</td>
+              <td style="width:2px;background-color:#2dd4a8;height:6px;font-size:0;line-height:0;" rowspan="1">&nbsp;</td>
+              <td style="height:0;border-top:2px solid #2dd4a8;font-size:0;line-height:0;">&nbsp;</td>
+            </tr>
+            <tr><td colspan="3" style="height:4px;font-size:0;line-height:0;">&nbsp;</td></tr>
+            <tr>
+              <td style="height:0;border-top:2px solid #2dd4a8;font-size:0;line-height:0;">&nbsp;</td>
+              <td style="width:2px;background-color:#2dd4a8;height:6px;font-size:0;line-height:0;" rowspan="1">&nbsp;</td>
+              <td style="width:25%;height:0;border-top:2px solid #2dd4a8;font-size:0;line-height:0;">&nbsp;</td>
+            </tr>
+            <tr><td colspan="3" style="height:4px;font-size:0;line-height:0;">&nbsp;</td></tr>
+            <tr>
+              <td style="width:50%;height:0;border-top:2px solid #2dd4a8;font-size:0;line-height:0;">&nbsp;</td>
+              <td style="width:2px;background-color:#2dd4a8;height:6px;font-size:0;line-height:0;" rowspan="1">&nbsp;</td>
+              <td style="height:0;border-top:2px solid #2dd4a8;font-size:0;line-height:0;">&nbsp;</td>
+            </tr>
           </table>
         </td></tr>
       </table>
@@ -25,7 +40,8 @@ const EMAIL_LOGO = `<table cellpadding="0" cellspacing="0" role="presentation" s
       <span style="font-size:18px;font-weight:700;color:#1a1a1a;letter-spacing:-0.3px;">Spl</span><span style="font-size:18px;font-weight:700;color:#2dd4a8;letter-spacing:-0.3px;">iii</span><span style="font-size:18px;font-weight:700;color:#1a1a1a;letter-spacing:-0.3px;">t</span>
     </td>
   </tr>
-</table>`;
+</table>
+`;
 
 const EMAIL_FOOTER = `Spliiit &middot; Expense splitting made easy`;
 
