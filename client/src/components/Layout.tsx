@@ -44,9 +44,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
               data-testid="logo-menu-trigger"
             >
               <svg width="28" height="28" viewBox="0 0 32 32" fill="none" aria-label="Spliiit logo">
-                <rect width="32" height="32" rx="8" fill="hsl(172 63% 45%)" fillOpacity="0.15" />
-                <path d="M10 11h12M10 16h12M10 21h12" stroke="hsl(172 63% 45%)" strokeWidth="2" strokeLinecap="round" />
-                <path d="M16 8v16" stroke="hsl(172 63% 45%)" strokeWidth="2" strokeLinecap="round" strokeDasharray="2 3" />
+                <rect width="32" height="32" rx="8" fill="#1a2e2a" />
+                <line x1="8" y1="11" x2="24" y2="11" stroke="#2dd4a8" strokeWidth="2" strokeLinecap="round" />
+                <line x1="14" y1="8" x2="14" y2="14" stroke="#2dd4a8" strokeWidth="2" strokeLinecap="round" />
+                <line x1="8" y1="16" x2="24" y2="16" stroke="#2dd4a8" strokeWidth="2" strokeLinecap="round" />
+                <line x1="20" y1="13" x2="20" y2="19" stroke="#2dd4a8" strokeWidth="2" strokeLinecap="round" />
+                <line x1="8" y1="21" x2="24" y2="21" stroke="#2dd4a8" strokeWidth="2" strokeLinecap="round" />
+                <line x1="16" y1="18" x2="16" y2="24" stroke="#2dd4a8" strokeWidth="2" strokeLinecap="round" />
               </svg>
               <span className="text-base font-semibold tracking-tight text-foreground">
                 Spl<span className="text-primary">iii</span>t
