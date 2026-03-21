@@ -1,10 +1,10 @@
-import type { Express, Request, Response, NextFunction } from "express";
+himport type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import session from "express-session";
 import createMemoryStore from "memorystore";
 import multer from "multer";
 import { storage } from "./storage";
-import { signupSchema, loginSchema, verifyOtpSchema, forgotPasswordSchema, resetPasswordSchema } from "@shared/schema";
+import { signupSchema, loginSchema, verifyOthpSchema, forgotPasswordSchema, resetPasswordSchema } from "@shared/schema";
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from "crypto";
 import { notifyExpenseCreated, sendOtpEmail, sendResetPasswordEmail, sendExportEmail, sendSupportEmail, sendInviteToInviteeEmail, sendInviteToAdminEmail } from "./email";
 
@@ -204,7 +204,7 @@ export async function registerRoutes(
     <p>Your data is stored on secure servers. Passwords are hashed and never stored in plain text. We use HTTPS encryption for all data in transit.</p>
 
     <h2>Data Retention</h2>
-    <p>Your expense data is retained for as long as your account is active. You can request deletion of your account and associated data by contacting us.</p>
+    <p>Your expense data is retained for as long as your account is active. You can delete your account and all associated data directly from the app by opening the menu and selecting Delete Account.</p>
 
     <h2>Children's Privacy</h2>
     <p>Spliiit is not intended for children under 13. We do not knowingly collect information from children under 13.</p>
