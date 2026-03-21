@@ -10,7 +10,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { Headphones, Send, Loader2, CheckCircle2, ExternalLink, UserPlus, Copy, Check, MessageCircle, Mail, Trash2, AlertTriangle } from "lucide-react";
 
 export function SupportDrawer({ children }: { children: React.ReactNode }) {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<"menu" | "support" | "invite" | "delete" | "sent">("menu");
