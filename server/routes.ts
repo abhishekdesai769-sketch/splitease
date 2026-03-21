@@ -1327,6 +1327,22 @@ export async function registerRoutes(
     }
   });
 
+  // ========== Delete Account ==========
+  app.delete("/api/user/delete-account", requireAuth, async (req, res) => {
+    const userId = (req.session as any).userId;
+    if (!userId) return res.status(401).json({ error: "Not authenticated" });
+
+    try {
+      await storage.deleteUser(userId);
+      req.session.destroy(() => {
+        res.json({ ok: true });
+      });
+    } catch (err) {
+      console.error("Account deletion failed:", err);
+      res.status(500).json({ error: "Failed to delete account. Please try again." });
+    }
+  });
+
   // ========== Support Contact ==========
   const supportLimiter = rateLimit(60 * 60 * 1000, 5); // 5 support requests per hour per IP
 

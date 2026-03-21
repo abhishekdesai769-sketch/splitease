@@ -7,13 +7,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { apiRequest } from "@/lib/queryClient";
-import { Headphones, Send, Loader2, CheckCircle2, ExternalLink, UserPlus, Copy, Check, MessageCircle, Mail } from "lucide-react";
+import { Headphones, Send, Loader2, CheckCircle2, ExternalLink, UserPlus, Copy, Check, MessageCircle, Mail, Trash2, AlertTriangle } from "lucide-react";
 
 export function SupportDrawer({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
-  const [view, setView] = useState<"menu" | "support" | "invite" | "sent">("menu");
+  const [view, setView] = useState<"menu" | "support" | "invite" | "delete" | "sent">("menu");
 
   // Support form state
   const [name, setName] = useState(user?.name || "");
@@ -22,6 +22,8 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [deleteStep, setDeleteStep] = useState<0 | 1 | 2>(0);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const APP_URL = "https://splitease-81re.onrender.com";
   const inviteText = `Hey! I use Spliiit to split expenses with friends and groups. Check it out: ${APP_URL}`;
@@ -50,6 +52,23 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
     setName(user?.name || "");
     setEmail(user?.email || "");
     setView("menu");
+    setDeleteStep(0);
+  };
+
+  const handleDeleteAccount = async () => {
+    setIsDeleting(true);
+    try {
+      await apiRequest("DELETE", "/api/user/delete-account");
+      setOpen(false);
+      logout();
+    } catch (err: any) {
+      const msg = err.message || "Failed to delete account.";
+      let parsed = msg;
+      try { parsed = JSON.parse(msg.split(": ").slice(1).join(": ")).error || msg; } catch {}
+      toast({ title: "Error", description: parsed, variant: "destructive" });
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const handleOpenChange = (isOpen: boolean) => {
@@ -140,6 +159,21 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
               <div>
                 <p className="text-sm font-medium">Invite a Friend</p>
                 <p className="text-xs text-muted-foreground">Share Spliiit with your friends</p>
+              </div>
+            </button>
+
+            {/* Delete Account */}
+            <button
+              onClick={() => { setDeleteStep(1); setView("delete"); }}
+              className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-red-500/10 transition-colors text-left group"
+              data-testid="menu-delete-account"
+            >
+              <div className="w-9 h-9 rounded-lg bg-red-500/10 flex items-center justify-center flex-shrink-0">
+                <Trash2 className="w-4.5 h-4.5 text-red-500" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-red-500">Delete Account</p>
+                <p className="text-xs text-muted-foreground">Permanently remove your account</p>
               </div>
             </button>
 
@@ -348,6 +382,89 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
                 <p className="text-xs text-muted-foreground">Send via email</p>
               </div>
             </a>
+          </div>
+        )}
+
+        {/* ===== DELETE ACCOUNT VIEW ===== */}
+        {view === "delete" && (
+          <div className="flex-1 flex flex-col px-5">
+            <button
+              onClick={() => { setDeleteStep(0); setView("menu"); }}
+              className="text-xs text-muted-foreground hover:text-foreground mb-3 self-start"
+            >
+              ← Back
+            </button>
+
+            <h3 className="text-sm font-semibold text-red-500 mb-4">Delete Account</h3>
+
+            {deleteStep === 1 && (
+              <div className="rounded-lg border-2 border-red-500/30 bg-red-500/5 p-5 space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-red-500/15 flex items-center justify-center flex-shrink-0">
+                    <Trash2 className="w-5 h-5 text-red-500" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-red-500">Do you really want to delete your account?</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">This will remove your profile and all associated data.</p>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => { setDeleteStep(0); setView("menu"); }}
+                    data-testid="delete-cancel-1"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    className="flex-1"
+                    onClick={() => setDeleteStep(2)}
+                    data-testid="delete-confirm-1"
+                  >
+                    Yes, Delete
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {deleteStep === 2 && (
+              <div className="rounded-lg border-2 border-red-500/50 bg-red-500/10 p-5 space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center flex-shrink-0">
+                    <AlertTriangle className="w-5 h-5 text-red-500" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-red-500">This cannot be undone</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">You will lose ALL data attached to your account — expenses, groups, friends, and history. This action is permanent.</p>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => { setDeleteStep(0); setView("menu"); }}
+                    data-testid="delete-cancel-2"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    className="flex-1"
+                    onClick={handleDeleteAccount}
+                    disabled={isDeleting}
+                    data-testid="delete-confirm-2"
+                  >
+                    {isDeleting ? (
+                      <><Loader2 className="w-4 h-4 mr-1.5 animate-spin" />Deleting...</>
+                    ) : (
+                      "Delete Anyway"
+                    )}
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

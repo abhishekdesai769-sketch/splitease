@@ -121,9 +121,41 @@ export class PgStorage implements IStorage {
   }
 
   async deleteUser(id: string): Promise<boolean> {
-    // Remove user from friends
+    // 1. Delete OTP codes and reset tokens
+    const user = await this.getUser(id);
+    if (!user) return false;
+    await db.delete(otpCodes).where(eq(otpCodes.email, user.email));
+    await db.delete(resetTokens).where(eq(resetTokens.userId, id));
+
+    // 2. Delete group invites (sent or received)
+    await db.delete(groupInvites).where(or(eq(groupInvites.inviterId, id), eq(groupInvites.inviteeId, id)));
+
+    // 3. Delete friends
     await db.delete(friends).where(or(eq(friends.userId, id), eq(friends.friendId, id)));
-    // Remove user from group memberIds would be complex; just delete the user
+
+    // 4. Delete expenses the user created
+    await db.delete(expenses).where(eq(expenses.addedById, id));
+
+    // 5. Remove user from all groups (memberIds + adminIds arrays)
+    const allGroups = await db.select().from(groups).where(isNotNull(groups.id));
+    for (const group of allGroups) {
+      const isMember = group.memberIds.includes(id);
+      const isAdmin = (group.adminIds || []).includes(id);
+      if (!isMember && !isAdmin) continue;
+
+      const newMembers = group.memberIds.filter(mid => mid !== id);
+      const newAdmins = (group.adminIds || []).filter(aid => aid !== id);
+
+      if (newMembers.length === 0) {
+        // No members left — delete the group and its expenses
+        await db.delete(expenses).where(eq(expenses.groupId, group.id));
+        await db.delete(groups).where(eq(groups.id, group.id));
+      } else {
+        await db.update(groups).set({ memberIds: newMembers, adminIds: newAdmins }).where(eq(groups.id, group.id));
+      }
+    }
+
+    // 6. Delete the user
     const result = await db.delete(users).where(eq(users.id, id)).returning();
     return result.length > 0;
   }
