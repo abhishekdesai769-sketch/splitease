@@ -4,6 +4,8 @@ import session from "express-session";
 import createMemoryStore from "memorystore";
 import multer from "multer";
 import { storage } from "./storage";
+import { db } from "./db";
+import { expenses } from "@shared/schema";
 import { signupSchema, loginSchema, verifyOthpSchema, forgotPasswordSchema, resetPasswordSchema } from "@shared/schema";
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from "crypto";
 import { notifyExpenseCreated, sendOtpEmail, sendResetPasswordEmail, sendExportEmail, sendSupportEmail, sendInviteToInviteeEmail, sendInviteToAdminEmail } from "./email";
@@ -20,7 +22,7 @@ function hashPassword(password: string): string {
   return `scrypt:${salt}:${derived}`;
 }
 
-// Verify password — supports both new scrypt hashes and legacy SHA-256 hashes
+// Verify password â supports both new scrypt hashes and legacy SHA-256 hashes
 function verifyPassword(password: string, storedHash: string): boolean {
   if (storedHash.startsWith("scrypt:")) {
     // New format: scrypt:<salt>:<hash>
@@ -28,7 +30,7 @@ function verifyPassword(password: string, storedHash: string): boolean {
     const derived = scryptSync(password, salt, 64).toString("hex");
     return timingSafeEqual(Buffer.from(hash, "hex"), Buffer.from(derived, "hex"));
   }
-  // Legacy SHA-256 fallback (existing users) — constant-time comparison
+  // Legacy SHA-256 fallback (existing users) â constant-time comparison
   const sha256 = createHash("sha256").update(password).digest("hex");
   return timingSafeEqual(Buffer.from(sha256, "hex"), Buffer.from(storedHash, "hex"));
 }
@@ -68,7 +70,7 @@ setInterval(() => {
   }
 }, 60000);
 
-// Input sanitizer — strip HTML tags, trim, limit length
+// Input sanitizer â strip HTML tags, trim, limit length
 function sanitize(input: string, maxLen = 500): string {
   return input.replace(/<[^>]*>/g, "").trim().slice(0, maxLen);
 }
@@ -93,7 +95,7 @@ async function requireAdmin(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
-// Approved user middleware — user must be approved by admin to use the app
+// Approved user middleware â user must be approved by admin to use the app
 async function requireApproved(req: Request, res: Response, next: NextFunction) {
   const userId = (req.session as any).userId;
   if (!userId) return res.status(401).json({ error: "Not authenticated" });
@@ -151,7 +153,7 @@ export async function registerRoutes(
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Privacy Policy — Spliiit</title>
+  <title>Privacy Policy â Spliiit</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0a0f0d; color: #d1d5db; line-height: 1.7; padding: 2rem 1.25rem; }
@@ -171,7 +173,7 @@ export async function registerRoutes(
 <body>
   <div class="container">
     <h1>Privacy Policy</h1>
-    <p class="tagline">Spliiit — Expense splitting made easy</p>
+    <p class="tagline">Spliiit â Expense splitting made easy</p>
     <p class="updated">Last updated: March 20, 2026</p>
 
     <h2>Introduction</h2>
@@ -377,7 +379,7 @@ export async function registerRoutes(
 
     await storage.createResetToken({ userId: user.id, token, expiresAt });
 
-    // Build reset link — uses hash routing
+    // Build reset link â uses hash routing
     const baseUrl = process.env.APP_URL || "https://splitease-81re.onrender.com";
     const resetLink = `${baseUrl}/#/reset-password?token=${token}`;
 
@@ -404,7 +406,7 @@ export async function registerRoutes(
     res.json({ message: "Password has been reset successfully. You can now sign in." });
   });
 
-  // ========== Users (search) — requires approved ==========
+  // ========== Users (search) â requires approved ==========
   app.get("/api/users/search", requireAuth, requireApproved, async (req, res) => {
     const email = sanitize((req.query.email as string) || "", 255);
     const userId = (req.session as any).userId;
@@ -510,7 +512,7 @@ export async function registerRoutes(
     res.json(restored);
   });
 
-  // ========== Friends — requires approved ==========
+  // ========== Friends â requires approved ==========
   app.get("/api/friends", requireAuth, requireApproved, async (req, res) => {
     const userId = (req.session as any).userId;
     const friendsList = await storage.getFriends(userId);
@@ -585,7 +587,7 @@ export async function registerRoutes(
     });
     res.status(201).json(expense);
 
-    // Receipt from upload (held in memory only — not saved)
+    // Receipt from upload (held in memory only â not saved)
     const receiptFile = req.file;
 
     // Send email notifications (fire-and-forget)
@@ -654,7 +656,7 @@ export async function registerRoutes(
     } catch (e) { /* ignore email errors */ }
   });
 
-  // ========== Groups — requires approved ==========
+  // ========== Groups â requires approved ==========
   app.get("/api/groups", requireAuth, requireApproved, async (req, res) => {
     const userId = (req.session as any).userId;
     const groupsList = await storage.getGroupsForUser(userId);
@@ -705,7 +707,7 @@ export async function registerRoutes(
     return Math.round(balance * 100) / 100;
   }
 
-  // POST /api/groups/:id/promote/:memberId — owner or global admin only
+  // POST /api/groups/:id/promote/:memberId â owner or global admin only
   app.post("/api/groups/:id/promote/:memberId", requireAuth, requireApproved, async (req, res) => {
     const userId = (req.session as any).userId;
     const user = await storage.getUser(userId);
@@ -737,7 +739,7 @@ export async function registerRoutes(
     res.json(updated);
   });
 
-  // POST /api/groups/:id/demote/:memberId — owner or global admin only
+  // POST /api/groups/:id/demote/:memberId â owner or global admin only
   app.post("/api/groups/:id/demote/:memberId", requireAuth, requireApproved, async (req, res) => {
     const userId = (req.session as any).userId;
     const user = await storage.getUser(userId);
@@ -767,7 +769,7 @@ export async function registerRoutes(
     res.json(updated);
   });
 
-  // POST /api/groups/:id/leave — any member can leave
+  // POST /api/groups/:id/leave â any member can leave
   app.post("/api/groups/:id/leave", requireAuth, requireApproved, async (req, res) => {
     const userId = (req.session as any).userId;
     const user = await storage.getUser(userId);
@@ -780,7 +782,7 @@ export async function registerRoutes(
       return res.status(400).json({ error: "You are not a member of this group" });
     }
 
-    // Balance check — server-side
+    // Balance check â server-side
     const groupExpenses = await storage.getExpensesByGroup(group.id);
     const balance = getGroupMemberBalance(groupExpenses, userId);
     if (balance !== 0) {
@@ -790,7 +792,7 @@ export async function registerRoutes(
       });
     }
 
-    // Admin/owner check — if leaving person is the only admin/owner, block
+    // Admin/owner check â if leaving person is the only admin/owner, block
     const adminIds = group.adminIds || [];
     const isOwner = group.createdById === userId;
     const isAdmin = adminIds.includes(userId);
@@ -804,7 +806,7 @@ export async function registerRoutes(
           error: "You must assign another admin before leaving as the group owner.",
         });
       }
-      // If they're an admin (but not owner), and there are no other admins AND no owner — but owner always exists
+      // If they're an admin (but not owner), and there are no other admins AND no owner â but owner always exists
       // So if they're admin (not owner), they can always leave (owner remains)
     }
 
@@ -816,7 +818,7 @@ export async function registerRoutes(
     res.json({ ok: true });
   });
 
-  // POST /api/groups/:id/invite — Create invite (replaces direct add)
+  // POST /api/groups/:id/invite â Create invite (replaces direct add)
   app.post("/api/groups/:id/invite", requireAuth, requireApproved, async (req, res) => {
     const userId = (req.session as any).userId;
     const inviter = await storage.getUser(userId);
@@ -911,7 +913,7 @@ export async function registerRoutes(
     }
   });
 
-  // GET /api/groups/:id/invites — Get pending invites for group
+  // GET /api/groups/:id/invites â Get pending invites for group
   app.get("/api/groups/:id/invites", requireAuth, requireApproved, async (req, res) => {
     const userId = (req.session as any).userId;
     const group = await storage.getGroup(req.params.id);
@@ -940,7 +942,7 @@ export async function registerRoutes(
     res.json(enriched);
   });
 
-  // GET /api/invites/incoming — Get incoming invites for current user
+  // GET /api/invites/incoming â Get incoming invites for current user
   app.get("/api/invites/incoming", requireAuth, requireApproved, async (req, res) => {
     const userId = (req.session as any).userId;
     const invites = await storage.getPendingInvitesForUser(userId);
@@ -1093,7 +1095,7 @@ export async function registerRoutes(
       return res.status(403).json({ error: "Only the group owner can remove other admins" });
     }
 
-    // Balance check — block if member has unsettled balance
+    // Balance check â block if member has unsettled balance
     const groupExpenses = await storage.getExpensesByGroup(group.id);
     const balance = getGroupMemberBalance(groupExpenses, memberId);
     if (balance !== 0) {
@@ -1130,7 +1132,7 @@ export async function registerRoutes(
     res.status(204).send();
   });
 
-  // ========== Expenses — requires approved ==========
+  // ========== Expenses â requires approved ==========
   app.get("/api/expenses", requireAuth, requireApproved, async (req, res) => {
     const userId = (req.session as any).userId;
     const expensesList = await storage.getExpensesForUser(userId);
@@ -1185,7 +1187,7 @@ export async function registerRoutes(
     });
     res.status(201).json(expense);
 
-    // Receipt from upload (held in memory only — not saved)
+    // Receipt from upload (held in memory only â not saved)
     const receiptFile = req.file;
 
     // Send email notifications for group expense (fire-and-forget)
@@ -1368,6 +1370,100 @@ export async function registerRoutes(
     } catch (err) {
       console.error("Support email failed:", err);
       res.status(500).json({ error: "Failed to send. Please try again later." });
+    }
+  });
+
+  // CSV line parser helper for Splitwise import (handles quoted fields)
+  function importParseCSVLine(line: string): string[] {
+    const result: string[] = [];
+    let current = "";
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      if (char === '"') {
+        inQuotes = !inQuotes;
+      } else if (char === "," && !inQuotes) {
+        result.push(current.trim());
+        current = "";
+      } else {
+        current += char;
+      }
+    }
+    result.push(current.trim());
+    return result;
+  }
+
+
+  // ========== Splitwise CSV Import ==========
+  app.post("/api/import/splitwise", requireAuth, upload.single("file"), async (req: Request, res: Response) => {
+    try {
+      const userId = (req.session as any).userId;
+      const file = (req as any).file;
+
+      if (!file) {
+        return res.status(400).json({ error: "No file uploaded" });
+      }
+
+      const csvText = file.buffer.toString("utf-8");
+      const lines = csvText.split("\n").filter((l: string) => l.trim());
+
+      if (lines.length < 2) {
+        return res.status(400).json({ error: "CSV file is empty" });
+      }
+
+      // Parse headers
+      const headers = importParseCSVLine(lines[0]);
+      const dateIdx = headers.indexOf("Date");
+      const descIdx = headers.indexOf("Description");
+      const costIdx = headers.indexOf("Cost");
+      const catIdx = headers.indexOf("Category");
+
+      if (dateIdx === -1 || descIdx === -1 || costIdx === -1) {
+        return res.status(400).json({
+          error: "Invalid Splitwise CSV. Expected columns: Date, Description, Cost"
+        });
+      }
+
+      let imported = 0;
+      let skipped = 0;
+      const errors: string[] = [];
+
+      for (let i = 1; i < lines.length; i++) {
+        try {
+          const cols = importParseCSVLine(lines[i]);
+          const amount = parseFloat(cols[costIdx]);
+
+          if (isNaN(amount) || amount <= 0) {
+            skipped++;
+            continue;
+          }
+
+          const description = cols[descIdx] || "Imported expense";
+          const date = cols[dateIdx] || new Date().toISOString().split("T")[0];
+          const category = catIdx !== -1 ? cols[catIdx] || "" : "";
+
+          await db.insert(expenses).values({
+            description: category ? description + " (" + category + ")" : description,
+            amount,
+            paidById: userId,
+            splitAmongIds: [userId],
+            groupId: null,
+            date,
+            addedById: userId,
+            isSettlement: false,
+          });
+
+          imported++;
+        } catch (err) {
+          errors.push("Row " + (i + 1) + ": Failed to import");
+          skipped++;
+        }
+      }
+
+      res.json({ imported, skipped, errors });
+    } catch (err) {
+      console.error("Import error:", err);
+      res.status(500).json({ error: "Import failed" });
     }
   });
 
