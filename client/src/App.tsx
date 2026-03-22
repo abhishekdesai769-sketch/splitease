@@ -17,8 +17,9 @@ import Admin from "@/pages/admin";
 import AuthPage from "@/pages/auth";
 import ResetPassword from "@/pages/reset-password";
 import NotFound from "@/pages/not-found";
+import Import from "@/pages/import";
 import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/comhponents/ui/button";
 import { Clock, LogOut } from "lucide-react";
 
 function PendingApproval() {
@@ -90,6 +91,7 @@ function AppRouter() {
           {(params) => <GroupDetail groupId={params.id} />}
         </Route>
         <Route path="/expenses" component={Expenses} />
+          <Route path="/import" component={Import} />
         {user.isAdmin ? (
           <Route path="/admin" component={Admin} />
         ) : (
