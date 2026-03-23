@@ -127,6 +127,17 @@ export async function registerRoutes(
   const sessionPool = new Pool({ connectionString: process.env.DATABASE_URL });
   const sessionSecret = process.env.SESSION_SECRET || "spliiit-secret-" + randomBytes(16).toString("hex");
 
+  // Create session table if it doesn't exist (inline SQL — avoids missing table.sql file in prod build)
+  await sessionPool.query(`
+    CREATE TABLE IF NOT EXISTS "session" (
+      "sid" varchar NOT NULL COLLATE "default",
+      "sess" json NOT NULL,
+      "expire" timestamp(6) NOT NULL,
+      CONSTRAINT "session_pkey" PRIMARY KEY ("sid")
+    ) WITH (OIDS=FALSE);
+    CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "session" ("expire");
+  `);
+
   app.use(
     session({
       secret: sessionSecret,
@@ -135,7 +146,7 @@ export async function registerRoutes(
       store: new PgStore({
         pool: sessionPool,
         tableName: "session",
-        createTableIfMissing: true,
+        createTableIfMissing: false, // we create it above
         pruneSessionInterval: 60 * 15, // prune expired sessions every 15 min
       }),
       cookie: {
