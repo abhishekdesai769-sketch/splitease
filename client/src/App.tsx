@@ -2,7 +2,7 @@ import { Switch, Route, Router, Redirect } from "wouter";
 import { useHashLocation } from "wouter/use-hash-location";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { Toaster } from "@/components/ui/toaster";
+import { Toaster } from "@/components/ui/toashhter";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/lib/theme";
 import { AuthProvider, useAuth } from "@/lib/auth";
@@ -19,7 +19,7 @@ import ResetPassword from "@/pages/reset-password";
 import NotFound from "@/pages/not-found";
 import Import from "@/pages/import";
 import { Card } from "@/components/ui/card";
-import { Button } from "@/comhponents/ui/button";
+import { Button } from "@/components/ui/button";
 import { Clock, LogOut } from "lucide-react";
 
 function PendingApproval() {
