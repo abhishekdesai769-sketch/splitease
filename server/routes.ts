@@ -1,122 +1,19 @@
-import type { Express, Request, Response, NextFunction } from "express";
-import { createServer, type Server } from "http";
+import type { Express, Request, Response } from "express";
+import { type Server } from "http";
 import session from "express-session";
-import createMemoryStore from "memorystore";
-import multer from "multer";
+import pgSession from "connect-pg-simple";
+import { Pool } from "pg";
+import { randomBytes } from "crypto";
 import { storage } from "./storage";
-import { db } from "./db";
-import { expenses } from "@shared/schema";
-import { signupSchema, loginSchema, verifyOthpSchema, forgotPasswordSchema, resetPasswordSchema } from "@shared/schema";
-import { createHash, randomBytes, scryptSync, timingSafeEqual } from "crypto";
+import { signupSchema, loginSchema, forgotPasswordSchema, resetPasswordSchema } from "@shared/schema";
 import { notifyExpenseCreated, sendOtpEmail, sendResetPasswordEmail, sendExportEmail, sendSupportEmail, sendInviteToInviteeEmail, sendInviteToAdminEmail } from "./email";
+import {
+  upload, hashPassword, verifyPassword, needsHashUpgrade,
+  rateLimit, sanitize,
+  requireAuth, requireAdmin, requireApproved,
+  AVATAR_COLORS, ADMIN_EMAIL,
+} from "./middleware";
 
-// Multer: memory-only storage for receipt uploads (max 10MB)
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
-
-// ========== Security helpers ==========
-
-// scrypt-based password hashing (industry-standard, brute-force resistant)
-function hashPassword(password: string): string {
-  const salt = randomBytes(16).toString("hex");
-  const derived = scryptSync(password, salt, 64).toString("hex");
-  return `scrypt:${salt}:${derived}`;
-}
-
-// Verify password â supports both new scrypt hashes and legacy SHA-256 hashes
-function verifyPassword(password: string, storedHash: string): boolean {
-  if (storedHash.startsWith("scrypt:")) {
-    // New format: scrypt:<salt>:<hash>
-    const [, salt, hash] = storedHash.split(":");
-    const derived = scryptSync(password, salt, 64).toString("hex");
-    return timingSafeEqual(Buffer.from(hash, "hex"), Buffer.from(derived, "hex"));
-  }
-  // Legacy SHA-256 fallback (existing users) â constant-time comparison
-  const sha256 = createHash("sha256").update(password).digest("hex");
-  return timingSafeEqual(Buffer.from(sha256, "hex"), Buffer.from(storedHash, "hex"));
-}
-
-// Detect if a hash needs upgrading from legacy SHA-256 to scrypt
-function needsHashUpgrade(storedHash: string): boolean {
-  return !storedHash.startsWith("scrypt:");
-}
-
-// Rate limiter (in-memory, per IP)
-const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
-
-function rateLimit(windowMs: number, maxRequests: number) {
-  return (req: Request, res: Response, next: NextFunction) => {
-    const ip = req.ip || req.socket.remoteAddress || "unknown";
-    const now = Date.now();
-    const entry = rateLimitMap.get(ip);
-
-    if (!entry || now > entry.resetAt) {
-      rateLimitMap.set(ip, { count: 1, resetAt: now + windowMs });
-      return next();
-    }
-
-    entry.count++;
-    if (entry.count > maxRequests) {
-      return res.status(429).json({ error: "Too many requests. Please try again later." });
-    }
-    next();
-  };
-}
-
-// Clean up old rate limit entries periodically
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, val] of rateLimitMap) {
-    if (now > val.resetAt) rateLimitMap.delete(key);
-  }
-}, 60000);
-
-// Input sanitizer â strip HTML tags, trim, limit length
-function sanitize(input: string, maxLen = 500): string {
-  return input.replace(/<[^>]*>/g, "").trim().slice(0, maxLen);
-}
-
-// Auth middleware
-function requireAuth(req: Request, res: Response, next: NextFunction) {
-  if (!(req.session as any).userId) {
-    return res.status(401).json({ error: "Not authenticated" });
-  }
-  next();
-}
-
-// Admin middleware
-async function requireAdmin(req: Request, res: Response, next: NextFunction) {
-  const userId = (req.session as any).userId;
-  if (!userId) return res.status(401).json({ error: "Not authenticated" });
-
-  const user = await storage.getUser(userId);
-  if (!user || !user.isAdmin) {
-    return res.status(403).json({ error: "Admin access required" });
-  }
-  next();
-}
-
-// Approved user middleware â user must be approved by admin to use the app
-async function requireApproved(req: Request, res: Response, next: NextFunction) {
-  const userId = (req.session as any).userId;
-  if (!userId) return res.status(401).json({ error: "Not authenticated" });
-
-  const user = await storage.getUser(userId);
-  if (!user) return res.status(401).json({ error: "User not found" });
-
-  // Admins are always approved
-  if (!user.isApproved && !user.isAdmin) {
-    return res.status(403).json({ error: "Your account is pending approval by the administrator." });
-  }
-  next();
-}
-
-const AVATAR_COLORS = [
-  "#0d9488", "#0891b2", "#7c3aed", "#db2777", "#ea580c",
-  "#d97706", "#059669", "#4f46e5", "#be185d", "#2563eb",
-];
-
-// The first user to sign up (Abhishek) gets admin privileges
-const ADMIN_EMAIL = "abhishekdesai769@gmail.com";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -225,8 +122,9 @@ export async function registerRoutes(
 </html>`);
   });
 
-  // Session setup with stronger config
-  const MemoryStore = createMemoryStore(session);
+  // Session setup — PostgreSQL-backed so sessions survive deploys
+  const PgStore = pgSession(session);
+  const sessionPool = new Pool({ connectionString: process.env.DATABASE_URL });
   const sessionSecret = process.env.SESSION_SECRET || "spliiit-secret-" + randomBytes(16).toString("hex");
 
   app.use(
@@ -234,7 +132,12 @@ export async function registerRoutes(
       secret: sessionSecret,
       resave: false,
       saveUninitialized: false,
-      store: new MemoryStore({ checkPeriod: 86400000 }),
+      store: new PgStore({
+        pool: sessionPool,
+        tableName: "session",
+        createTableIfMissing: true,
+        pruneSessionInterval: 60 * 15, // prune expired sessions every 15 min
+      }),
       cookie: {
         secure: process.env.NODE_ENV === "production", // HTTPS-only in prod (Render terminates TLS at proxy)
         httpOnly: true, // prevents JS access to cookie
@@ -1244,6 +1147,19 @@ export async function registerRoutes(
       return res.status(403).json({ error: "Not a member" });
     }
     const members = await storage.getUsersSafe(group.memberIds);
+    res.json(members);
+  });
+
+  // Batch: all unique members across all user's groups (avoids N+1 on dashboard)
+  app.get("/api/members/all", requireAuth, requireApproved, async (req, res) => {
+    const userId = (req.session as any).userId;
+    const userGroups = await storage.getGroupsForUser(userId);
+    const memberIdSet = new Set<string>();
+    for (const g of userGroups) {
+      g.memberIds.forEach((id: string) => memberIdSet.add(id));
+    }
+    if (memberIdSet.size === 0) return res.json([]);
+    const members = await storage.getUsersSafe(Array.from(memberIdSet));
     res.json(members);
   });
 

@@ -1,4 +1,4 @@
-import { pgTable, text, varchar, real, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, real, boolean, uniqueIndex, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { sql } from "drizzle-orm";
@@ -13,7 +13,9 @@ export const users = pgTable("users", {
   isAdmin: boolean("is_admin").notNull().default(false),
   isApproved: boolean("is_approved").notNull().default(false), // admin must approve new users
   isEmailVerified: boolean("is_email_verified").notNull().default(false),
-});
+}, (table) => [
+  uniqueIndex("users_email_idx").on(table.email),
+]);
 
 // OTP codes for email verification
 export const otpCodes = pgTable("otp_codes", {
@@ -45,7 +47,10 @@ export const friends = pgTable("friends", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull(),
   friendId: varchar("friend_id").notNull(),
-});
+}, (table) => [
+  index("friends_user_id_idx").on(table.userId),
+  index("friends_friend_id_idx").on(table.friendId),
+]);
 
 export const insertFriendSchema = createInsertSchema(friends).omit({ id: true });
 export type InsertFriend = z.infer<typeof insertFriendSchema>;
@@ -59,7 +64,10 @@ export const groups = pgTable("groups", {
   memberIds: text("member_ids").array().notNull(), // array of user IDs
   adminIds: text("admin_ids").array().notNull().default(sql`'{}'`), // array of admin user IDs
   deletedAt: text("deleted_at").default(sql`NULL`),
-});
+}, (table) => [
+  index("groups_created_by_idx").on(table.createdById),
+  index("groups_deleted_at_idx").on(table.deletedAt),
+]);
 
 export const insertGroupSchema = createInsertSchema(groups).omit({ id: true });
 export type InsertGroup = z.infer<typeof insertGroupSchema>;
@@ -77,7 +85,12 @@ export const expenses = pgTable("expenses", {
   addedById: varchar("added_by_id").notNull(), // who added this expense
   isSettlement: boolean("is_settlement").notNull().default(false), // settle up entry
   deletedAt: text("deleted_at").default(sql`NULL`),
-});
+}, (table) => [
+  index("expenses_group_id_idx").on(table.groupId),
+  index("expenses_paid_by_idx").on(table.paidById),
+  index("expenses_added_by_idx").on(table.addedById),
+  index("expenses_deleted_at_idx").on(table.deletedAt),
+]);
 
 export const insertExpenseSchema = createInsertSchema(expenses).omit({ id: true });
 export type InsertExpense = z.infer<typeof insertExpenseSchema>;
@@ -94,7 +107,11 @@ export const groupInvites = pgTable("group_invites", {
   inviteeAccepted: boolean("invitee_accepted"),
   status: varchar("status").notNull().default("pending"), // pending, completed, rejected
   createdAt: text("created_at").notNull(),
-});
+}, (table) => [
+  index("group_invites_group_id_idx").on(table.groupId),
+  index("group_invites_invitee_id_idx").on(table.inviteeId),
+  index("group_invites_status_idx").on(table.status),
+]);
 
 export const insertGroupInviteSchema = createInsertSchema(groupInvites).omit({ id: true });
 export type InsertGroupInvite = z.infer<typeof insertGroupInviteSchema>;

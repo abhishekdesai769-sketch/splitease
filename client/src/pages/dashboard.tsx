@@ -93,34 +93,24 @@ export default function Dashboard() {
     (s) => s.from === user?.id || s.to === user?.id
   );
 
-  // Collect all unique member IDs for name lookup
-  const { data: allMembersData } = useQuery<SafeUser[]>({
-    queryKey: ["/api/groups/all-members"],
-    queryFn: async () => {
-      const allMembers: SafeUser[] = [];
-      const API_BASE = "__PORT_5000__".startsWith("__") ? "" : "__PORT_5000__";
-      for (const g of groups) {
-        try {
-          const res = await fetch(`${API_BASE}/api/groups/${g.id}/members`, { credentials: "include" });
-          if (res.ok) {
-            const members = await res.json();
-            allMembers.push(...members);
-          }
-        } catch {}
-      }
-      // Also include friends for direct expense name lookups
-      allMembers.push(...friendsList);
-      const seen = new Set<string>();
-      return allMembers.filter((m) => {
-        if (seen.has(m.id)) return false;
-        seen.add(m.id);
-        return true;
-      });
-    },
-    enabled: groups.length > 0 || friendsList.length > 0,
+  // Batch-fetch all group members in one request (avoids N+1)
+  const { data: groupMembersData } = useQuery<SafeUser[]>({
+    queryKey: ["/api/members/all"],
+    enabled: groups.length > 0,
   });
 
-  const allMembers = allMembersData || [];
+  // Combine group members + friends for name lookups, dedup by id
+  const allMembersData = (() => {
+    const combined = [...(groupMembersData || []), ...friendsList];
+    const seen = new Set<string>();
+    return combined.filter((m) => {
+      if (seen.has(m.id)) return false;
+      seen.add(m.id);
+      return true;
+    });
+  })();
+
+  const allMembers = allMembersData;
   const getPersonName = (id: string) => {
     if (id === user?.id) return "You";
     return allMembers.find((m) => m.id === id)?.name || "Someone";
