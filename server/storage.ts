@@ -1,4 +1,4 @@
-import { eq, and, or, ilike, inArray, ne, isNull, isNotNull, lt, sql } from "drizzle-orm";
+import { eq, and, or, ilike, inArray, ne, isNull, isNotNull, lt } from "drizzle-orm";
 import { db } from "./db";
 import {
   users, friends, groups, expenses, otpCodes, resetTokens, groupInvites,
@@ -136,11 +136,12 @@ export class PgStorage implements IStorage {
     // 4. Delete expenses the user created
     await db.delete(expenses).where(eq(expenses.addedById, id));
 
-    // 5. Remove user from groups they belong to (query only relevant groups)
-    const userGroups = await db.select().from(groups).where(
-      or(arrayContains(groups.memberIds, [id]), sql`${groups.adminIds} @> ARRAY[${id}]::text[]`)
-    );
-    for (const group of userGroups) {
+    // 5. Remove user from all groups (memberIds + adminIds arrays)
+    const allGroups = await db.select().from(groups);
+    for (const group of allGroups) {
+      const isMember = group.memberIds.includes(id);
+      const isAdmin = (group.adminIds || []).includes(id);
+      if (!isMember && !isAdmin) continue;
       const newMembers = group.memberIds.filter(mid => mid !== id);
       const newAdmins = (group.adminIds || []).filter(aid => aid !== id);
 
@@ -234,9 +235,8 @@ export class PgStorage implements IStorage {
 
   // Groups
   async getGroupsForUser(userId: string): Promise<Group[]> {
-    return db.select().from(groups).where(
-      and(isNull(groups.deletedAt), sql`${groups.memberIds} @> ARRAY[${userId}]::text[]`)
-    );
+    const allGroups = await db.select().from(groups).where(isNull(groups.deletedAt));
+    return allGroups.filter(g => g.memberIds.includes(userId));
   }
 
   async getGroup(id: string): Promise<Group | undefined> {
@@ -308,36 +308,18 @@ export class PgStorage implements IStorage {
     const userGroups = await this.getGroupsForUser(userId);
     const groupIds = userGroups.map(g => g.id);
 
-    // Build conditions: group expenses OR direct expenses involving this user
-    const conditions = [];
-    if (groupIds.length > 0) {
-      conditions.push(inArray(expenses.groupId, groupIds));
-    }
-    conditions.push(
-      and(
-        isNull(expenses.groupId),
-        or(
-          eq(expenses.paidById, userId),
-          sql`${expenses.splitAmongIds} @> ARRAY[${userId}]::text[]`
-        )
-      )
-    );
-
-    return db.select().from(expenses).where(
-      and(isNull(expenses.deletedAt), or(...conditions))
-    );
+    const allExpenses = await db.select().from(expenses).where(isNull(expenses.deletedAt));
+    return allExpenses.filter(e => {
+      if (e.groupId && groupIds.includes(e.groupId)) return true;
+      if (!e.groupId && (e.paidById === userId || e.splitAmongIds.includes(userId))) return true;
+      return false;
+    });
   }
 
   async getDirectExpensesForUser(userId: string): Promise<Expense[]> {
-    return db.select().from(expenses).where(
-      and(
-        isNull(expenses.deletedAt),
-        isNull(expenses.groupId),
-        or(
-          eq(expenses.paidById, userId),
-          sql`${expenses.splitAmongIds} @> ARRAY[${userId}]::text[]`
-        )
-      )
+    const all = await db.select().from(expenses).where(isNull(expenses.deletedAt));
+    return all.filter(e =>
+      !e.groupId && (e.paidById === userId || e.splitAmongIds.includes(userId))
     );
   }
 
