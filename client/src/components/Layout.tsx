@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { UsersRound, Receipt, LayoutDashboard, Users2, Sun, Moon, LogOut, Shield } from "lucide-react";
+import { UsersRound, Receipt, LayoutDashboard, Users2, Sun, Moon, LogOut, Shield, Upload } from "lucide-react";
 import { useTheme } from "@/lib/theme";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
@@ -29,6 +29,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { path: "/friends", icon: Users2, label: "Friends" },
     { path: "/groups", icon: UsersRound, label: "Groups" },
     { path: "/expenses", icon: Receipt, label: "Expenses" },
+    { path: "/import", icon: Upload, label: "Import" },
     ...(user?.isAdmin ? [{ path: "/admin", icon: Shield, label: "Admin" }] : []),
   ];
 
