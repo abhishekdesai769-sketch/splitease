@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  Shield, UserCheck, UserX, Trash2, RotateCcw, FolderX, ReceiptText,
+  Shield, Trash2, RotateCcw, FolderX, ReceiptText,
   Search, Clock, AlertTriangle
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -118,34 +118,6 @@ export default function Admin() {
     },
   });
 
-  const approveMutation = useMutation({
-    mutationFn: async (userId: string) => {
-      const res = await apiRequest("PATCH", `/api/admin/users/${userId}/approve`);
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
-      toast({ title: "User approved" });
-    },
-    onError: (err: Error) => {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
-    },
-  });
-
-  const revokeMutation = useMutation({
-    mutationFn: async (userId: string) => {
-      const res = await apiRequest("PATCH", `/api/admin/users/${userId}/revoke`);
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
-      toast({ title: "Access revoked" });
-    },
-    onError: (err: Error) => {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
-    },
-  });
-
   const deleteMutation = useMutation({
     mutationFn: async (userId: string) => {
       await apiRequest("DELETE", `/api/admin/users/${userId}`);
@@ -159,8 +131,7 @@ export default function Admin() {
     },
   });
 
-  const pendingUsers = allUsers.filter((u) => !u.isApproved && !u.isAdmin);
-  const approvedUsers = allUsers.filter((u) => u.isApproved || u.isAdmin);
+  const approvedUsers = allUsers;
 
   // Filter deleted items by search query
   const q = searchQuery.toLowerCase().trim();
@@ -207,59 +178,6 @@ export default function Admin() {
         </p>
       </div>
 
-      {/* Pending Approvals */}
-      <div>
-        <h2 className="text-sm font-medium text-muted-foreground mb-2">
-          Pending Approval ({pendingUsers.length})
-        </h2>
-        {pendingUsers.length > 0 ? (
-          <div className="space-y-2">
-            {pendingUsers.map((u) => (
-              <Card
-                key={u.id}
-                className="p-3 flex items-center gap-3 border-amber-500/30 bg-amber-500/5"
-                data-testid={`pending-user-${u.id}`}
-              >
-                <div
-                  className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-semibold shrink-0"
-                  style={{ backgroundColor: u.avatarColor }}
-                >
-                  {u.name[0]?.toUpperCase()}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{u.name}</p>
-                  <p className="text-xs text-muted-foreground truncate">{u.email}</p>
-                </div>
-                <Button
-                  size="sm"
-                  onClick={() => approveMutation.mutate(u.id)}
-                  disabled={approveMutation.isPending}
-                  data-testid={`approve-${u.id}`}
-                >
-                  <UserCheck className="w-4 h-4 mr-1" />
-                  Approve
-                </Button>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  onClick={() => {
-                    if (confirm(`Delete ${u.name}? This cannot be undone.`)) {
-                      deleteMutation.mutate(u.id);
-                    }
-                  }}
-                  data-testid={`delete-pending-${u.id}`}
-                >
-                  <Trash2 className="w-4 h-4 text-destructive" />
-                </Button>
-              </Card>
-            ))}
-          </div>
-        ) : (
-          <Card className="p-4 text-center">
-            <p className="text-sm text-muted-foreground">No pending requests</p>
-          </Card>
-        )}
-      </div>
 
       {/* Approved Users */}
       <div>
@@ -293,16 +211,6 @@ export default function Admin() {
               </div>
               {u.id !== user?.id && !u.isAdmin && (
                 <div className="flex items-center gap-1">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => revokeMutation.mutate(u.id)}
-                    disabled={revokeMutation.isPending}
-                    data-testid={`revoke-${u.id}`}
-                  >
-                    <UserX className="w-3.5 h-3.5 mr-1" />
-                    Revoke
-                  </Button>
                   <Button
                     size="icon"
                     variant="ghost"

@@ -10,7 +10,7 @@ import { notifyExpenseCreated, sendOtpEmail, sendResetPasswordEmail, sendExportE
 import {
   upload, hashPassword, verifyPassword, needsHashUpgrade,
   rateLimit, sanitize,
-  requireAuth, requireAdmin, requireApproved,
+  requireAuth, requireAdmin,
   AVATAR_COLORS, ADMIN_EMAIL,
 } from "./middleware";
 
@@ -199,7 +199,7 @@ export async function registerRoutes(
 
     // Check if this is the admin email
     const isAdmin = cleanEmail === ADMIN_EMAIL;
-    const isApproved = isAdmin; // Admin is auto-approved, everyone else needs approval
+    const isApproved = true; // All users auto-approved on signup
 
     const user = await storage.createUser({
       name: cleanName,
@@ -310,7 +310,7 @@ export async function registerRoutes(
   });
 
   // ========== Users (search) â requires approved ==========
-  app.get("/api/users/search", requireAuth, requireApproved, async (req, res) => {
+  app.get("/api/users/search", requireAuth, async (req, res) => {
     const email = sanitize((req.query.email as string) || "", 255);
     const userId = (req.session as any).userId;
     if (email.length < 2) return res.json([]);
@@ -416,13 +416,13 @@ export async function registerRoutes(
   });
 
   // ========== Friends â requires approved ==========
-  app.get("/api/friends", requireAuth, requireApproved, async (req, res) => {
+  app.get("/api/friends", requireAuth, async (req, res) => {
     const userId = (req.session as any).userId;
     const friendsList = await storage.getFriends(userId);
     res.json(friendsList);
   });
 
-  app.post("/api/friends", requireAuth, requireApproved, async (req, res) => {
+  app.post("/api/friends", requireAuth, async (req, res) => {
     const userId = (req.session as any).userId;
     const email = sanitize((req.body.email || "").toLowerCase(), 255);
 
@@ -447,20 +447,20 @@ export async function registerRoutes(
     res.status(201).json(safeFriend);
   });
 
-  app.delete("/api/friends/:friendId", requireAuth, requireApproved, async (req, res) => {
+  app.delete("/api/friends/:friendId", requireAuth, async (req, res) => {
     const userId = (req.session as any).userId;
     await storage.removeFriend(userId, req.params.friendId);
     res.status(204).send();
   });
 
   // Direct expenses between friends (no group)
-  app.get("/api/friends/expenses", requireAuth, requireApproved, async (req, res) => {
+  app.get("/api/friends/expenses", requireAuth, async (req, res) => {
     const userId = (req.session as any).userId;
     const directExpenses = await storage.getDirectExpensesForUser(userId);
     res.json(directExpenses);
   });
 
-  app.post("/api/friends/expenses", requireAuth, requireApproved, upload.single("receipt"), async (req, res) => {
+  app.post("/api/friends/expenses", requireAuth, upload.single("receipt"), async (req, res) => {
     const userId = (req.session as any).userId;
     const { description, amount, paidById, date, isSettlement } = req.body;
     // splitAmongIds comes as JSON string from FormData
@@ -514,7 +514,7 @@ export async function registerRoutes(
   });
 
   // ========== Settle Up ==========
-  app.post("/api/settle-up", requireAuth, requireApproved, async (req, res) => {
+  app.post("/api/settle-up", requireAuth, async (req, res) => {
     const userId = (req.session as any).userId;
     const { friendId, amount, groupId } = req.body;
 
@@ -560,13 +560,13 @@ export async function registerRoutes(
   });
 
   // ========== Groups â requires approved ==========
-  app.get("/api/groups", requireAuth, requireApproved, async (req, res) => {
+  app.get("/api/groups", requireAuth, async (req, res) => {
     const userId = (req.session as any).userId;
     const groupsList = await storage.getGroupsForUser(userId);
     res.json(groupsList);
   });
 
-  app.get("/api/groups/:id", requireAuth, requireApproved, async (req, res) => {
+  app.get("/api/groups/:id", requireAuth, async (req, res) => {
     const userId = (req.session as any).userId;
     const group = await storage.getGroup(req.params.id);
     if (!group) return res.status(404).json({ error: "Not found" });
@@ -576,7 +576,7 @@ export async function registerRoutes(
     res.json(group);
   });
 
-  app.post("/api/groups", requireAuth, requireApproved, async (req, res) => {
+  app.post("/api/groups", requireAuth, async (req, res) => {
     const userId = (req.session as any).userId;
     const { name, memberIds } = req.body;
 
@@ -611,7 +611,7 @@ export async function registerRoutes(
   }
 
   // POST /api/groups/:id/promote/:memberId â owner or global admin only
-  app.post("/api/groups/:id/promote/:memberId", requireAuth, requireApproved, async (req, res) => {
+  app.post("/api/groups/:id/promote/:memberId", requireAuth, async (req, res) => {
     const userId = (req.session as any).userId;
     const user = await storage.getUser(userId);
     if (!user) return res.status(401).json({ error: "User not found" });
@@ -643,7 +643,7 @@ export async function registerRoutes(
   });
 
   // POST /api/groups/:id/demote/:memberId â owner or global admin only
-  app.post("/api/groups/:id/demote/:memberId", requireAuth, requireApproved, async (req, res) => {
+  app.post("/api/groups/:id/demote/:memberId", requireAuth, async (req, res) => {
     const userId = (req.session as any).userId;
     const user = await storage.getUser(userId);
     if (!user) return res.status(401).json({ error: "User not found" });
@@ -673,7 +673,7 @@ export async function registerRoutes(
   });
 
   // POST /api/groups/:id/leave â any member can leave
-  app.post("/api/groups/:id/leave", requireAuth, requireApproved, async (req, res) => {
+  app.post("/api/groups/:id/leave", requireAuth, async (req, res) => {
     const userId = (req.session as any).userId;
     const user = await storage.getUser(userId);
     if (!user) return res.status(401).json({ error: "User not found" });
@@ -722,7 +722,7 @@ export async function registerRoutes(
   });
 
   // POST /api/groups/:id/invite â Create invite (replaces direct add)
-  app.post("/api/groups/:id/invite", requireAuth, requireApproved, async (req, res) => {
+  app.post("/api/groups/:id/invite", requireAuth, async (req, res) => {
     const userId = (req.session as any).userId;
     const inviter = await storage.getUser(userId);
     if (!inviter) return res.status(401).json({ error: "User not found" });
@@ -817,7 +817,7 @@ export async function registerRoutes(
   });
 
   // GET /api/groups/:id/invites â Get pending invites for group
-  app.get("/api/groups/:id/invites", requireAuth, requireApproved, async (req, res) => {
+  app.get("/api/groups/:id/invites", requireAuth, async (req, res) => {
     const userId = (req.session as any).userId;
     const group = await storage.getGroup(req.params.id);
     if (!group) return res.status(404).json({ error: "Group not found" });
@@ -846,7 +846,7 @@ export async function registerRoutes(
   });
 
   // GET /api/invites/incoming â Get incoming invites for current user
-  app.get("/api/invites/incoming", requireAuth, requireApproved, async (req, res) => {
+  app.get("/api/invites/incoming", requireAuth, async (req, res) => {
     const userId = (req.session as any).userId;
     const invites = await storage.getPendingInvitesForUser(userId);
 
@@ -866,7 +866,7 @@ export async function registerRoutes(
   });
 
   // POST /api/invites/:id/admin-approve
-  app.post("/api/invites/:id/admin-approve", requireAuth, requireApproved, async (req, res) => {
+  app.post("/api/invites/:id/admin-approve", requireAuth, async (req, res) => {
     const userId = (req.session as any).userId;
     const user = await storage.getUser(userId);
     if (!user) return res.status(401).json({ error: "User not found" });
@@ -903,7 +903,7 @@ export async function registerRoutes(
   });
 
   // POST /api/invites/:id/admin-reject
-  app.post("/api/invites/:id/admin-reject", requireAuth, requireApproved, async (req, res) => {
+  app.post("/api/invites/:id/admin-reject", requireAuth, async (req, res) => {
     const userId = (req.session as any).userId;
     const user = await storage.getUser(userId);
     if (!user) return res.status(401).json({ error: "User not found" });
@@ -929,7 +929,7 @@ export async function registerRoutes(
   });
 
   // POST /api/invites/:id/accept
-  app.post("/api/invites/:id/accept", requireAuth, requireApproved, async (req, res) => {
+  app.post("/api/invites/:id/accept", requireAuth, async (req, res) => {
     const userId = (req.session as any).userId;
 
     const invite = await storage.getGroupInvite(req.params.id);
@@ -953,7 +953,7 @@ export async function registerRoutes(
   });
 
   // POST /api/invites/:id/decline
-  app.post("/api/invites/:id/decline", requireAuth, requireApproved, async (req, res) => {
+  app.post("/api/invites/:id/decline", requireAuth, async (req, res) => {
     const userId = (req.session as any).userId;
 
     const invite = await storage.getGroupInvite(req.params.id);
@@ -965,7 +965,7 @@ export async function registerRoutes(
     res.json(updated);
   });
 
-  app.delete("/api/groups/:id/members/:memberId", requireAuth, requireApproved, async (req, res) => {
+  app.delete("/api/groups/:id/members/:memberId", requireAuth, async (req, res) => {
     const userId = (req.session as any).userId;
     const user = await storage.getUser(userId);
     if (!user) return res.status(401).json({ error: "User not found" });
@@ -1014,7 +1014,7 @@ export async function registerRoutes(
     res.json(updated);
   });
 
-  app.delete("/api/groups/:id", requireAuth, requireApproved, async (req, res) => {
+  app.delete("/api/groups/:id", requireAuth, async (req, res) => {
     const userId = (req.session as any).userId;
     const user = await storage.getUser(userId);
     if (!user) return res.status(401).json({ error: "User not found" });
@@ -1036,13 +1036,13 @@ export async function registerRoutes(
   });
 
   // ========== Expenses â requires approved ==========
-  app.get("/api/expenses", requireAuth, requireApproved, async (req, res) => {
+  app.get("/api/expenses", requireAuth, async (req, res) => {
     const userId = (req.session as any).userId;
     const expensesList = await storage.getExpensesForUser(userId);
     res.json(expensesList);
   });
 
-  app.get("/api/expenses/group/:groupId", requireAuth, requireApproved, async (req, res) => {
+  app.get("/api/expenses/group/:groupId", requireAuth, async (req, res) => {
     const userId = (req.session as any).userId;
     const group = await storage.getGroup(req.params.groupId);
     if (!group || !group.memberIds.includes(userId)) {
@@ -1052,7 +1052,7 @@ export async function registerRoutes(
     res.json(expensesList);
   });
 
-  app.post("/api/expenses", requireAuth, requireApproved, upload.single("receipt"), async (req, res) => {
+  app.post("/api/expenses", requireAuth, upload.single("receipt"), async (req, res) => {
     const userId = (req.session as any).userId;
     const { description, amount, paidById, groupId, date, isSettlement } = req.body;
     // splitAmongIds comes as JSON string from FormData
@@ -1119,7 +1119,7 @@ export async function registerRoutes(
     } catch (e) { /* ignore email errors */ }
   });
 
-  app.delete("/api/expenses/:id", requireAuth, requireApproved, async (req, res) => {
+  app.delete("/api/expenses/:id", requireAuth, async (req, res) => {
     const userId = (req.session as any).userId;
     const user = await storage.getUser(userId);
     if (!user) return res.status(401).json({ error: "User not found" });
@@ -1139,7 +1139,7 @@ export async function registerRoutes(
   });
 
   // ========== Members info for a group ==========
-  app.get("/api/groups/:id/members", requireAuth, requireApproved, async (req, res) => {
+  app.get("/api/groups/:id/members", requireAuth, async (req, res) => {
     const userId = (req.session as any).userId;
     const group = await storage.getGroup(req.params.id);
     if (!group) return res.status(404).json({ error: "Not found" });
@@ -1151,7 +1151,7 @@ export async function registerRoutes(
   });
 
   // Batch: all unique members across all user's groups (avoids N+1 on dashboard)
-  app.get("/api/members/all", requireAuth, requireApproved, async (req, res) => {
+  app.get("/api/members/all", requireAuth, async (req, res) => {
     const userId = (req.session as any).userId;
     const userGroups = await storage.getGroupsForUser(userId);
     const memberIdSet = new Set<string>();
@@ -1164,7 +1164,7 @@ export async function registerRoutes(
   });
 
   // ========== Data Export (emailed as CSV) ==========
-  app.post("/api/export/expenses", requireAuth, requireApproved, async (req, res) => {
+  app.post("/api/export/expenses", requireAuth, async (req, res) => {
     const userId = (req.session as any).userId;
     const user = await storage.getUser(userId);
     if (!user) return res.status(401).json({ error: "User not found" });

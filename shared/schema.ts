@@ -11,7 +11,7 @@ export const users = pgTable("users", {
   password: text("password").notNull(), // hashed
   avatarColor: text("avatar_color").notNull(),
   isAdmin: boolean("is_admin").notNull().default(false),
-  isApproved: boolean("is_approved").notNull().default(false), // admin must approve new users
+  isApproved: boolean("is_approved").notNull().default(true), // auto-approved on signup
   isEmailVerified: boolean("is_email_verified").notNull().default(false),
 }, (table) => [
   uniqueIndex("users_email_idx").on(table.email),

@@ -86,19 +86,6 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
   next();
 }
 
-export async function requireApproved(req: Request, res: Response, next: NextFunction) {
-  const userId = (req.session as any).userId;
-  if (!userId) return res.status(401).json({ error: "Not authenticated" });
-
-  const user = await storage.getUser(userId);
-  if (!user) return res.status(401).json({ error: "User not found" });
-
-  if (!user.isApproved && !user.isAdmin) {
-    return res.status(403).json({ error: "Your account is pending approval by the administrator." });
-  }
-  next();
-}
-
 // ========== Constants ==========
 
 export const AVATAR_COLORS = [

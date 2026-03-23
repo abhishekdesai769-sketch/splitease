@@ -18,34 +18,6 @@ import AuthPage from "@/pages/auth";
 import ResetPassword from "@/pages/reset-password";
 import NotFound from "@/pages/not-found";
 import Import from "@/pages/import";
-import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Clock, LogOut } from "lucide-react";
-
-function PendingApproval() {
-  const { user, logout } = useAuth();
-  return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
-      <Card className="max-w-sm w-full p-8 text-center">
-        <div className="w-14 h-14 rounded-full bg-amber-500/15 flex items-center justify-center mx-auto mb-4">
-          <Clock className="w-7 h-7 text-amber-500" />
-        </div>
-        <h2 className="text-lg font-semibold mb-2">Account Pending Approval</h2>
-        <p className="text-sm text-muted-foreground mb-1">
-          Welcome, {user?.name}. Your account is waiting for the administrator to approve access.
-        </p>
-        <p className="text-xs text-muted-foreground mb-6">
-          Please contact the admin to get your account approved.
-        </p>
-        <Button variant="outline" className="w-full" onClick={logout}>
-          <LogOut className="w-4 h-4 mr-1.5" />
-          Sign Out
-        </Button>
-      </Card>
-    </div>
-  );
-}
-
 function AppRouter() {
   const { user, isLoading } = useAuth();
 
@@ -71,11 +43,6 @@ function AppRouter() {
       return <ResetPassword />;
     }
     return <AuthPage />;
-  }
-
-  // Show pending state for non-approved, non-admin users
-  if (!user.isApproved && !user.isAdmin) {
-    return <PendingApproval />;
   }
 
   return (
