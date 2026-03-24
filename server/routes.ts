@@ -537,8 +537,18 @@ export async function registerRoutes(
       }
     } catch (e) { /* ignore email errors */ }
 
-    // AI receipt scanning (fire-and-forget, only when feature flag is ON)
-    if (RECEIPT_SCANNING_ENABLED && receiptFile?.buffer) {
+    // Receipt data: client-side (free tier Tesseract) or server-side (premium Haiku)
+    const clientReceiptData = req.body.receiptData;
+    if (clientReceiptData) {
+      // Free tier: client already parsed and confirmed — save directly
+      try {
+        const parsed = typeof clientReceiptData === "string" ? JSON.parse(clientReceiptData) : clientReceiptData;
+        if (parsed.items && Array.isArray(parsed.items)) {
+          storage.updateExpenseReceiptData(expense.id, JSON.stringify(parsed));
+        }
+      } catch { /* ignore invalid JSON */ }
+    } else if (RECEIPT_SCANNING_ENABLED && receiptFile?.buffer) {
+      // Premium tier: AI receipt scanning (fire-and-forget)
       parseReceipt(receiptFile.buffer, receiptFile.mimetype || "image/jpeg")
         .then((data) => {
           if (data) {
@@ -1154,8 +1164,16 @@ export async function registerRoutes(
       }
     } catch (e) { /* ignore email errors */ }
 
-    // AI receipt scanning (fire-and-forget, only when feature flag is ON)
-    if (RECEIPT_SCANNING_ENABLED && receiptFile?.buffer) {
+    // Receipt data: client-side (free tier Tesseract) or server-side (premium Haiku)
+    const clientReceiptData = req.body.receiptData;
+    if (clientReceiptData) {
+      try {
+        const parsed = typeof clientReceiptData === "string" ? JSON.parse(clientReceiptData) : clientReceiptData;
+        if (parsed.items && Array.isArray(parsed.items)) {
+          storage.updateExpenseReceiptData(expense.id, JSON.stringify(parsed));
+        }
+      } catch { /* ignore invalid JSON */ }
+    } else if (RECEIPT_SCANNING_ENABLED && receiptFile?.buffer) {
       parseReceipt(receiptFile.buffer, receiptFile.mimetype || "image/jpeg")
         .then((data) => {
           if (data) {
