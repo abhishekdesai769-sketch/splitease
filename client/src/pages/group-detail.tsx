@@ -723,6 +723,9 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                     <Button type="button" size="sm" variant="outline" className="w-full h-8 text-xs justify-start"
                       onClick={() => setReceiptConfirmStep("edit")}
                     ><FileText className="w-3 h-3 mr-2" />Edit extracted text manually</Button>
+                    <Button type="button" size="sm" variant="outline" className="w-full h-8 text-xs justify-start"
+                      onClick={() => { setReceiptPreview(null); setReceiptConfirmStep(null); }}
+                    ><Camera className="w-3 h-3 mr-2" />Just attach the photo</Button>
                     <div className="rounded-md bg-amber-500/10 border border-amber-500/20 p-2">
                       <p className="text-xs text-amber-600">
                         <strong>Premium</strong> — Get 95%+ accuracy with AI-powered scanning. Coming soon!
