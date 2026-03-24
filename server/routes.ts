@@ -1087,6 +1087,29 @@ export async function registerRoutes(
     res.json(updated);
   });
 
+  // Toggle simplify debts — owner, group admin, or global admin only
+  app.patch("/api/groups/:id/simplify-debts", requireAuth, async (req, res) => {
+    const userId = (req.session as any).userId;
+    const user = await storage.getUser(userId);
+    if (!user) return res.status(401).json({ error: "User not found" });
+
+    const group = await storage.getGroup(req.params.id);
+    if (!group) return res.status(404).json({ error: "Group not found" });
+
+    const adminIds = group.adminIds || [];
+    const isOwner = group.createdById === userId;
+    const isGroupAdmin = adminIds.includes(userId);
+    const isGlobalAdmin = user.isAdmin;
+
+    if (!isOwner && !isGroupAdmin && !isGlobalAdmin) {
+      return res.status(403).json({ error: "Only the group owner or an admin can change this setting" });
+    }
+
+    const simplifyDebts = !!req.body.simplifyDebts;
+    const updated = await storage.updateGroupSimplifyDebts(group.id, simplifyDebts);
+    res.json(updated);
+  });
+
   app.delete("/api/groups/:id", requireAuth, async (req, res) => {
     const userId = (req.session as any).userId;
     const user = await storage.getUser(userId);
@@ -1593,6 +1616,21 @@ export async function registerRoutes(
           const splitAmongIds = personValues.map(pv => pv.userId);
           const desc = category && !isSettlement ? `${description} (${category})` : description;
 
+          // Build per-person split amounts from CSV values
+          // CSV: negative = owes, positive = is owed (payer)
+          // We store: how much each person's share is (what they owe for this expense)
+          const splitAmounts: Record<string, number> = {};
+          for (const pv of personValues) {
+            if (pv.userId === payer.userId) {
+              // Payer's own share = total cost - what they're owed
+              // e.g., cost=307.45, payer value=+245.96 → payer's share = 307.45 - 245.96 = 61.49
+              splitAmounts[pv.userId] = Math.round((Math.abs(cost) - payer.value) * 100) / 100;
+            } else {
+              // Others: their share = absolute value of their negative CSV value
+              splitAmounts[pv.userId] = Math.round(Math.abs(pv.value) * 100) / 100;
+            }
+          }
+
           // Dedup: skip if an expense with same date + amount + description already exists in this group
           if (existingExpenses.length > 0) {
             const isDuplicate = existingExpenses.some(e =>
@@ -1615,6 +1653,7 @@ export async function registerRoutes(
             date,
             addedById: userId,
             isSettlement,
+            splitAmounts: JSON.stringify(splitAmounts),
           });
 
           imported++;

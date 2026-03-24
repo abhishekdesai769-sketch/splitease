@@ -13,7 +13,7 @@ import { Plus, ArrowLeft, Trash2, Shuffle, Receipt, UserPlus, X, HandCoins, Chec
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
-import { calculateGroupBalances, simplifyDebts } from "@/lib/simplify";
+import { calculateGroupBalances, simplifyDebts, calculatePairwiseBalances } from "@/lib/simplify";
 import { ocrReceipt, parseReceiptText, type ReceiptData as ParsedReceiptData } from "@/lib/receipt-ocr";
 
 export default function GroupDetail({ groupId }: { groupId: string }) {
@@ -21,7 +21,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
   const { toast } = useToast();
   const [addOpen, setAddOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
-  const [showSimplified, setShowSimplified] = useState(false);
+  // simplifyDebts is now a persistent group setting, read from group?.simplifyDebts
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
   const [paidById, setPaidById] = useState("");
@@ -433,7 +433,16 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
 
   // Balance calculations
   const balances = calculateGroupBalances(expenses);
-  const settlements = simplifyDebts(balances);
+  const simplifiedSettlements = simplifyDebts(balances);
+  const pairwiseSettlements = calculatePairwiseBalances(expenses);
+
+  // Personal view: only settlements involving the current user
+  const myPairwise = pairwiseSettlements.filter(
+    s => s.from === user?.id || s.to === user?.id
+  );
+  const mySimplified = simplifiedSettlements.filter(
+    s => s.from === user?.id || s.to === user?.id
+  );
   const getPersonName = (id: string) => {
     if (id === user?.id) return "You";
     return members.find((m) => m.id === id)?.name || "Someone";
@@ -1030,20 +1039,29 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
         </Button>
       )}
 
-      {/* Settle Up + Simplify Debts */}
+      {/* Your Balances + Settle Up + Simplify Toggle */}
       {expenses.length > 0 && (
         <div>
           <div className="flex gap-2 mb-3">
-            <Button
-              variant="secondary"
-              size="sm"
-              className="flex-1"
-              onClick={() => setShowSimplified(!showSimplified)}
-              data-testid="simplify-debts-btn"
-            >
-              <Shuffle className="w-4 h-4 mr-1.5" />
-              {showSimplified ? "Hide Simplified" : "Simplify Debts"}
-            </Button>
+            {(isMeOwner || isMeAdmin || isMeGlobalAdmin) && (
+              <Button
+                variant={group.simplifyDebts ? "default" : "secondary"}
+                size="sm"
+                className="flex-1"
+                onClick={async () => {
+                  try {
+                    await apiRequest("PATCH", `/api/groups/${groupId}/simplify-debts`, {
+                      simplifyDebts: !group.simplifyDebts,
+                    });
+                    queryClient.invalidateQueries({ queryKey: ["/api/groups", groupId] });
+                  } catch {}
+                }}
+                data-testid="simplify-debts-btn"
+              >
+                <Shuffle className="w-4 h-4 mr-1.5" />
+                {group.simplifyDebts ? "Simplify: ON" : "Simplify: OFF"}
+              </Button>
+            )}
             <Button
               variant="outline"
               size="sm"
@@ -1056,40 +1074,52 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
             </Button>
           </div>
 
-          {showSimplified && (
-            <div className="space-y-2 mb-4">
-              <h3 className="text-sm font-medium text-muted-foreground">Simplified settlements:</h3>
-              {settlements.length > 0 ? settlements.map((s, i) => (
-                <Card key={i} className="p-3 flex items-center gap-2">
-                  <div
-                    className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-semibold shrink-0"
-                    style={{ backgroundColor: getPersonColor(s.from) }}
-                  >
-                    {getPersonName(s.from)[0]?.toUpperCase()}
-                  </div>
-                  <span className="text-sm text-muted-foreground">→</span>
-                  <div
-                    className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-semibold shrink-0"
-                    style={{ backgroundColor: getPersonColor(s.to) }}
-                  >
-                    {getPersonName(s.to)[0]?.toUpperCase()}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm">
-                      <span className="font-medium">{getPersonName(s.from)}</span>
-                      <span className="text-muted-foreground"> pays </span>
-                      <span className="font-medium">{getPersonName(s.to)}</span>
-                    </p>
-                  </div>
-                  <span className="text-sm font-semibold text-primary shrink-0">
-                    ${s.amount.toFixed(2)}
-                  </span>
-                </Card>
-              )) : (
-                <p className="text-sm text-muted-foreground text-center py-2">All settled up.</p>
-              )}
-            </div>
-          )}
+          {/* Personal balance view */}
+          {(() => {
+            const mySettlements = group.simplifyDebts ? mySimplified : myPairwise;
+            if (mySettlements.length === 0) return (
+              <p className="text-sm text-muted-foreground text-center py-2">You're all settled up!</p>
+            );
+            return (
+              <div className="space-y-2 mb-4">
+                <h3 className="text-sm font-medium text-muted-foreground">
+                  {group.simplifyDebts ? "Your simplified settlements:" : "Your balances:"}
+                </h3>
+                {mySettlements.map((s, i) => {
+                  const youOwe = s.from === user?.id;
+                  const otherPerson = youOwe ? s.to : s.from;
+                  return (
+                    <Card key={i} className="p-3 flex items-center gap-2">
+                      <div
+                        className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-semibold shrink-0"
+                        style={{ backgroundColor: getPersonColor(otherPerson) }}
+                      >
+                        {getPersonName(otherPerson)[0]?.toUpperCase()}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm">
+                          {youOwe ? (
+                            <>
+                              <span className="text-destructive font-medium">You owe</span>
+                              {" "}<span className="font-medium">{getPersonName(otherPerson)}</span>
+                            </>
+                          ) : (
+                            <>
+                              <span className="font-medium">{getPersonName(otherPerson)}</span>
+                              {" "}<span className="text-primary font-medium">owes you</span>
+                            </>
+                          )}
+                        </p>
+                      </div>
+                      <span className={`text-sm font-semibold shrink-0 ${youOwe ? "text-destructive" : "text-primary"}`}>
+                        ${s.amount.toFixed(2)}
+                      </span>
+                    </Card>
+                  );
+                })}
+              </div>
+            );
+          })()}
         </div>
       )}
 

@@ -65,6 +65,7 @@ export const groups = pgTable("groups", {
   memberIds: text("member_ids").array().notNull(), // array of user IDs
   adminIds: text("admin_ids").array().notNull().default(sql`'{}'`), // array of admin user IDs
   deletedAt: text("deleted_at").default(sql`NULL`),
+  simplifyDebts: boolean("simplify_debts").notNull().default(false),
 }, (table) => [
   index("groups_created_by_idx").on(table.createdById),
   index("groups_deleted_at_idx").on(table.deletedAt),
@@ -87,6 +88,7 @@ export const expenses = pgTable("expenses", {
   isSettlement: boolean("is_settlement").notNull().default(false), // settle up entry
   deletedAt: text("deleted_at").default(sql`NULL`),
   receiptData: text("receipt_data"), // JSON string from AI receipt scanner, nullable
+  splitAmounts: text("split_amounts"), // JSON: {"userId": amount, ...} for unequal splits. Null = equal division.
 }, (table) => [
   index("expenses_group_id_idx").on(table.groupId),
   index("expenses_paid_by_idx").on(table.paidById),
