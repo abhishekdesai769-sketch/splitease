@@ -86,6 +86,7 @@ export const expenses = pgTable("expenses", {
   addedById: varchar("added_by_id").notNull(), // who added this expense
   isSettlement: boolean("is_settlement").notNull().default(false), // settle up entry
   deletedAt: text("deleted_at").default(sql`NULL`),
+  receiptData: text("receipt_data"), // JSON string from AI receipt scanner, nullable
 }, (table) => [
   index("expenses_group_id_idx").on(table.groupId),
   index("expenses_paid_by_idx").on(table.paidById),

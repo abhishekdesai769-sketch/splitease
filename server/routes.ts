@@ -7,6 +7,7 @@ import { randomBytes } from "crypto";
 import { storage } from "./storage";
 import { signupSchema, loginSchema, forgotPasswordSchema, resetPasswordSchema } from "@shared/schema";
 import { notifyExpenseCreated, sendOtpEmail, sendResetPasswordEmail, sendExportEmail, sendSupportEmail, sendInviteToInviteeEmail, sendInviteToAdminEmail } from "./email";
+import { parseReceipt, RECEIPT_SCANNING_ENABLED } from "./receipt-parser";
 import {
   upload, hashPassword, verifyPassword, needsHashUpgrade,
   rateLimit, sanitize,
@@ -535,6 +536,17 @@ export async function registerRoutes(
         });
       }
     } catch (e) { /* ignore email errors */ }
+
+    // AI receipt scanning (fire-and-forget, only when feature flag is ON)
+    if (RECEIPT_SCANNING_ENABLED && receiptFile?.buffer) {
+      parseReceipt(receiptFile.buffer, receiptFile.mimetype || "image/jpeg")
+        .then((data) => {
+          if (data) {
+            storage.updateExpenseReceiptData(expense.id, JSON.stringify(data));
+          }
+        })
+        .catch(() => { /* ignore parse errors */ });
+    }
   });
 
   // ========== Settle Up ==========
@@ -1141,6 +1153,17 @@ export async function registerRoutes(
         });
       }
     } catch (e) { /* ignore email errors */ }
+
+    // AI receipt scanning (fire-and-forget, only when feature flag is ON)
+    if (RECEIPT_SCANNING_ENABLED && receiptFile?.buffer) {
+      parseReceipt(receiptFile.buffer, receiptFile.mimetype || "image/jpeg")
+        .then((data) => {
+          if (data) {
+            storage.updateExpenseReceiptData(expense.id, JSON.stringify(data));
+          }
+        })
+        .catch(() => { /* ignore parse errors */ });
+    }
   });
 
   app.delete("/api/expenses/:id", requireAuth, async (req, res) => {
@@ -1160,6 +1183,18 @@ export async function registerRoutes(
     const deleted = await storage.deleteExpense(req.params.id);
     if (!deleted) return res.status(404).json({ error: "Not found" });
     res.status(204).send();
+  });
+
+  // ========== Receipt data for an expense ==========
+  app.get("/api/expenses/:id/receipt", requireAuth, async (req, res) => {
+    const expense = await storage.getExpense(req.params.id);
+    if (!expense) return res.status(404).json({ error: "Expense not found" });
+    if (!expense.receiptData) return res.json(null);
+    try {
+      res.json(JSON.parse(expense.receiptData));
+    } catch {
+      res.json(null);
+    }
   });
 
   // ========== Members info for a group ==========

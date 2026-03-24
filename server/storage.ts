@@ -61,6 +61,7 @@ export interface IStorage {
   deleteExpense(id: string): Promise<boolean>;
   getDeletedExpenses(): Promise<Expense[]>;
   restoreExpense(id: string): Promise<Expense | undefined>;
+  updateExpenseReceiptData(id: string, receiptData: string): Promise<void>;
 
   // Group Invites
   createGroupInvite(invite: InsertGroupInvite): Promise<GroupInvite>;
@@ -347,6 +348,10 @@ export class PgStorage implements IStorage {
   async restoreExpense(id: string): Promise<Expense | undefined> {
     const [restored] = await db.update(expenses).set({ deletedAt: null }).where(eq(expenses.id, id)).returning();
     return restored;
+  }
+
+  async updateExpenseReceiptData(id: string, receiptData: string): Promise<void> {
+    await db.update(expenses).set({ receiptData }).where(eq(expenses.id, id));
   }
 
   // Group Invites

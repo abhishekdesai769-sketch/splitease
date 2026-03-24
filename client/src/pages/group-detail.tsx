@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, ArrowLeft, Trash2, Shuffle, Receipt, UserPlus, X, HandCoins, CheckCircle2, AlertTriangle, Camera, Mail, Loader2, Crown, Shield, LogOut, UserMinus, Clock, Check, Ghost } from "lucide-react";
+import { Plus, ArrowLeft, Trash2, Shuffle, Receipt, UserPlus, X, HandCoins, CheckCircle2, AlertTriangle, Camera, Mail, Loader2, Crown, Shield, LogOut, UserMinus, Clock, Check, Ghost, FileText } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
@@ -36,6 +36,11 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
 
   // Delete expense confirmation
   const [deleteExpenseId, setDeleteExpenseId] = useState<string | null>(null);
+
+  // Receipt detail dialog
+  const [receiptExpenseId, setReceiptExpenseId] = useState<string | null>(null);
+  const [receiptData, setReceiptData] = useState<any>(null);
+  const [receiptLoading, setReceiptLoading] = useState(false);
 
   // Delete group: 2-step confirmation
   const [deleteGroupStep, setDeleteGroupStep] = useState<0 | 1 | 2>(0);
@@ -160,6 +165,21 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
       toast({ title: "Error", description: msg, variant: "destructive" });
     },
   });
+
+  const handleViewReceipt = async (expenseId: string) => {
+    setReceiptExpenseId(expenseId);
+    setReceiptLoading(true);
+    setReceiptData(null);
+    try {
+      const res = await apiRequest("GET", `/api/expenses/${expenseId}/receipt`);
+      const data = await res.json();
+      setReceiptData(data);
+    } catch {
+      setReceiptData(null);
+    } finally {
+      setReceiptLoading(false);
+    }
+  };
 
   const handleGhostInvite = async () => {
     if (!ghostInviteMember || !ghostInviteEmail.trim()) return;
@@ -1040,9 +1060,15 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                       <Receipt className="w-4 h-4 text-primary" />
                     )}
                   </div>
-                  <div className="flex-1 min-w-0">
+                  <div
+                    className={`flex-1 min-w-0 ${(expense as any).receiptData ? "cursor-pointer" : ""}`}
+                    onClick={() => { if ((expense as any).receiptData) handleViewReceipt(expense.id); }}
+                  >
                     <p className="text-sm font-medium truncate">
                       {expense.isSettlement ? "Settlement" : expense.description}
+                      {(expense as any).receiptData && (
+                        <FileText className="w-3 h-3 text-primary inline ml-1 -mt-0.5" />
+                      )}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {expense.isSettlement
@@ -1227,6 +1253,70 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
               )}
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Receipt detail dialog */}
+      <Dialog open={!!receiptExpenseId} onOpenChange={(open) => { if (!open) { setReceiptExpenseId(null); setReceiptData(null); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="w-5 h-5 text-primary" />
+              {receiptData?.merchant || "Receipt Details"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 pt-1">
+            {receiptLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-5 h-5 animate-spin text-primary" />
+                <span className="text-sm text-muted-foreground ml-2">Loading receipt...</span>
+              </div>
+            ) : receiptData ? (
+              <>
+                {receiptData.items?.length > 0 && (
+                  <div className="border border-border rounded-lg overflow-hidden">
+                    <table className="w-full text-sm">
+                      <tbody>
+                        {receiptData.items.map((item: any, i: number) => (
+                          <tr key={i} className={i % 2 === 0 ? "bg-muted/30" : ""}>
+                            <td className="px-3 py-2 text-foreground">{item.name}</td>
+                            <td className="px-3 py-2 text-right font-medium text-foreground whitespace-nowrap">
+                              ${typeof item.price === "number" ? item.price.toFixed(2) : item.price}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <div className="border-t border-border px-3 py-2 space-y-1">
+                      {receiptData.subtotal != null && (
+                        <div className="flex justify-between text-xs text-muted-foreground">
+                          <span>Subtotal</span>
+                          <span>${receiptData.subtotal.toFixed(2)}</span>
+                        </div>
+                      )}
+                      {receiptData.tax != null && (
+                        <div className="flex justify-between text-xs text-muted-foreground">
+                          <span>Tax</span>
+                          <span>${receiptData.tax.toFixed(2)}</span>
+                        </div>
+                      )}
+                      {receiptData.total != null && (
+                        <div className="flex justify-between text-sm font-semibold text-foreground pt-1 border-t border-border">
+                          <span>Total</span>
+                          <span>${receiptData.total.toFixed(2)}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+                {(!receiptData.items || receiptData.items.length === 0) && (
+                  <p className="text-sm text-muted-foreground text-center py-4">No items extracted from this receipt.</p>
+                )}
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-4">No receipt data available.</p>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
 
