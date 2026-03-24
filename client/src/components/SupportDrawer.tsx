@@ -7,11 +7,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { apiRequest } from "@/lib/queryClient";
-import { Headphones, Send, Loader2, CheckCircle2, ExternalLink, UserPlus, Copy, Check, MessageCircle, Mail, Trash2, AlertTriangle } from "lucide-react";
+import { Headphones, Send, Loader2, CheckCircle2, ExternalLink, UserPlus, Copy, Check, MessageCircle, Mail, Trash2, AlertTriangle, Upload } from "lucide-react";
+import { useLocation } from "wouter";
 
 export function SupportDrawer({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<"menu" | "support" | "invite" | "delete" | "sent">("menu");
 
@@ -159,6 +161,21 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
               <div>
                 <p className="text-sm font-medium">Invite a Friend</p>
                 <p className="text-xs text-muted-foreground">Share Spliiit with your friends</p>
+              </div>
+            </button>
+
+            {/* Import from Splitwise */}
+            <button
+              onClick={() => { setOpen(false); setLocation("/import"); }}
+              className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-muted/50 transition-colors text-left group"
+              data-testid="menu-import-splitwise"
+            >
+              <div className="w-9 h-9 rounded-lg bg-blue-500/10 flex items-center justify-center flex-shrink-0">
+                <Upload className="w-4.5 h-4.5 text-blue-500" />
+              </div>
+              <div>
+                <p className="text-sm font-medium">Import from Splitwise</p>
+                <p className="text-xs text-muted-foreground">Import expenses from a CSV file</p>
               </div>
             </button>
 
