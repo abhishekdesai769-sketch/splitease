@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, ArrowLeft, Trash2, Shuffle, Receipt, UserPlus, X, HandCoins, CheckCircle2, AlertTriangle, Camera, Mail, Loader2, Crown, Shield, LogOut, UserMinus, Clock, Check, Ghost, FileText } from "lucide-react";
+import { Plus, ArrowLeft, Trash2, Shuffle, Receipt, UserPlus, X, HandCoins, CheckCircle2, AlertTriangle, Camera, Mail, Loader2, Crown, Shield, LogOut, UserMinus, Clock, Check, Ghost, FileText, Pencil } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
@@ -52,6 +52,10 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
 
   // Delete group: 2-step confirmation
   const [deleteGroupStep, setDeleteGroupStep] = useState<0 | 1 | 2>(0);
+
+  // Group rename
+  const [renaming, setRenaming] = useState(false);
+  const [newGroupName, setNewGroupName] = useState("");
 
   // Member action dialog state
   const [memberActionMember, setMemberActionMember] = useState<SafeUser | null>(null);
@@ -476,7 +480,48 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
           </Button>
         </Link>
         <div className="flex-1 min-w-0">
-          <h1 className="text-xl font-semibold tracking-tight truncate">{group.name}</h1>
+          {renaming ? (
+            <form className="flex items-center gap-1" onSubmit={async (e) => {
+              e.preventDefault();
+              const trimmed = newGroupName.trim();
+              if (!trimmed) { setRenaming(false); return; }
+              try {
+                await apiRequest("PATCH", `/api/groups/${groupId}/name`, { name: trimmed });
+                queryClient.invalidateQueries({ queryKey: ["/api/groups", groupId] });
+                queryClient.invalidateQueries({ queryKey: ["/api/groups"] });
+                toast({ title: "Group renamed" });
+              } catch (err: any) {
+                let msg = err.message;
+                try { msg = JSON.parse(msg.split(": ").slice(1).join(": ")).error; } catch {}
+                toast({ title: "Error", description: msg, variant: "destructive" });
+              }
+              setRenaming(false);
+            }}>
+              <Input
+                autoFocus
+                value={newGroupName}
+                onChange={(e) => setNewGroupName(e.target.value)}
+                className="h-8 text-lg font-semibold"
+                onBlur={() => setRenaming(false)}
+                onKeyDown={(e) => { if (e.key === "Escape") setRenaming(false); }}
+              />
+            </form>
+          ) : (
+            <h1
+              className={`text-xl font-semibold tracking-tight truncate ${(isMeOwner || isMeAdmin || isMeGlobalAdmin) ? "cursor-pointer hover:text-primary transition-colors" : ""}`}
+              onClick={() => {
+                if (isMeOwner || isMeAdmin || isMeGlobalAdmin) {
+                  setNewGroupName(group.name);
+                  setRenaming(true);
+                }
+              }}
+            >
+              {group.name}
+              {(isMeOwner || isMeAdmin || isMeGlobalAdmin) && (
+                <Pencil className="w-3 h-3 inline ml-1.5 text-muted-foreground" />
+              )}
+            </h1>
+          )}
           <p className="text-sm text-muted-foreground">
             {members.length} members · ${totalGroupSpend.toFixed(2)} total
           </p>

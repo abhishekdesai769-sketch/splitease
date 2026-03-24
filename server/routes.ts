@@ -1060,6 +1060,33 @@ export async function registerRoutes(
     res.json(updated);
   });
 
+  // Rename group — owner, group admin, or global admin only
+  app.patch("/api/groups/:id/name", requireAuth, async (req, res) => {
+    const userId = (req.session as any).userId;
+    const user = await storage.getUser(userId);
+    if (!user) return res.status(401).json({ error: "User not found" });
+
+    const group = await storage.getGroup(req.params.id);
+    if (!group) return res.status(404).json({ error: "Group not found" });
+
+    const adminIds = group.adminIds || [];
+    const isOwner = group.createdById === userId;
+    const isGroupAdmin = adminIds.includes(userId);
+    const isGlobalAdmin = user.isAdmin;
+
+    if (!isOwner && !isGroupAdmin && !isGlobalAdmin) {
+      return res.status(403).json({ error: "Only the group owner or an admin can rename the group" });
+    }
+
+    const name = (req.body.name || "").trim();
+    if (!name || name.length < 1) {
+      return res.status(400).json({ error: "Group name is required" });
+    }
+
+    const updated = await storage.updateGroupName(group.id, sanitize(name, 100));
+    res.json(updated);
+  });
+
   app.delete("/api/groups/:id", requireAuth, async (req, res) => {
     const userId = (req.session as any).userId;
     const user = await storage.getUser(userId);
