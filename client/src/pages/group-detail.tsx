@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, ArrowLeft, Trash2, Shuffle, Receipt, UserPlus, X, HandCoins, CheckCircle2, AlertTriangle, Camera, Mail, Loader2, Crown, Shield, LogOut, UserMinus, Clock, Check } from "lucide-react";
+import { Plus, ArrowLeft, Trash2, Shuffle, Receipt, UserPlus, X, HandCoins, CheckCircle2, AlertTriangle, Camera, Mail, Loader2, Crown, Shield, LogOut, UserMinus, Clock, Check, Ghost } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
@@ -42,6 +42,11 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
 
   // Member action dialog state
   const [memberActionMember, setMemberActionMember] = useState<SafeUser | null>(null);
+
+  // Ghost invite dialog state
+  const [ghostInviteMember, setGhostInviteMember] = useState<SafeUser | null>(null);
+  const [ghostInviteEmail, setGhostInviteEmail] = useState("");
+  const [ghostInviting, setGhostInviting] = useState(false);
 
   const [, setLocation] = useLocation();
 
@@ -155,6 +160,33 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
       toast({ title: "Error", description: msg, variant: "destructive" });
     },
   });
+
+  const handleGhostInvite = async () => {
+    if (!ghostInviteMember || !ghostInviteEmail.trim()) return;
+    setGhostInviting(true);
+    try {
+      const res = await apiRequest("POST", `/api/ghost/${ghostInviteMember.id}/invite`, {
+        email: ghostInviteEmail.trim().toLowerCase(),
+      });
+      const data = await res.json();
+      queryClient.invalidateQueries({ queryKey: ["/api/groups", groupId, "members"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/groups", groupId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/groups"] });
+      setGhostInviteMember(null);
+      setGhostInviteEmail("");
+      if (data.merged) {
+        toast({ title: "Merged!", description: `${ghostInviteMember.name} was linked to existing user ${data.userName}.` });
+      } else {
+        toast({ title: "Invite sent!", description: `Signup invite sent to ${data.email}.` });
+      }
+    } catch (err: any) {
+      let msg = err.message;
+      try { msg = JSON.parse(msg.split(": ").slice(1).join(": ")).error; } catch {}
+      toast({ title: "Error", description: msg, variant: "destructive" });
+    } finally {
+      setGhostInviting(false);
+    }
+  };
 
   // Pending invites for this group
   const { data: pendingInvites = [] } = useQuery<any[]>({
@@ -617,32 +649,41 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
         {members.map((m) => {
           const role = getMemberRole(m.id);
           const canAct = canActOnMember(m.id);
+          const isGhost = (m as any).isGhost;
           return (
             <div
               key={m.id}
-              className={`flex flex-col items-center gap-1 shrink-0 relative ${canAct ? "cursor-pointer" : ""}`}
-              onClick={() => { if (canAct) setMemberActionMember(m); }}
+              className={`flex flex-col items-center gap-1 shrink-0 relative ${isGhost ? "cursor-pointer" : canAct ? "cursor-pointer" : ""}`}
+              onClick={() => {
+                if (isGhost) { setGhostInviteMember(m); setGhostInviteEmail(""); }
+                else if (canAct) setMemberActionMember(m);
+              }}
               data-testid={`member-avatar-${m.id}`}
             >
               <div className="relative">
                 <div
-                  className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-semibold"
-                  style={{ backgroundColor: m.avatarColor }}
+                  className={`w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-semibold ${isGhost ? "border-2 border-dashed border-amber-500/50" : ""}`}
+                  style={{ backgroundColor: isGhost ? "transparent" : m.avatarColor, color: isGhost ? "hsl(var(--muted-foreground))" : undefined }}
                 >
-                  {m.name[0]?.toUpperCase()}
+                  {isGhost ? <Ghost className="w-4 h-4 text-amber-500" /> : m.name[0]?.toUpperCase()}
                 </div>
-                {role === "owner" && (
+                {!isGhost && role === "owner" && (
                   <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-yellow-500 flex items-center justify-center" title="Owner">
                     <Crown className="w-2.5 h-2.5 text-white" />
                   </span>
                 )}
-                {role === "admin" && (
+                {!isGhost && role === "admin" && (
                   <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-primary flex items-center justify-center" title="Admin">
                     <Shield className="w-2.5 h-2.5 text-white" />
                   </span>
                 )}
+                {isGhost && (
+                  <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-amber-500 flex items-center justify-center" title="Ghost — tap to invite">
+                    <Mail className="w-2.5 h-2.5 text-white" />
+                  </span>
+                )}
               </div>
-              <span className="text-xs text-muted-foreground truncate max-w-[48px]">
+              <span className={`text-xs truncate max-w-[48px] ${isGhost ? "text-amber-500" : "text-muted-foreground"}`}>
                 {m.id === user?.id ? "You" : m.name.split(" ")[0]}
               </span>
             </div>
@@ -1186,6 +1227,46 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
               )}
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Ghost invite dialog */}
+      <Dialog open={!!ghostInviteMember} onOpenChange={(open) => { if (!open) { setGhostInviteMember(null); setGhostInviteEmail(""); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Ghost className="w-5 h-5 text-amber-500" />
+              Invite {ghostInviteMember?.name}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 pt-2">
+            <p className="text-sm text-muted-foreground">
+              <strong>{ghostInviteMember?.name}</strong> was imported from Splitwise but doesn't have a Spliiit account yet. Enter their email to send a signup invite.
+            </p>
+            <div className="space-y-2">
+              <Label htmlFor="ghost-email">Email address</Label>
+              <Input
+                id="ghost-email"
+                type="email"
+                placeholder="friend@example.com"
+                value={ghostInviteEmail}
+                onChange={(e) => setGhostInviteEmail(e.target.value)}
+                data-testid="ghost-invite-email"
+              />
+            </div>
+            <Button
+              className="w-full"
+              onClick={handleGhostInvite}
+              disabled={ghostInviting || !ghostInviteEmail.trim() || !ghostInviteEmail.includes("@")}
+              data-testid="ghost-invite-submit"
+            >
+              {ghostInviting ? (
+                <><Loader2 className="w-4 h-4 mr-1.5 animate-spin" />Sending...</>
+              ) : (
+                <><Mail className="w-4 h-4 mr-1.5" />Send Invite</>
+              )}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 

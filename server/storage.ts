@@ -69,6 +69,12 @@ export interface IStorage {
   getPendingInvitesForUser(userId: string): Promise<GroupInvite[]>;
   updateGroupInvite(id: string, data: Partial<GroupInvite>): Promise<GroupInvite | undefined>;
 
+  // Ghost users
+  createGhostUser(name: string): Promise<User>;
+  mergeGhostUser(ghostId: string, realUserId: string): Promise<void>;
+  updateUserEmail(id: string, email: string): Promise<User | undefined>;
+  getGhostsByEmail(email: string): Promise<User[]>;
+
   // Purge
   purgeExpiredDeleted(daysOld: number): Promise<{ groups: number; expenses: number }>;
 }
@@ -100,14 +106,15 @@ export class PgStorage implements IStorage {
     const result = await db.select().from(users).where(
       and(
         ilike(users.email, `%${email}%`),
-        ne(users.id, excludeId)
+        ne(users.id, excludeId),
+        eq(users.isGhost, false)
       )
     );
     return result.map(toSafeUser);
   }
 
   async getAllUsers(): Promise<SafeUser[]> {
-    const result = await db.select().from(users);
+    const result = await db.select().from(users).where(eq(users.isGhost, false));
     return result.map(toSafeUser);
   }
 
@@ -391,6 +398,120 @@ export class PgStorage implements IStorage {
       .returning();
 
     return { groups: expiredGroups.length, expenses: expiredExpenses.length };
+  }
+
+  // Ghost users
+  async createGhostUser(name: string): Promise<User> {
+    const { randomBytes, scryptSync } = await import("crypto");
+    const placeholderEmail = `ghost-${crypto.randomUUID()}@placeholder.spliiit`;
+    const salt = randomBytes(16).toString("hex");
+    const derived = scryptSync(randomBytes(32).toString("hex"), salt, 64).toString("hex");
+    const placeholderPassword = `scrypt:${salt}:${derived}`;
+    const AVATAR_COLORS = [
+      "#0d9488", "#0891b2", "#7c3aed", "#db2777", "#ea580c",
+      "#d97706", "#059669", "#4f46e5", "#be185d", "#2563eb",
+    ];
+    const [user] = await db.insert(users).values({
+      name,
+      email: placeholderEmail,
+      password: placeholderPassword,
+      avatarColor: AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)],
+      isAdmin: false,
+      isApproved: false,
+      isEmailVerified: false,
+      isGhost: true,
+    }).returning();
+    return user;
+  }
+
+  async mergeGhostUser(ghostId: string, realUserId: string): Promise<void> {
+    const ghost = await this.getUser(ghostId);
+    if (!ghost || !ghost.isGhost) throw new Error("Ghost user not found");
+    const realUser = await this.getUser(realUserId);
+    if (!realUser || realUser.isGhost) throw new Error("Real user not found");
+
+    // 1. Update expenses.paidById
+    await db.update(expenses).set({ paidById: realUserId }).where(eq(expenses.paidById, ghostId));
+
+    // 2. Update expenses.addedById
+    await db.update(expenses).set({ addedById: realUserId }).where(eq(expenses.addedById, ghostId));
+
+    // 3. Update expenses.splitAmongIds — replace ghostId with realUserId in arrays
+    const allExpenses = await db.select().from(expenses);
+    for (const exp of allExpenses) {
+      if (exp.splitAmongIds.includes(ghostId)) {
+        const newIds = exp.splitAmongIds.map(id => id === ghostId ? realUserId : id);
+        const deduped = [...new Set(newIds)];
+        await db.update(expenses).set({ splitAmongIds: deduped }).where(eq(expenses.id, exp.id));
+      }
+    }
+
+    // 4. Update groups.memberIds and adminIds
+    const allGroups = await db.select().from(groups);
+    for (const group of allGroups) {
+      let changed = false;
+      let newMembers = group.memberIds;
+      let newAdmins = group.adminIds || [];
+
+      if (newMembers.includes(ghostId)) {
+        newMembers = [...new Set(newMembers.map(id => id === ghostId ? realUserId : id))];
+        changed = true;
+      }
+      if (newAdmins.includes(ghostId)) {
+        newAdmins = [...new Set(newAdmins.map(id => id === ghostId ? realUserId : id))];
+        changed = true;
+      }
+      if (changed) {
+        await db.update(groups).set({ memberIds: newMembers, adminIds: newAdmins }).where(eq(groups.id, group.id));
+      }
+    }
+
+    // 5. Update groups.createdById
+    await db.update(groups).set({ createdById: realUserId }).where(eq(groups.createdById, ghostId));
+
+    // 6. Update friends — replace or remove duplicates
+    const ghostFriends = await db.select().from(friends).where(
+      or(eq(friends.userId, ghostId), eq(friends.friendId, ghostId))
+    );
+    for (const f of ghostFriends) {
+      const otherId = f.userId === ghostId ? f.friendId : f.userId;
+      if (otherId === realUserId) {
+        // Would create self-friendship, just delete
+        await db.delete(friends).where(eq(friends.id, f.id));
+      } else {
+        const alreadyFriends = await this.areFriends(realUserId, otherId);
+        if (alreadyFriends) {
+          await db.delete(friends).where(eq(friends.id, f.id));
+        } else {
+          const newData = f.userId === ghostId
+            ? { userId: realUserId }
+            : { friendId: realUserId };
+          await db.update(friends).set(newData).where(eq(friends.id, f.id));
+        }
+      }
+    }
+
+    // 7. Update groupInvites
+    await db.update(groupInvites).set({ inviterId: realUserId }).where(eq(groupInvites.inviterId, ghostId));
+    await db.update(groupInvites).set({ inviteeId: realUserId }).where(eq(groupInvites.inviteeId, ghostId));
+
+    // 8. Delete OTP codes and reset tokens for ghost
+    await db.delete(otpCodes).where(eq(otpCodes.email, ghost.email));
+    await db.delete(resetTokens).where(eq(resetTokens.userId, ghostId));
+
+    // 9. Delete the ghost user
+    await db.delete(users).where(eq(users.id, ghostId));
+  }
+
+  async updateUserEmail(id: string, email: string): Promise<User | undefined> {
+    const [updated] = await db.update(users).set({ email: email.toLowerCase() }).where(eq(users.id, id)).returning();
+    return updated;
+  }
+
+  async getGhostsByEmail(email: string): Promise<User[]> {
+    return db.select().from(users).where(
+      and(eq(users.email, email.toLowerCase()), eq(users.isGhost, true))
+    );
   }
 }
 

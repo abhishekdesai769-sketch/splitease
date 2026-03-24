@@ -224,6 +224,14 @@ export async function registerRoutes(
 
     (req.session as any).userId = user.id;
 
+    // Auto-merge any ghost users that were invited with this email
+    try {
+      const ghosts = await storage.getGhostsByEmail(cleanEmail);
+      for (const ghost of ghosts) {
+        await storage.mergeGhostUser(ghost.id, user.id);
+      }
+    } catch (e) { /* don't block signup if merge fails */ }
+
     const { password: _, ...safeUser } = user;
     res.status(201).json(safeUser);
   });
@@ -239,6 +247,11 @@ export async function registerRoutes(
 
     if (!user || !verifyPassword(password, user.password)) {
       // Generic message to prevent email enumeration
+      return res.status(401).json({ error: "Invalid email or password" });
+    }
+
+    // Block ghost users from logging in
+    if (user.isGhost) {
       return res.status(401).json({ error: "Invalid email or password" });
     }
 
@@ -1325,18 +1338,15 @@ export async function registerRoutes(
   app.post("/api/import/splitwise", requireAuth, upload.single("file"), async (req: Request, res: Response) => {
     try {
       const userId = (req.session as any).userId;
-      const file = (req as any).file;
+      const currentUser = await storage.getUser(userId);
+      if (!currentUser) return res.status(401).json({ error: "User not found" });
 
-      if (!file) {
-        return res.status(400).json({ error: "No file uploaded" });
-      }
+      const file = (req as any).file;
+      if (!file) return res.status(400).json({ error: "No file uploaded" });
 
       const csvText = file.buffer.toString("utf-8");
       const lines = csvText.split("\n").filter((l: string) => l.trim());
-
-      if (lines.length < 2) {
-        return res.status(400).json({ error: "CSV file is empty" });
-      }
+      if (lines.length < 2) return res.status(400).json({ error: "CSV file is empty" });
 
       // Parse headers
       const headers = importParseCSVLine(lines[0]);
@@ -1344,54 +1354,195 @@ export async function registerRoutes(
       const descIdx = headers.indexOf("Description");
       const costIdx = headers.indexOf("Cost");
       const catIdx = headers.indexOf("Category");
+      const currIdx = headers.indexOf("Currency");
 
-      if (dateIdx === -1 || descIdx === -1 || costIdx === -1) {
+      if (dateIdx === -1 || descIdx === -1 || costIdx === -1 || currIdx === -1) {
         return res.status(400).json({
-          error: "Invalid Splitwise CSV. Expected columns: Date, Description, Cost"
+          error: "Invalid Splitwise CSV. Expected columns: Date, Description, Cost, Currency"
         });
       }
 
+      // Person columns are everything after Currency
+      const personNames = headers.slice(currIdx + 1).map(n => n.trim()).filter(n => n);
+      if (personNames.length === 0) {
+        return res.status(400).json({ error: "No person columns found in CSV" });
+      }
+
+      // Match importing user to a CSV column (fuzzy match)
+      const userName = currentUser.name.toLowerCase().trim();
+      let importerIdx = -1;
+
+      // 1. Exact match
+      importerIdx = personNames.findIndex(n => n.toLowerCase() === userName);
+      // 2. Contains match (CSV name contains user name or vice versa)
+      if (importerIdx === -1) {
+        importerIdx = personNames.findIndex(n =>
+          n.toLowerCase().includes(userName) || userName.includes(n.toLowerCase())
+        );
+      }
+      // 3. First name match
+      if (importerIdx === -1) {
+        const firstName = userName.split(" ")[0];
+        importerIdx = personNames.findIndex(n =>
+          n.toLowerCase().split(" ")[0] === firstName
+        );
+      }
+
+      if (importerIdx === -1) {
+        return res.status(400).json({
+          error: `Could not match your name "${currentUser.name}" to any person in the CSV. Found: ${personNames.join(", ")}. Please update your display name to match.`
+        });
+      }
+
+      // Build userId map: column index → user ID
+      const colToUserId = new Map<number, string>();
+      const ghostMembers: { id: string; name: string }[] = [];
+      colToUserId.set(importerIdx, userId);
+
+      for (let i = 0; i < personNames.length; i++) {
+        if (i === importerIdx) continue;
+        const ghost = await storage.createGhostUser(personNames[i]);
+        colToUserId.set(i, ghost.id);
+        ghostMembers.push({ id: ghost.id, name: personNames[i] });
+      }
+
+      // Create group with all members
+      const allMemberIds = Array.from(colToUserId.values());
+      const group = await storage.createGroup({
+        name: `Splitwise Import — ${new Date().toISOString().split("T")[0]}`,
+        createdById: userId,
+        memberIds: allMemberIds,
+        adminIds: [userId],
+      });
+
+      // Parse data rows
       let imported = 0;
       let skipped = 0;
       const errors: string[] = [];
+      const personColStart = currIdx + 1;
 
       for (let i = 1; i < lines.length; i++) {
         try {
           const cols = importParseCSVLine(lines[i]);
-          const amount = parseFloat(cols[costIdx]);
+          const description = (cols[descIdx] || "").trim();
+          const cost = parseFloat(cols[costIdx]);
+          const date = cols[dateIdx] || new Date().toISOString().split("T")[0];
+          const category = catIdx !== -1 ? (cols[catIdx] || "").trim() : "";
 
-          if (isNaN(amount) || amount <= 0) {
+          // Skip total balance row and empty rows
+          if (description.toLowerCase().includes("total balance") || !description) {
+            skipped++;
+            continue;
+          }
+          if (isNaN(cost) || cost === 0) {
             skipped++;
             continue;
           }
 
-          const description = cols[descIdx] || "Imported expense";
-          const date = cols[dateIdx] || new Date().toISOString().split("T")[0];
-          const category = catIdx !== -1 ? cols[catIdx] || "" : "";
+          // Detect settlement: Category is "Payment" or description matches "X paid Y"
+          const isSettlement = category.toLowerCase() === "payment" ||
+            /^.+ paid .+$/i.test(description);
 
-          await db.insert(expenses).values({
-            description: category ? description + " (" + category + ")" : description,
-            amount,
-            paidById: userId,
-            splitAmongIds: [userId],
-            groupId: null,
+          // Parse person values from CSV columns
+          const personValues: { colIdx: number; userId: string; value: number }[] = [];
+          for (let j = 0; j < personNames.length; j++) {
+            const val = parseFloat(cols[personColStart + j]);
+            if (!isNaN(val) && val !== 0) {
+              personValues.push({ colIdx: j, userId: colToUserId.get(j)!, value: val });
+            }
+          }
+
+          if (personValues.length === 0) {
+            skipped++;
+            continue;
+          }
+
+          // Payer = person with positive value (they fronted the money)
+          const payer = personValues.reduce((a, b) => a.value > b.value ? a : b);
+          if (payer.value <= 0) {
+            // Everyone has negative values — skip this row
+            skipped++;
+            continue;
+          }
+
+          // Split among = all involved persons
+          const splitAmongIds = personValues.map(pv => pv.userId);
+          const desc = category && !isSettlement ? `${description} (${category})` : description;
+
+          await storage.createExpense({
+            description: sanitize(desc, 200),
+            amount: Math.abs(cost),
+            paidById: payer.userId,
+            splitAmongIds,
+            groupId: group.id,
             date,
             addedById: userId,
-            isSettlement: false,
+            isSettlement,
           });
 
           imported++;
         } catch (err) {
-          errors.push("Row " + (i + 1) + ": Failed to import");
+          errors.push(`Row ${i + 1}: Failed to import`);
           skipped++;
         }
       }
 
-      res.json({ imported, skipped, errors });
+      res.json({
+        imported,
+        skipped,
+        errors,
+        groupId: group.id,
+        groupName: group.name,
+        ghostMembers,
+      });
     } catch (err) {
       console.error("Import error:", err);
       res.status(500).json({ error: "Import failed" });
     }
+  });
+
+  // ========== Ghost Member Invite ==========
+  app.post("/api/ghost/:ghostId/invite", requireAuth, async (req, res) => {
+    const userId = (req.session as any).userId;
+    const inviter = await storage.getUser(userId);
+    if (!inviter) return res.status(401).json({ error: "User not found" });
+
+    const ghost = await storage.getUser(req.params.ghostId);
+    if (!ghost || !ghost.isGhost) {
+      return res.status(404).json({ error: "Ghost member not found" });
+    }
+
+    const email = sanitize((req.body.email || "").toLowerCase(), 255);
+    if (!email || !email.includes("@")) {
+      return res.status(400).json({ error: "Valid email is required" });
+    }
+
+    // Check if a real user with this email already exists
+    const existingUser = await storage.getUserByEmail(email);
+    if (existingUser && !existingUser.isGhost) {
+      // Merge ghost into the existing user
+      await storage.mergeGhostUser(ghost.id, existingUser.id);
+      return res.json({ merged: true, userId: existingUser.id, userName: existingUser.name });
+    }
+
+    // No existing user — update ghost's email and send invite
+    await storage.updateUserEmail(ghost.id, email);
+
+    // Find a group this ghost belongs to (for the email)
+    const allGroups = await storage.getGroupsForUser(userId);
+    const sharedGroup = allGroups.find(g => g.memberIds.includes(ghost.id));
+    const groupName = sharedGroup?.name || "a group";
+
+    // Send invite email
+    const { sendGhostInviteEmail } = await import("./email");
+    await sendGhostInviteEmail({
+      to: email,
+      inviterName: inviter.name,
+      ghostName: ghost.name,
+      groupName,
+    });
+
+    res.json({ invited: true, email });
   });
 
   return httpServer;

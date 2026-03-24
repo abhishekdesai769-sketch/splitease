@@ -13,6 +13,7 @@ export const users = pgTable("users", {
   isAdmin: boolean("is_admin").notNull().default(false),
   isApproved: boolean("is_approved").notNull().default(true), // auto-approved on signup
   isEmailVerified: boolean("is_email_verified").notNull().default(false),
+  isGhost: boolean("is_ghost").notNull().default(false),
 }, (table) => [
   uniqueIndex("users_email_idx").on(table.email),
 ]);

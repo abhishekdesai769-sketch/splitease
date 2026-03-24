@@ -2,20 +2,26 @@ import { useState, useRef } from "react";
 import { useAuth } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Upload, FileText, CheckCircle, AlertCircle, ArrowLeft } from "lucide-react";
+import { Upload, FileText, CheckCircle, AlertCircle, ArrowLeft, Users2, UserPlus } from "lucide-react";
 import { useLocation } from "wouter";
+import { Link } from "wouter";
 
 interface PreviewExpense {
   date: string;
   description: string;
   amount: number;
-  category: string;
+  payer: string;
+  splitAmong: string[];
+  isSettlement: boolean;
 }
 
 interface ImportResult {
   imported: number;
   skipped: number;
   errors: string[];
+  groupId?: string;
+  groupName?: string;
+  ghostMembers?: { id: string; name: string }[];
 }
 
 export default function Import() {
@@ -23,6 +29,8 @@ export default function Import() {
   const [, setLocation] = useLocation();
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<PreviewExpense[]>([]);
+  const [personNames, setPersonNames] = useState<string[]>([]);
+  const [matchedName, setMatchedName] = useState<string>("");
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -74,24 +82,61 @@ export default function Import() {
         const dateIdx = headers.indexOf("Date");
         const descIdx = headers.indexOf("Description");
         const costIdx = headers.indexOf("Cost");
-        const catIdx = headers.indexOf("Category");
+        const currIdx = headers.indexOf("Currency");
 
-        if (dateIdx === -1 || descIdx === -1 || costIdx === -1) {
-          setError("CSV doesn't look like a Splitwise export. Expected columns: Date, Description, Cost.");
+        if (dateIdx === -1 || descIdx === -1 || costIdx === -1 || currIdx === -1) {
+          setError("CSV doesn't look like a Splitwise export. Expected columns: Date, Description, Cost, Currency.");
           return;
         }
+
+        // Extract person names from columns after Currency
+        const names = headers.slice(currIdx + 1).map(n => n.trim()).filter(n => n);
+        setPersonNames(names);
+
+        // Try to match the current user
+        const userName = (user?.name || "").toLowerCase().trim();
+        let matched = names.find(n => n.toLowerCase() === userName);
+        if (!matched) matched = names.find(n => n.toLowerCase().includes(userName) || userName.includes(n.toLowerCase()));
+        if (!matched) {
+          const firstName = userName.split(" ")[0];
+          matched = names.find(n => n.toLowerCase().split(" ")[0] === firstName);
+        }
+        setMatchedName(matched || "");
+
+        const catIdx = headers.indexOf("Category");
+        const personColStart = currIdx + 1;
 
         const expenses: PreviewExpense[] = [];
         for (let i = 1; i < lines.length; i++) {
           const cols = parseCSVLine(lines[i]);
-          const amount = parseFloat(cols[costIdx]);
-          if (isNaN(amount) || amount <= 0) continue;
+          const description = (cols[descIdx] || "").trim();
+          const cost = parseFloat(cols[costIdx]);
+          if (!description || isNaN(cost) || cost === 0) continue;
+          if (description.toLowerCase().includes("total balance")) continue;
+
+          const category = catIdx !== -1 ? (cols[catIdx] || "").trim() : "";
+          const isSettlement = category.toLowerCase() === "payment" || /^.+ paid .+$/i.test(description);
+
+          // Find payer and split
+          let payer = "";
+          const splitAmong: string[] = [];
+          for (let j = 0; j < names.length; j++) {
+            const val = parseFloat(cols[personColStart + j]);
+            if (!isNaN(val) && val !== 0) {
+              splitAmong.push(names[j]);
+              if (val > 0 && (!payer || val > parseFloat(cols[personColStart + names.indexOf(payer)]))) {
+                payer = names[j];
+              }
+            }
+          }
 
           expenses.push({
             date: cols[dateIdx] || "",
-            description: cols[descIdx] || "",
-            amount,
-            category: catIdx !== -1 ? cols[catIdx] || "" : "",
+            description,
+            amount: Math.abs(cost),
+            payer: payer || "Unknown",
+            splitAmong,
+            isSettlement,
           });
         }
 
@@ -113,7 +158,8 @@ export default function Import() {
       const formData = new FormData();
       formData.append("file", file);
 
-      const res = await fetch("/api/import/splitwise", {
+      const API_BASE = "__PORT_5000__".startsWith("__") ? "" : "__PORT_5000__";
+      const res = await fetch(`${API_BASE}/api/import/splitwise`, {
         method: "POST",
         body: formData,
         credentials: "include",
@@ -130,6 +176,9 @@ export default function Import() {
         imported: data.imported,
         skipped: data.skipped,
         errors: data.errors || [],
+        groupId: data.groupId,
+        groupName: data.groupName,
+        ghostMembers: data.ghostMembers || [],
       });
       setPreview([]);
       setFile(null);
@@ -140,109 +189,180 @@ export default function Import() {
     }
   };
 
+  const settlements = preview.filter(e => e.isSettlement);
+  const regularExpenses = preview.filter(e => !e.isSettlement);
+
   return (
-    <div className="p-4 pb-24 max-w-lg mx-auto">
-      <div className="flex items-center gap-3 mb-6">
-        <button onClick={() => setLocation("/expenses")} className="text-gray-400 hover:text-white">
+    <div className="space-y-4">
+      <div className="flex items-center gap-3">
+        <button onClick={() => setLocation("/expenses")} className="text-muted-foreground hover:text-foreground">
           <ArrowLeft size={20} />
         </button>
-        <h1 className="text-xl font-semibold text-white">Import from Splitwise</h1>
+        <h1 className="text-xl font-semibold tracking-tight">Import from Splitwise</h1>
       </div>
 
-      <Card className="bg-gray-800/50 border-gray-700 p-4 mb-4">
-        <h3 className="text-sm font-medium text-teal-400 mb-2">How to export from Splitwise:</h3>
-        <ol className="text-sm text-gray-400 space-y-1 list-decimal list-inside">
+      <Card className="p-4">
+        <h3 className="text-sm font-medium text-primary mb-2">How to export from Splitwise:</h3>
+        <ol className="text-sm text-muted-foreground space-y-1 list-decimal list-inside">
           <li>Open Splitwise and go to a group</li>
-          <li>Click the gear icon, then Export as CSV</li>
+          <li>Tap the gear icon, then Export as CSV</li>
           <li>Save the CSV file</li>
           <li>Upload it here</li>
         </ol>
-        <p className="text-xs text-gray-500 mt-2">
-          Note: Expenses will be imported with you as the payer. You can edit them after import.
+        <p className="text-xs text-muted-foreground mt-2">
+          A new group will be created with all people from the CSV. People not on Spliiit will appear as ghost members you can invite later.
         </p>
       </Card>
 
-      <Card className="bg-gray-800/50 border-gray-700 p-6 mb-4">
+      {/* File upload */}
+      <Card className="p-6">
         <div
-          className="border-2 border-dashed border-gray-600 rounded-lg p-8 text-center cursor-pointer hover:border-teal-500 transition-colors"
+          className="border-2 border-dashed border-border rounded-lg p-8 text-center cursor-pointer hover:border-primary transition-colors"
           onClick={() => fileInputRef.current?.click()}
         >
           <input ref={fileInputRef} type="file" accept=".csv" onChange={handleFileSelect} className="hidden" />
           {file ? (
             <div className="flex flex-col items-center gap-2">
-              <FileText size={32} className="text-teal-400" />
-              <p className="text-white font-medium">{file.name}</p>
-              <p className="text-gray-400 text-sm">{preview.length} expenses found</p>
+              <FileText size={32} className="text-primary" />
+              <p className="font-medium">{file.name}</p>
+              <p className="text-muted-foreground text-sm">{preview.length} expenses found</p>
             </div>
           ) : (
             <div className="flex flex-col items-center gap-2">
-              <Upload size={32} className="text-gray-500" />
-              <p className="text-gray-400">Tap to select your Splitwise CSV</p>
-              <p className="text-gray-600 text-xs">CSV files only</p>
+              <Upload size={32} className="text-muted-foreground" />
+              <p className="text-muted-foreground">Tap to select your Splitwise CSV</p>
+              <p className="text-xs text-muted-foreground">CSV files only</p>
             </div>
           )}
         </div>
       </Card>
 
+      {/* Detected people */}
+      {personNames.length > 0 && !result && (
+        <Card className="p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Users2 className="w-4 h-4 text-primary" />
+            <h3 className="text-sm font-medium">People in CSV ({personNames.length})</h3>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {personNames.map((name) => (
+              <span
+                key={name}
+                className={`text-xs px-2 py-1 rounded-full border ${
+                  name === matchedName
+                    ? "bg-primary/15 text-primary border-primary/30 font-medium"
+                    : "bg-muted/50 text-muted-foreground border-border"
+                }`}
+              >
+                {name === matchedName ? `${name} (You)` : name}
+              </span>
+            ))}
+          </div>
+          {!matchedName && (
+            <p className="text-xs text-destructive mt-2">
+              Could not match your name. Please make sure your Spliiit display name matches one of the names above.
+            </p>
+          )}
+        </Card>
+      )}
+
+      {/* Error */}
       {error && (
-        <Card className="bg-red-900/20 border-red-800 p-4 mb-4">
+        <Card className="p-4 border-destructive/50 bg-destructive/5">
           <div className="flex items-start gap-2">
-            <AlertCircle size={16} className="text-red-400 mt-0.5 shrink-0" />
-            <p className="text-sm text-red-400">{error}</p>
+            <AlertCircle size={16} className="text-destructive mt-0.5 shrink-0" />
+            <p className="text-sm text-destructive">{error}</p>
           </div>
         </Card>
       )}
 
+      {/* Success result */}
       {result && (
-        <Card className="bg-green-900/20 border-green-800 p-4 mb-4">
-          <div className="flex items-start gap-2">
-            <CheckCircle size={16} className="text-green-400 mt-0.5 shrink-0" />
-            <div>
-              <p className="text-sm text-green-400 font-medium">
-                Successfully imported {result.imported} expenses!
-              </p>
-              {result.skipped > 0 && (
-                <p className="text-xs text-gray-400 mt-1">
-                  {result.skipped} rows skipped (settlements or zero amounts)
+        <div className="space-y-3">
+          <Card className="p-4 border-primary/30 bg-primary/5">
+            <div className="flex items-start gap-2">
+              <CheckCircle size={16} className="text-primary mt-0.5 shrink-0" />
+              <div>
+                <p className="text-sm text-primary font-medium">
+                  Successfully imported {result.imported} expenses!
                 </p>
-              )}
+                {result.skipped > 0 && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {result.skipped} rows skipped (zero amounts or summary rows)
+                  </p>
+                )}
+              </div>
             </div>
-          </div>
-        </Card>
+          </Card>
+
+          {/* Ghost members created */}
+          {result.ghostMembers && result.ghostMembers.length > 0 && (
+            <Card className="p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <UserPlus className="w-4 h-4 text-amber-500" />
+                <h3 className="text-sm font-medium">Ghost Members Created</h3>
+              </div>
+              <p className="text-xs text-muted-foreground mb-2">
+                These people don't have Spliiit accounts yet. You can invite them from the group page.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {result.ghostMembers.map((g) => (
+                  <span key={g.id} className="text-xs px-2 py-1 rounded-full bg-amber-500/10 text-amber-600 border border-amber-500/20">
+                    {g.name}
+                  </span>
+                ))}
+              </div>
+            </Card>
+          )}
+
+          {/* Link to group */}
+          {result.groupId && (
+            <Link href={`/groups/${result.groupId}`}>
+              <Button className="w-full">
+                View Group: {result.groupName}
+              </Button>
+            </Link>
+          )}
+        </div>
       )}
 
-      {preview.length > 0 && (
-        <div className="mb-4">
-          <h3 className="text-sm font-medium text-gray-300 mb-2">
-            Preview ({preview.length} expenses)
+      {/* Preview */}
+      {preview.length > 0 && !result && (
+        <div>
+          <h3 className="text-sm font-medium mb-2">
+            Preview: {regularExpenses.length} expenses, {settlements.length} settlements
           </h3>
-          <div className="space-y-2 max-h-64 overflow-y-auto">
-            {preview.slice(0, 20).map((exp, i) => (
-              <Card key={i} className="bg-gray-800/50 border-gray-700 p-3">
+          <div className="space-y-2 max-h-80 overflow-y-auto">
+            {preview.slice(0, 25).map((exp, i) => (
+              <Card key={i} className={`p-3 ${exp.isSettlement ? "border-amber-500/20" : ""}`}>
                 <div className="flex justify-between items-start">
-                  <div>
-                    <p className="text-sm text-white">{exp.description}</p>
-                    <p className="text-xs text-gray-400">
-                      {exp.date} {exp.category ? ` · ${exp.category}` : ""}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">
+                      {exp.isSettlement && <span className="text-amber-500 text-xs mr-1">[Settlement]</span>}
+                      {exp.description}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {exp.date} · Paid by <span className={exp.payer === matchedName ? "text-primary font-medium" : ""}>{exp.payer === matchedName ? "You" : exp.payer}</span>
+                      {" · Split: "}{exp.splitAmong.length} people
                     </p>
                   </div>
-                  <p className="text-sm font-medium text-teal-400">
+                  <p className="text-sm font-semibold text-primary shrink-0 ml-2">
                     ${exp.amount.toFixed(2)}
                   </p>
                 </div>
               </Card>
             ))}
-            {preview.length > 20 && (
-              <p className="text-xs text-gray-500 text-center">
-                ...and {preview.length - 20} more
+            {preview.length > 25 && (
+              <p className="text-xs text-muted-foreground text-center py-1">
+                ...and {preview.length - 25} more
               </p>
             )}
           </div>
 
           <Button
             onClick={handleImport}
-            disabled={importing}
-            className="w-full mt-4 bg-teal-600 hover:bg-teal-700 text-white"
+            disabled={importing || !matchedName}
+            className="w-full mt-4"
           >
             {importing ? "Importing..." : `Import ${preview.length} Expenses`}
           </Button>

@@ -460,3 +460,55 @@ export async function sendInviteToAdminEmail(opts: {
 
   sendEmail(adminEmail, subject, html, text);
 }
+
+/**
+ * Invite a ghost member to sign up on Spliiit
+ */
+export async function sendGhostInviteEmail(opts: {
+  to: string;
+  inviterName: string;
+  ghostName: string;
+  groupName: string;
+}) {
+  if (!resend) return;
+  const { to, inviterName, ghostName, groupName } = opts;
+  const APP_URL = "https://splitease-81re.onrender.com";
+
+  const subject = `${inviterName} has been tracking expenses with you on Spliiit`;
+
+  const html = `
+<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <tr><td align="center" style="padding:24px 16px;">
+    <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="max-width:520px;">
+      <tr><td>${EMAIL_LOGO}</td></tr>
+      <tr><td style="font-size:15px;color:#374151;padding-bottom:16px;">
+        Hi ${ghostName},
+      </td></tr>
+      <tr><td style="padding-bottom:16px;">
+        <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="border:1px solid #e5e7eb;border-radius:10px;">
+          <tr><td style="padding:16px;">
+            <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+              <tr><td style="font-size:14px;color:#374151;">
+                <strong>${inviterName}</strong> imported expenses from Splitwise into the group <strong>${groupName}</strong>, and you're part of it!
+              </td></tr>
+              <tr><td style="font-size:13px;color:#6b7280;padding-top:8px;">
+                Sign up on Spliiit to see your balances, settle up, and keep splitting expenses with your friends.
+              </td></tr>
+            </table>
+          </td></tr>
+        </table>
+      </td></tr>
+      <tr><td style="padding-bottom:24px;">
+        <a href="${APP_URL}" style="font-size:14px;color:#2dd4a8;text-decoration:none;font-weight:500;">Sign up on Spliiit &rarr;</a>
+      </td></tr>
+      <tr><td style="border-top:1px solid #f3f4f6;padding-top:16px;font-size:12px;color:#9ca3af;">
+        ${EMAIL_FOOTER}
+      </td></tr>
+    </table>
+  </td></tr>
+</table>`;
+
+  const text = `Hi ${ghostName},\n\n${inviterName} imported expenses from Splitwise into the group "${groupName}" on Spliiit, and you're part of it!\n\nSign up to see your balances and settle up: ${APP_URL}\n\n— Spliiit`;
+
+  sendEmail(to, subject, html, text);
+}
