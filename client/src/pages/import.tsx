@@ -1,10 +1,13 @@
 import { useState, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Upload, FileText, CheckCircle, AlertCircle, ArrowLeft, Users2, UserPlus } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Upload, FileText, CheckCircle, AlertCircle, ArrowLeft, Users2, UserPlus, RefreshCw } from "lucide-react";
 import { useLocation } from "wouter";
 import { Link } from "wouter";
+import type { Group } from "@shared/schema";
 
 interface PreviewExpense {
   date: string;
@@ -34,7 +37,11 @@ export default function Import() {
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [targetGroupId, setTargetGroupId] = useState<string>("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Fetch existing groups for re-import option
+  const { data: groups = [] } = useQuery<Group[]>({ queryKey: ["/api/groups"] });
 
   const parseCSVLine = (line: string): string[] => {
     const result: string[] = [];
@@ -157,6 +164,9 @@ export default function Import() {
     try {
       const formData = new FormData();
       formData.append("file", file);
+      if (targetGroupId) {
+        formData.append("groupId", targetGroupId);
+      }
 
       const API_BASE = "__PORT_5000__".startsWith("__") ? "" : "__PORT_5000__";
       const res = await fetch(`${API_BASE}/api/import/splitwise`, {
@@ -210,9 +220,35 @@ export default function Import() {
           <li>Upload it here</li>
         </ol>
         <p className="text-xs text-muted-foreground mt-2">
-          A new group will be created with all people from the CSV. People not on Spliiit will appear as ghost members you can invite later.
+          A new group will be created, or you can update an existing group with new expenses.
         </p>
       </Card>
+
+      {/* Group selector: new or existing */}
+      {groups.length > 0 && (
+        <Card className="p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <RefreshCw className="w-4 h-4 text-primary" />
+            <h3 className="text-sm font-medium">Import into</h3>
+          </div>
+          <Select value={targetGroupId || "new"} onValueChange={(v) => setTargetGroupId(v === "new" ? "" : v)}>
+            <SelectTrigger>
+              <SelectValue placeholder="New group (default)" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="new">New group</SelectItem>
+              {groups.map((g) => (
+                <SelectItem key={g.id} value={g.id}>{g.name} (update)</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {targetGroupId && targetGroupId !== "new" && (
+            <p className="text-xs text-muted-foreground mt-2">
+              Only new expenses will be added. Duplicates (same date + amount + description) will be skipped.
+            </p>
+          )}
+        </Card>
+      )}
 
       {/* File upload */}
       <Card className="p-6">
@@ -284,7 +320,10 @@ export default function Import() {
               <CheckCircle size={16} className="text-primary mt-0.5 shrink-0" />
               <div>
                 <p className="text-sm text-primary font-medium">
-                  Successfully imported {result.imported} expenses!
+                  {(result as any).isUpdate
+                    ? `Updated group with ${result.imported} new expenses!`
+                    : `Successfully imported ${result.imported} expenses!`
+                  }
                 </p>
                 {result.skipped > 0 && (
                   <p className="text-xs text-muted-foreground mt-1">

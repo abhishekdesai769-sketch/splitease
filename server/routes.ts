@@ -1474,26 +1474,70 @@ export async function registerRoutes(
         });
       }
 
-      // Build userId map: column index → user ID
+      // Check if updating an existing group or creating a new one
+      const targetGroupId = req.body.groupId;
       const colToUserId = new Map<number, string>();
       const ghostMembers: { id: string; name: string }[] = [];
       colToUserId.set(importerIdx, userId);
+      let group: any;
+      let existingExpenses: any[] = [];
 
-      for (let i = 0; i < personNames.length; i++) {
-        if (i === importerIdx) continue;
-        const ghost = await storage.createGhostUser(personNames[i]);
-        colToUserId.set(i, ghost.id);
-        ghostMembers.push({ id: ghost.id, name: personNames[i] });
+      if (targetGroupId) {
+        // Re-import mode: update existing group
+        group = await storage.getGroup(targetGroupId);
+        if (!group) return res.status(404).json({ error: "Group not found" });
+        if (!group.memberIds.includes(userId)) {
+          return res.status(403).json({ error: "Not a member of this group" });
+        }
+
+        // Match CSV person names to existing group members
+        const groupMembers = await storage.getUsersSafe(group.memberIds);
+        for (let i = 0; i < personNames.length; i++) {
+          if (i === importerIdx) continue;
+          const csvName = personNames[i].toLowerCase().trim();
+
+          // Try to match by name (exact, contains, first name)
+          let matched = groupMembers.find(m => m.name.toLowerCase() === csvName);
+          if (!matched) matched = groupMembers.find(m =>
+            m.name.toLowerCase().includes(csvName) || csvName.includes(m.name.toLowerCase())
+          );
+          if (!matched) {
+            const firstName = csvName.split(" ")[0];
+            matched = groupMembers.find(m => m.name.toLowerCase().split(" ")[0] === firstName);
+          }
+
+          if (matched) {
+            colToUserId.set(i, matched.id);
+          } else {
+            // No match — create a ghost user and add to group
+            const ghost = await storage.createGhostUser(personNames[i]);
+            colToUserId.set(i, ghost.id);
+            ghostMembers.push({ id: ghost.id, name: personNames[i] });
+            // Add ghost to group members
+            await storage.updateGroupMembers(group.id, [...group.memberIds, ghost.id]);
+            group.memberIds.push(ghost.id);
+          }
+        }
+
+        // Load existing expenses for dedup
+        existingExpenses = await storage.getExpensesByGroup(group.id);
+      } else {
+        // New import: create ghost users + new group
+        for (let i = 0; i < personNames.length; i++) {
+          if (i === importerIdx) continue;
+          const ghost = await storage.createGhostUser(personNames[i]);
+          colToUserId.set(i, ghost.id);
+          ghostMembers.push({ id: ghost.id, name: personNames[i] });
+        }
+
+        const allMemberIds = Array.from(colToUserId.values());
+        group = await storage.createGroup({
+          name: `Splitwise Import — ${new Date().toISOString().split("T")[0]}`,
+          createdById: userId,
+          memberIds: allMemberIds,
+          adminIds: [userId],
+        });
       }
-
-      // Create group with all members
-      const allMemberIds = Array.from(colToUserId.values());
-      const group = await storage.createGroup({
-        name: `Splitwise Import — ${new Date().toISOString().split("T")[0]}`,
-        createdById: userId,
-        memberIds: allMemberIds,
-        adminIds: [userId],
-      });
 
       // Parse data rows
       let imported = 0;
@@ -1549,6 +1593,19 @@ export async function registerRoutes(
           const splitAmongIds = personValues.map(pv => pv.userId);
           const desc = category && !isSettlement ? `${description} (${category})` : description;
 
+          // Dedup: skip if an expense with same date + amount + description already exists in this group
+          if (existingExpenses.length > 0) {
+            const isDuplicate = existingExpenses.some(e =>
+              e.date === date &&
+              Math.abs(e.amount - Math.abs(cost)) < 0.01 &&
+              e.description === sanitize(desc, 200)
+            );
+            if (isDuplicate) {
+              skipped++;
+              continue;
+            }
+          }
+
           await storage.createExpense({
             description: sanitize(desc, 200),
             amount: Math.abs(cost),
@@ -1574,6 +1631,7 @@ export async function registerRoutes(
         groupId: group.id,
         groupName: group.name,
         ghostMembers,
+        isUpdate: !!targetGroupId,
       });
     } catch (err) {
       console.error("Import error:", err);
