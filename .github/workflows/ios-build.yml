@@ -1,0 +1,117 @@
+# ============================================================
+# iOS Build & App Store Upload — Spliiit
+# ============================================================
+# Builds the Capacitor iOS app and uploads to TestFlight.
+#
+# REQUIRED GITHUB SECRETS:
+#   ASC_KEY_ID          — App Store Connect API Key ID
+#   ASC_ISSUER_ID       — App Store Connect Issuer ID
+#   ASC_KEY_CONTENT     — Base64-encoded .p8 API key file
+#   MATCH_GIT_TOKEN     — GitHub PAT with repo access to certificates repo
+#   MATCH_PASSWORD       — Encryption password for match certificates
+#
+# MANUAL TRIGGER:
+#   Actions tab > "iOS Build & TestFlight" > "Run workflow"
+#   Or: gh workflow run ios-build.yml
+#
+# SETUP (one-time, done on the cloud Mac):
+#   1. Create App Store Connect API key
+#   2. Run: fastlane match init (creates certificates repo)
+#   3. Run: fastlane match appstore (generates certs + profiles)
+#   4. Add all secrets to GitHub
+# ============================================================
+
+name: iOS Build & TestFlight
+
+on:
+  workflow_dispatch:
+    inputs:
+      submit_to_review:
+        description: "Submit to App Store review after TestFlight upload?"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+jobs:
+  build:
+    name: Build iOS & Upload to TestFlight
+    runs-on: macos-14  # Apple Silicon (M1) runner — faster builds
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Build web app
+        run: npm run build
+
+      - name: Install Capacitor CLI
+        run: |
+          npm install -g @capacitor/cli
+          npm install @capacitor/core @capacitor/ios
+
+      - name: Initialize Capacitor iOS platform
+        run: |
+          # Add iOS platform if not already present
+          if [ ! -d "ios/App/App.xcworkspace" ]; then
+            npx cap add ios
+          fi
+          # Sync web assets to iOS project
+          npx cap sync ios
+
+      - name: Set up Ruby & Fastlane
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.2"
+          bundler-cache: true
+
+      - name: Install Fastlane
+        run: |
+          gem install fastlane -N
+          gem install cocoapods -N
+
+      - name: Install CocoaPods dependencies
+        run: |
+          cd ios/App
+          pod install || pod install --repo-update
+
+      - name: Set up code signing via Match
+        env:
+          MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_TOKEN }}
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_CONTENT: ${{ secrets.ASC_KEY_CONTENT }}
+        run: |
+          fastlane match appstore --readonly
+
+      - name: Build & upload to TestFlight
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_CONTENT: ${{ secrets.ASC_KEY_CONTENT }}
+          MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_TOKEN }}
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+        run: |
+          fastlane ios beta
+
+      - name: Submit to App Store review (optional)
+        if: ${{ github.event.inputs.submit_to_review == 'true' }}
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_CONTENT: ${{ secrets.ASC_KEY_CONTENT }}
+        run: |
+          fastlane ios release

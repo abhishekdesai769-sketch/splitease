@@ -1,0 +1,11 @@
+# Match — code signing management
+# Stores certificates and profiles in a private GitHub repo
+
+git_url("https://github.com/abhishekdesai769-sketch/spliiit-certificates")
+storage_mode("git")
+
+type("appstore")
+app_identifier("ca.klarityit.spliiit")
+
+# These will be set via environment variables in GitHub Actions
+# username is the Apple ID

@@ -1,0 +1,6 @@
+app_identifier("ca.klarityit.spliiit")
+apple_id("abhishekdesai769@gmail.com")
+team_name("Klarity IT Corp")
+
+# App Store Connect
+itc_team_name("Klarity IT Corp")

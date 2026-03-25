@@ -1,0 +1,8 @@
+Welcome to Spliiit on iOS!
+
+- Split expenses with friends and groups
+- Import your Splitwise data with one tap
+- Smart debt simplification
+- Receipt scanning
+- Email notifications for new expenses
+- Dark mode by default

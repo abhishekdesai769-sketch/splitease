@@ -1,0 +1,31 @@
+Spliiit makes splitting expenses with friends and groups effortless.
+
+Whether you're sharing rent, splitting a dinner bill, tracking road trip costs, or managing household expenses, Spliiit keeps everyone on the same page.
+
+KEY FEATURES:
+
+Groups & Friends
+Create groups for trips, households, or events. Add friends for 1-on-1 expense tracking. Invite anyone via email.
+
+Smart Expense Splitting
+Split equally or with custom amounts. Track who paid what and who owes whom. Simplified debt calculations minimize the number of payments needed.
+
+Settle Up
+See exactly what you owe and what you're owed. Settle up with one tap. Keep a clear record of all settlements.
+
+Import from Splitwise
+Moving from Splitwise? Import your CSV export directly. All members, expenses, and balances transfer seamlessly.
+
+Receipt Scanner
+Snap a photo of your receipt to attach it to any expense. Premium users get AI-powered item extraction.
+
+Export Your Data
+Export expenses as CSV via email. Works with Excel, Google Sheets, or any spreadsheet app.
+
+Email Notifications
+Get notified when someone adds an expense involving you, invites you to a group, or settles up.
+
+Privacy First
+Your data stays yours. We don't sell or share your information. Passwords are securely hashed. All connections are encrypted.
+
+Built by Klarity IT Corp in Canada.
