@@ -1,0 +1,124 @@
+# ============================================================
+# Nightly PostgreSQL Backup — Spliiit
+# ============================================================
+# Runs pg_dump against the Neon PostgreSQL database every night
+# and stores the compressed dump as a GitHub Actions artifact.
+#
+# REQUIRED GITHUB SECRET:
+#   DATABASE_URL — Neon PostgreSQL connection string
+#                  (format: postgresql://user:pass@host/dbname?sslmode=require)
+#
+# RESTORE INSTRUCTIONS:
+#   1. Download the artifact from the Actions tab (or CLI):
+#        gh run download <run-id> -n spliiit-backup-YYYY-MM-DD
+#
+#   2. Decompress:
+#        gunzip spliiit-backup-YYYY-MM-DD.sql.gz
+#
+#   3. Restore to your Neon database:
+#        psql "$DATABASE_URL" < spliiit-backup-YYYY-MM-DD.sql
+#
+# MANUAL TRIGGER:
+#   Actions tab > "Nightly Database Backup" > "Run workflow"
+#   Or: gh workflow run nightly-backup.yml
+# ============================================================
+
+name: Nightly Database Backup
+
+on:
+  schedule:
+    # 3:07 AM UTC daily (off-minute to avoid GitHub cron congestion)
+    - cron: "7 3 * * *"
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  backup:
+    name: pg_dump → artifact
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Generate date stamp
+        id: date
+        run: echo "stamp=$(date -u +'%Y-%m-%d')" >> "$GITHUB_OUTPUT"
+
+      - name: Run pg_dump
+        id: dump
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          set -euo pipefail
+
+          FILENAME="spliiit-backup-${{ steps.date.outputs.stamp }}.sql.gz"
+
+          echo "::group::Running pg_dump"
+          pg_dump "$DATABASE_URL" \
+            --no-owner \
+            --no-privileges \
+            --clean \
+            --if-exists \
+            --format=plain \
+            | gzip -9 > "$FILENAME"
+          echo "::endgroup::"
+
+          # Sanity check: file must not be empty
+          FILE_SIZE=$(stat --format=%s "$FILENAME")
+          echo "Backup file: $FILENAME ($FILE_SIZE bytes)"
+
+          if [ "$FILE_SIZE" -lt 100 ]; then
+            echo "::error::Backup file is suspiciously small ($FILE_SIZE bytes). Aborting."
+            exit 1
+          fi
+
+          echo "filename=$FILENAME" >> "$GITHUB_OUTPUT"
+
+      - name: Upload backup artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: spliiit-backup-${{ steps.date.outputs.stamp }}
+          path: ${{ steps.dump.outputs.filename }}
+          retention-days: 7
+          compression-level: 0  # Already gzipped
+
+  notify-on-failure:
+    name: Create failure issue
+    runs-on: ubuntu-latest
+    needs: backup
+    if: failure()
+
+    permissions:
+      issues: write
+
+    steps:
+      - name: Create GitHub issue on failure
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = `Nightly backup failed — ${new Date().toISOString().slice(0, 10)}`;
+            const body = [
+              `The nightly database backup workflow failed.`,
+              ``,
+              `**Run:** ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              `**Time:** ${new Date().toISOString()}`,
+              ``,
+              `Please investigate and re-run manually if needed.`,
+            ].join('\n');
+
+            // Avoid duplicate issues
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'backup-failure',
+              per_page: 1,
+            });
+
+            if (existing.data.length === 0) {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ['backup-failure'],
+              });
+            }

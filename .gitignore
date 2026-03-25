@@ -12,3 +12,7 @@ vite.config.ts.*
 migrate*.mjs
 migrate*.js
 migrate*.ts
+
+# Database dumps — never commit
+*.sql.gz
+*.sql
