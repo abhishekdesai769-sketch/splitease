@@ -59,10 +59,14 @@ jobs:
         run: |
           set -euo pipefail
 
+          # Use the exact PG17 binary to avoid version mismatch
+          PG_DUMP="/usr/lib/postgresql/17/bin/pg_dump"
+          echo "Using: $($PG_DUMP --version)"
+
           FILENAME="spliiit-backup-${{ steps.date.outputs.stamp }}.sql.gz"
 
           echo "::group::Running pg_dump"
-          pg_dump "$DATABASE_URL" \
+          $PG_DUMP "$DATABASE_URL" \
             --no-owner \
             --no-privileges \
             --clean \
