@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { UsersRound, Receipt, Users2, TrendingDown, TrendingUp, MailPlus, Check, X } from "lucide-react";
 import { Link } from "wouter";
 import { useAuth } from "@/lib/auth";
-import { calculateGroupBalances, simplifyDebts } from "@/lib/simplify";
+import { calculateGroupBalances, calculatePairwiseBalances } from "@/lib/simplify";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -87,9 +87,9 @@ export default function Dashboard() {
   const youOwe = myBalance && myBalance.amount < 0 ? Math.abs(myBalance.amount) : 0;
   const youAreOwed = myBalance && myBalance.amount > 0 ? myBalance.amount : 0;
 
-  // Settlement summary across all expenses
-  const settlements = simplifyDebts(balances);
-  const mySettlements = settlements.filter(
+  // Pairwise balances across all expenses (who owes whom, not simplified)
+  const pairwiseSettlements = calculatePairwiseBalances(expenses);
+  const mySettlements = pairwiseSettlements.filter(
     (s) => s.from === user?.id || s.to === user?.id
   );
 
@@ -186,7 +186,7 @@ export default function Dashboard() {
       {/* Your settlements */}
       {mySettlements.length > 0 && (
         <div>
-          <h2 className="text-base font-semibold mb-3">Your Settlements</h2>
+          <h2 className="text-base font-semibold mb-3">Your Balances</h2>
           <div className="space-y-2">
             {mySettlements.map((s, i) => (
               <Card key={i} className="p-3">
