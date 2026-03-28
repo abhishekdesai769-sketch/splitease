@@ -2098,6 +2098,9 @@ setInterval(loadAll,30000);
             }
           }
 
+          // If no mapped person has a positive value, the payer was a skipped person — skip this expense
+          if (payer.amount <= 0) { skipped++; continue; }
+
           // Build split amounts — match original import logic exactly
           // CSV: negative = owes, positive = is owed (payer)
           // We store: how much each person's share is (what they owe for this expense)
