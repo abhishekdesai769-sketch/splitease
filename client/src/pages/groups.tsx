@@ -10,8 +10,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { FolderPlus, UsersRound, ChevronRight } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
+import { useAuth } from "@/lib/auth";
+import { calculateGroupBalances } from "@/lib/simplify";
 
 export default function Groups() {
+  const { user } = useAuth();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [groupName, setGroupName] = useState("");
@@ -41,8 +44,14 @@ export default function Groups() {
   const getGroupExpenseCount = (groupId: string) =>
     expenses.filter((e) => e.groupId === groupId).length;
 
-  const getGroupTotal = (groupId: string) =>
-    expenses.filter((e) => e.groupId === groupId).reduce((sum, e) => sum + e.amount, 0);
+  const getMyNetBalance = (groupId: string) => {
+    if (!user) return 0;
+    const groupExpenses = expenses.filter((e) => e.groupId === groupId);
+    if (groupExpenses.length === 0) return 0;
+    const balances = calculateGroupBalances(groupExpenses);
+    const myBalance = balances.find((b) => b.personId === user.id);
+    return myBalance ? Math.round(myBalance.amount * 100) / 100 : 0;
+  };
 
   return (
     <div className="space-y-5">
@@ -109,7 +118,7 @@ export default function Groups() {
         <div className="space-y-2">
           {groups.map((group) => {
             const expenseCount = getGroupExpenseCount(group.id);
-            const total = getGroupTotal(group.id);
+            const netBalance = getMyNetBalance(group.id);
             return (
               <Link key={group.id} href={`/groups/${group.id}`}>
                 <Card className="p-3 flex items-center gap-3 hover-elevate cursor-pointer" data-testid={`group-card-${group.id}`}>
@@ -122,10 +131,13 @@ export default function Groups() {
                       {group.memberIds.length} members · {expenseCount} expenses
                     </p>
                   </div>
-                  {total > 0 && (
-                    <span className="text-sm font-semibold text-primary shrink-0">
-                      ${total.toFixed(2)}
+                  {netBalance !== 0 && (
+                    <span className={`text-sm font-semibold shrink-0 ${netBalance > 0 ? "text-primary" : "text-destructive"}`}>
+                      {netBalance > 0 ? "+" : "-"}${Math.abs(netBalance).toFixed(2)}
                     </span>
+                  )}
+                  {netBalance === 0 && expenseCount > 0 && (
+                    <span className="text-xs text-muted-foreground shrink-0">settled</span>
                   )}
                   <div className="flex items-center gap-1">
                     <ChevronRight className="w-4 h-4 text-muted-foreground" />
