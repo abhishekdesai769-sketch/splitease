@@ -75,6 +75,7 @@ export interface IStorage {
   // Ghost users
   createGhostUser(name: string): Promise<User>;
   mergeGhostUser(ghostId: string, realUserId: string): Promise<void>;
+  upgradeGhostUser(ghostId: string, data: { name: string; password: string; isAdmin: boolean; isEmailVerified: boolean }): Promise<void>;
   updateUserEmail(id: string, email: string): Promise<User | undefined>;
   getGhostsByEmail(email: string): Promise<User[]>;
 
@@ -523,6 +524,17 @@ export class PgStorage implements IStorage {
   async updateUserEmail(id: string, email: string): Promise<User | undefined> {
     const [updated] = await db.update(users).set({ email: email.toLowerCase() }).where(eq(users.id, id)).returning();
     return updated;
+  }
+
+  async upgradeGhostUser(ghostId: string, data: { name: string; password: string; isAdmin: boolean; isEmailVerified: boolean }): Promise<void> {
+    await db.update(users).set({
+      name: data.name,
+      password: data.password,
+      isGhost: false,
+      isAdmin: data.isAdmin,
+      isApproved: true,
+      isEmailVerified: data.isEmailVerified,
+    }).where(eq(users.id, ghostId));
   }
 
   async getGhostsByEmail(email: string): Promise<User[]> {

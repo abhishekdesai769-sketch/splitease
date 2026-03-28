@@ -169,7 +169,7 @@ export async function registerRoutes(
 
     const cleanEmail = email.toLowerCase().trim();
     const existing = await storage.getUserByEmail(cleanEmail);
-    if (existing) {
+    if (existing && !existing.isGhost) {
       return res.status(409).json({ error: "An account with this email already exists" });
     }
 
@@ -205,6 +205,25 @@ export async function registerRoutes(
     }
 
     const existing = await storage.getUserByEmail(cleanEmail);
+
+    // If a ghost account exists for this email, upgrade it to a real account
+    // (ghost accounts are placeholders created during Splitwise CSV import)
+    if (existing && existing.isGhost) {
+      const isAdmin = cleanEmail === ADMIN_EMAIL;
+      await storage.upgradeGhostUser(existing.id, {
+        name: cleanName,
+        password: hashPassword(password),
+        isAdmin,
+        isEmailVerified: true,
+      });
+      const upgraded = await storage.getUser(existing.id);
+      if (!upgraded) return res.status(500).json({ error: "Failed to upgrade account" });
+
+      (req.session as any).userId = upgraded.id;
+      const { password: _, ...safeUser } = upgraded;
+      return res.status(201).json(safeUser);
+    }
+
     if (existing) {
       return res.status(409).json({ error: "An account with this email already exists" });
     }
@@ -251,9 +270,9 @@ export async function registerRoutes(
       return res.status(401).json({ error: "Invalid email or password" });
     }
 
-    // Block ghost users from logging in
+    // Ghost users need to sign up first to claim their account
     if (user.isGhost) {
-      return res.status(401).json({ error: "Invalid email or password" });
+      return res.status(401).json({ error: "Please sign up to activate your account" });
     }
 
     // Transparently upgrade legacy SHA-256 hash to scrypt on successful login
