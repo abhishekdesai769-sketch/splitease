@@ -2062,9 +2062,9 @@ setInterval(loadAll,30000);
           const date = cols[dateIdx]?.trim();
           const cost = parseFloat(cols[costIdx]?.trim() || "0");
           if (!desc || !date || isNaN(cost) || cost === 0) { skipped++; continue; }
-          if (desc.toLowerCase().includes("total balance") || desc.toLowerCase().includes("settle all")) { skipped++; continue; }
+          if (desc.toLowerCase().includes("total balance")) { skipped++; continue; }
 
-          const isSettlement = desc.toLowerCase().includes("payment") || desc.toLowerCase().includes("settle up") || desc.toLowerCase().includes("settled");
+          const isSettlement = desc.toLowerCase().includes("payment") || desc.toLowerCase().includes("settle up") || desc.toLowerCase().includes("settled") || desc.toLowerCase().includes("settle all");
 
           // Find payer: person with highest positive value (skip unmapped people)
           let payer = { idx: 0, amount: 0, userId: userId };
