@@ -2105,19 +2105,60 @@ setInterval(loadAll,30000);
           for (let p = 0; p < personNames.length; p++) {
             const val = parseFloat(cols[currIdx + 1 + p]?.trim() || "0");
             const uid = colToUserId.get(p);
-            if (!uid) continue;
+            if (!uid) continue; // skipped person — their share excluded
             if (val !== 0) personValues.push({ userId: uid, value: val });
           }
+
+          // Adjusted cost = sum of absolute values of MAPPED people only
+          // (excludes skipped members like "Elly (removed)")
+          const adjustedCost = Math.round(personValues.reduce((sum, pv) => sum + Math.abs(pv.value), 0) * 100) / 100 / 2;
+          // Note: sum of abs values = 2x the actual cost because positives + negatives mirror each other
+          // Actually, let's just sum the negative values (what's owed) + the payer's own share
+          const totalOwed = personValues.filter(pv => pv.value < 0).reduce((sum, pv) => sum + Math.abs(pv.value), 0);
+          const payerOwnShare = payer.amount > 0 ? Math.round((totalOwed > 0 ? totalOwed / personValues.filter(pv => pv.value < 0).length : 0) * 0) : 0;
+          // Simplest correct approach: expense amount = sum of all mapped people's shares
+          // Payer's positive value = what others owe them. So actual cost for mapped people = payer's positive value + payer's own share
+          // Payer's own share = sum of negative values - (total negative values) ... no.
+          //
+          // Let me think clearly:
+          // For "Bombay spice": cost=95.83, mapped people: Nikhil(-23.96), Abhishek(-23.96), Srushti(+71.88)
+          // Elly(-23.96) is skipped.
+          // The expense for MAPPED people: Srushti paid, and the shares are:
+          //   Nikhil: 23.96, Abhishek: 23.96, Srushti's own share: ?
+          // Total of non-payer shares: 23.96 + 23.96 = 47.92
+          // Payer got back: 71.88. So payer's own share = payer's credit - non-payer debts... no.
+          // Actually: payer's share = total mapped cost - payer's positive value
+          // Total mapped cost = sum of abs(negative values) + payer's share
+          // But we don't know payer's share yet. We DO know:
+          //   sum of all values for mapped people = Nikhil(-23.96) + Abhishek(-23.96) + Srushti(+71.88) = 23.96
+          //   This should be 0 if all people are included. With Elly excluded, the sum != 0.
+          //
+          // Correct approach: mapped expense amount = payer's positive value
+          // Because: payer value = what they fronted for mapped + skipped people
+          // But we only want mapped people's portion.
+          // Mapped people's total shares = sum of abs(negative values for mapped people)
+          //                               + payer's own share among mapped people
+          // We can compute: mapped cost = sum of abs(negative mapped values) + payer's share
+          // Payer's share among mapped people = same as their share in the full expense
+          // From the CSV: full cost = 95.83, payer value = +71.88
+          // Payer's share in full expense = 95.83 - 71.88 = 23.95 (their own portion)
+          // But with Elly skipped, the new cost should exclude Elly's portion:
+          // New cost = full cost - Elly's share = 95.83 - 23.96 = 71.87
+          // New payer value = 71.87 - 23.95 = 47.92 (but we can also compute as: sum of mapped negatives = 47.92)
+          // So: adjusted cost = payer's own share + sum of mapped negative values
+          //   = (full_cost - payer_positive_value) + sum_mapped_negatives
+
+          const sumMappedNegatives = personValues.filter(pv => pv.value < 0).reduce((s, pv) => s + Math.abs(pv.value), 0);
+          const payerShare = Math.round((Math.abs(cost) - payer.amount) * 100) / 100;
+          const mappedCost = Math.round((payerShare + sumMappedNegatives) * 100) / 100;
 
           const splitAmounts: Record<string, number> = {};
           const splitAmongIds: string[] = [];
           for (const pv of personValues) {
             splitAmongIds.push(pv.userId);
             if (pv.userId === payer.userId) {
-              // Payer's own share = total cost - what they're owed back
-              splitAmounts[pv.userId] = Math.round((Math.abs(cost) - payer.amount) * 100) / 100;
+              splitAmounts[pv.userId] = payerShare;
             } else {
-              // Others: their share = absolute value of their negative CSV value
               splitAmounts[pv.userId] = Math.round(Math.abs(pv.value) * 100) / 100;
             }
           }
@@ -2125,13 +2166,13 @@ setInterval(loadAll,30000);
 
           // Dedup
           const isDuplicate = existingExpenses.some(e =>
-            e.date === date && Math.abs(e.amount - Math.abs(cost)) < 0.01 && e.description === sanitize(desc, 200)
+            e.date === date && Math.abs(e.amount - mappedCost) < 0.01 && e.description === sanitize(desc, 200)
           );
           if (isDuplicate) { skipped++; continue; }
 
           await storage.createExpense({
             description: sanitize(desc, 200),
-            amount: Math.abs(cost),
+            amount: mappedCost,
             paidById: payer.userId,
             splitAmongIds,
             groupId: group.id,
