@@ -296,7 +296,7 @@ function daysLeft(deletedAt){
 function daysBadge(deletedAt){
   var d=daysLeft(deletedAt);
   var cls=d<=3?"days-crit":d<=7?"days-warn":"days-ok";
-  return "<span class=\\"days-badge "+cls+"\\">"+d+"d left</span>";
+  return '<span class="days-badge '+cls+'">'+d+'d left</span>';
 }
 
 function fmtDate(s){if(!s)return"";return new Date(s).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"});}
@@ -372,7 +372,7 @@ function loadAll(){
 function resetPwBtn(el){
   var id=el.getAttribute("data-uid");
   var label=el.getAttribute("data-uname")+" ("+el.getAttribute("data-uemail")+")";
-  var pw=prompt("Set new password for "+label+":\\n\\nMin 6 characters.");
+  var pw=prompt("Set new password for "+label+" (min 6 characters):");
   if(!pw)return;
   if(pw.length<6){toast("Password must be at least 6 characters",false);return;}
   api("POST","/api/admin/users/"+id+"/reset-password",{newPassword:pw}).then(function(){toast("Password reset!");}).catch(function(e){toast("Failed: "+e.message,false);});
