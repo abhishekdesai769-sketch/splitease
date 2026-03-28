@@ -89,7 +89,17 @@ export default function AuthPage() {
     try {
       await login(email.trim(), password);
     } catch (err: any) {
-      toast({ title: "Error", description: parseError(err), variant: "destructive" });
+      const msg = err.message || "";
+      if (msg.includes("ghost_account")) {
+        // Ghost user from Splitwise import — switch to signup with their email pre-filled
+        setView("signup");
+        toast({
+          title: "Almost there!",
+          description: "Your account was created from an import. Sign up with the same email to activate it — all your expenses will be there.",
+        });
+      } else {
+        toast({ title: "Error", description: parseError(err), variant: "destructive" });
+      }
     } finally {
       setLoading(false);
     }

@@ -272,7 +272,7 @@ export async function registerRoutes(
 
     // Ghost users need to sign up first to claim their account
     if (user.isGhost) {
-      return res.status(401).json({ error: "Please sign up to activate your account" });
+      return res.status(403).json({ error: "ghost_account" });
     }
 
     // Transparently upgrade legacy SHA-256 hash to scrypt on successful login
