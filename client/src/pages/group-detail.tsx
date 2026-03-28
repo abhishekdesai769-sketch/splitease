@@ -577,9 +577,11 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                 <Pencil className="w-4 h-4 mr-2" /> Rename Group
               </DropdownMenuItem>
             )}
-            <DropdownMenuItem onClick={() => { setImportStep("upload"); setImportFile(null); setImportResult(null); setImportOpen(true); }}>
-              <Upload className="w-4 h-4 mr-2" /> Import from Splitwise
-            </DropdownMenuItem>
+            {(isMeOwner || isMeAdmin || isMeGlobalAdmin) && (
+              <DropdownMenuItem onClick={() => { setImportStep("upload"); setImportFile(null); setImportResult(null); setImportOpen(true); }}>
+                <Upload className="w-4 h-4 mr-2" /> Import from Splitwise
+              </DropdownMenuItem>
+            )}
             {expenses.length > 0 && (
               <DropdownMenuItem onClick={() => exportGroupMutation.mutate()} disabled={exportGroupMutation.isPending}>
                 <Download className="w-4 h-4 mr-2" /> Export Expenses

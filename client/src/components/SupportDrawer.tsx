@@ -211,12 +211,6 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
                   </p>
                 </div>
 
-                {/* Interac e-Transfer */}
-                <div className="p-3 rounded-lg bg-muted/40 border border-border text-left">
-                  <p className="text-xs font-medium text-muted-foreground mb-1">Interac e-Transfer</p>
-                  <p className="text-sm font-mono select-all">spliiit@klarityit.ca</p>
-                </div>
-
                 {/* Buy Me a Coffee (supports Apple Pay) */}
                 <a
                   href="https://buymeacoffee.com/spliiit"
