@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { UsersRound, Receipt, Users2, TrendingDown, TrendingUp, MailPlus, Check, X } from "lucide-react";
 import { Link } from "wouter";
 import { useAuth } from "@/lib/auth";
-import { calculateGroupBalances, calculatePairwiseBalances } from "@/lib/simplify";
+import { calculateGroupBalances, calculatePairwiseBalances, simplifyDebts } from "@/lib/simplify";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -81,17 +81,34 @@ export default function Dashboard() {
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     .slice(0, 5);
 
-  // Calculate what the current user owes / is owed across ALL expenses (groups + direct)
+  // Calculate what the current user owes / is owed (net balance is always the same regardless of simplify)
   const balances = calculateGroupBalances(expenses);
   const myBalance = balances.find((b) => b.personId === user?.id);
   const youOwe = myBalance && myBalance.amount < 0 ? Math.abs(myBalance.amount) : 0;
   const youAreOwed = myBalance && myBalance.amount > 0 ? myBalance.amount : 0;
 
-  // Pairwise balances across all expenses (who owes whom, not simplified)
-  const pairwiseSettlements = calculatePairwiseBalances(expenses);
-  const mySettlements = pairwiseSettlements.filter(
-    (s) => s.from === user?.id || s.to === user?.id
-  );
+  // Per-group settlements: use simplified or pairwise based on each group's setting
+  const mySettlements = (() => {
+    const allSettlements: { from: string; to: string; amount: number }[] = [];
+
+    // Group expenses — respect each group's simplifyDebts setting
+    for (const group of groups) {
+      const groupExpenses = expenses.filter(e => e.groupId === group.id);
+      if (groupExpenses.length === 0) continue;
+      const settlements = group.simplifyDebts
+        ? simplifyDebts(calculateGroupBalances(groupExpenses))
+        : calculatePairwiseBalances(groupExpenses);
+      allSettlements.push(...settlements);
+    }
+
+    // Direct (non-group) expenses — always pairwise
+    const directExpenses = expenses.filter(e => !e.groupId);
+    if (directExpenses.length > 0) {
+      allSettlements.push(...calculatePairwiseBalances(directExpenses));
+    }
+
+    return allSettlements.filter(s => s.from === user?.id || s.to === user?.id);
+  })();
 
   // Batch-fetch all group members in one request (avoids N+1)
   const { data: groupMembersData } = useQuery<SafeUser[]>({
