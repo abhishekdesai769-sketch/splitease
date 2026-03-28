@@ -1700,10 +1700,10 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                   const dateIdx = headers.findIndex(h => h.toLowerCase() === "date");
                   const descIdx = headers.findIndex(h => h.toLowerCase() === "description");
                   const costIdx = headers.findIndex(h => h.toLowerCase() === "cost");
-                  const preview = lines.slice(1, 26).map(line => {
-                    const cols = line.match(/("(?:[^"]|"")*"|[^,]*)/g)?.map(c => c.replace(/^"|"$/g, "").trim()) || [];
+                  const preview = lines.slice(1, Math.min(lines.length, 26)).map(line => {
+                    const cols = line.split(",").map(c => c.replace(/^"|"$/g, "").trim());
                     return { date: cols[dateIdx] || "", description: cols[descIdx] || "", cost: cols[costIdx] || "0" };
-                  }).filter(r => r.description && !r.description.toLowerCase().includes("total balance"));
+                  }).filter(r => r.description && r.description.length > 0 && !r.description.toLowerCase().includes("total balance"));
 
                   setImportCsvNames(csvNames);
                   setImportMapping(mapping);
