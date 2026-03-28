@@ -98,7 +98,11 @@ export default function AuthPage() {
           description: "Your account was created from an import. Sign up with the same email to activate it — all your expenses will be there.",
         });
       } else {
-        toast({ title: "Error", description: parseError(err), variant: "destructive" });
+        toast({
+          title: "Login failed",
+          description: "Invalid email or password. Tap 'Forgot password?' below if you need to reset it.",
+          variant: "destructive",
+        });
       }
     } finally {
       setLoading(false);

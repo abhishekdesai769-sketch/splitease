@@ -454,13 +454,29 @@ export class PgStorage implements IStorage {
     // 2. Update expenses.addedById
     await db.update(expenses).set({ addedById: realUserId }).where(eq(expenses.addedById, ghostId));
 
-    // 3. Update expenses.splitAmongIds — replace ghostId with realUserId in arrays
+    // 3. Update expenses.splitAmongIds AND splitAmounts — replace ghostId with realUserId
     const allExpenses = await db.select().from(expenses);
     for (const exp of allExpenses) {
       if (exp.splitAmongIds.includes(ghostId)) {
         const newIds = exp.splitAmongIds.map(id => id === ghostId ? realUserId : id);
         const deduped = [...new Set(newIds)];
-        await db.update(expenses).set({ splitAmongIds: deduped }).where(eq(expenses.id, exp.id));
+        const updates: Record<string, any> = { splitAmongIds: deduped };
+
+        // Also update splitAmounts JSON keys (e.g. {"ghostId": 15} → {"realUserId": 15})
+        if (exp.splitAmounts) {
+          try {
+            const amounts = JSON.parse(exp.splitAmounts);
+            if (ghostId in amounts) {
+              const ghostAmount = amounts[ghostId];
+              delete amounts[ghostId];
+              // If realUserId already has an entry (shouldn't happen, but be safe), sum them
+              amounts[realUserId] = (amounts[realUserId] || 0) + ghostAmount;
+              updates.splitAmounts = JSON.stringify(amounts);
+            }
+          } catch { /* skip if JSON is invalid */ }
+        }
+
+        await db.update(expenses).set(updates).where(eq(expenses.id, exp.id));
       }
     }
 
