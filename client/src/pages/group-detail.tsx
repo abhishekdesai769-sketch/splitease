@@ -1104,12 +1104,26 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
       {/* Your Balances + Settle Up */}
       {expenses.length > 0 && (
         <div>
+          {/* Net total heading */}
+          {(() => {
+            const myBal = balances.find(b => b.personId === user?.id);
+            const net = myBal ? Math.round(myBal.amount * 100) / 100 : 0;
+            if (net === 0) return (
+              <p className="text-base font-semibold text-muted-foreground text-center py-2">You're all settled up!</p>
+            );
+            return (
+              <p className="text-base font-semibold mb-3">
+                {net > 0 ? "You are owed " : "You owe "}
+                <span className={net > 0 ? "text-primary" : "text-destructive"}>${Math.abs(net).toFixed(2)}</span>
+                {" in total"}
+              </p>
+            );
+          })()}
+
           {/* Personal balance view */}
           {(() => {
             const mySettlements = group.simplifyDebts ? mySimplified : myPairwise;
-            if (mySettlements.length === 0) return (
-              <p className="text-sm text-muted-foreground text-center py-2">You're all settled up!</p>
-            );
+            if (mySettlements.length === 0) return null;
             return (
               <div className="space-y-2 mb-3">
                 <h3 className="text-sm font-medium text-muted-foreground">
@@ -1164,12 +1178,12 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
         </div>
       )}
 
-      {/* Member Balances — right before expenses */}
-      {balances.length > 0 && (
+      {/* Member Balances — right before expenses (excludes current user) */}
+      {balances.filter(b => b.personId !== user?.id).length > 0 && (
         <div>
           <h3 className="text-sm font-medium text-muted-foreground mb-2">Member Balances</h3>
           <div className="space-y-1.5">
-            {balances.map((b) => (
+            {balances.filter(b => b.personId !== user?.id).map((b) => (
               <div key={b.personId} className="flex items-center justify-between gap-2 px-1">
                 <span className="text-sm">{getPersonName(b.personId)}</span>
                 <span
