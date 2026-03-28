@@ -265,126 +265,137 @@ a.back:hover{text-decoration:underline}
 </div>
 
 <script>
-const ME = ${JSON.stringify(user.id)};
-let allUsers=[], deletedData={groups:[],expenses:[]}, searchQ='';
+var ME = "${user.id}";
+var allUsers=[], deletedData={groups:[],expenses:[]}, searchQ="";
 
-function toast(msg,ok=true){
-  const d=document.createElement('div');
-  d.className='toast '+(ok?'toast-ok':'toast-err');
+function toast(msg,ok){
+  if(ok===undefined)ok=true;
+  var d=document.createElement("div");
+  d.className="toast "+(ok?"toast-ok":"toast-err");
   d.textContent=msg;
   document.body.appendChild(d);
-  setTimeout(()=>d.remove(),3000);
+  setTimeout(function(){d.remove();},3000);
 }
 
-async function api(method,url,body){
-  const opts={method,credentials:'include',headers:{}};
-  if(body){opts.headers['Content-Type']='application/json';opts.body=JSON.stringify(body);}
-  const r=await fetch(url,opts);
-  if(!r.ok){const t=await r.text();throw new Error(t);}
-  if(r.status===204) return null;
-  return r.json();
+function api(method,url,body){
+  var opts={method:method,credentials:"include",headers:{}};
+  if(body){opts.headers["Content-Type"]="application/json";opts.body=JSON.stringify(body);}
+  return fetch(url,opts).then(function(r){
+    if(!r.ok)return r.text().then(function(t){throw new Error(t);});
+    if(r.status===204)return null;
+    return r.json();
+  });
 }
 
 function daysLeft(deletedAt){
   if(!deletedAt)return 30;
-  const exp=new Date(new Date(deletedAt).getTime()+30*86400000);
+  var exp=new Date(new Date(deletedAt).getTime()+30*86400000);
   return Math.max(0,Math.ceil((exp-Date.now())/86400000));
 }
 
 function daysBadge(deletedAt){
-  const d=daysLeft(deletedAt);
-  const cls=d<=3?'days-crit':d<=7?'days-warn':'days-ok';
-  return '<span class="days-badge '+cls+'">'+d+'d left</span>';
+  var d=daysLeft(deletedAt);
+  var cls=d<=3?"days-crit":d<=7?"days-warn":"days-ok";
+  return "<span class=\\"days-badge "+cls+"\\">"+d+"d left</span>";
 }
 
-function fmtDate(s){if(!s)return'';return new Date(s).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});}
+function fmtDate(s){if(!s)return"";return new Date(s).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"});}
+
+function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
 
 function switchTab(t){
-  document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
-  document.getElementById('users-section').style.display=t==='users'?'':'none';
-  document.getElementById('recycle-section').style.display=t==='recycle'?'':'none';
+  document.querySelectorAll(".tab").forEach(function(b){b.classList.toggle("active",b.dataset.tab===t);});
+  document.getElementById("users-section").style.display=t==="users"?"":"none";
+  document.getElementById("recycle-section").style.display=t==="recycle"?"":"none";
 }
 
 function renderStats(){
-  const gh=allUsers.filter(u=>u.isGhost).length;
-  document.getElementById('stats').innerHTML=
+  var gh=allUsers.filter(function(u){return u.isGhost;}).length;
+  var dg=(deletedData.groups?deletedData.groups.length:0);
+  var de=(deletedData.expenses?deletedData.expenses.length:0);
+  document.getElementById("stats").innerHTML=
     '<div class="stat"><div class="stat-val">'+allUsers.length+'</div><div class="stat-label">Total Users</div></div>'+
-    '<div class="stat"><div class="stat-val">'+allUsers.filter(u=>!u.isGhost).length+'</div><div class="stat-label">Active</div></div>'+
+    '<div class="stat"><div class="stat-val">'+(allUsers.length-gh)+'</div><div class="stat-label">Active</div></div>'+
     '<div class="stat"><div class="stat-val">'+gh+'</div><div class="stat-label">Ghost</div></div>'+
-    '<div class="stat"><div class="stat-val">'+(deletedData.groups?.length||0)+'</div><div class="stat-label">Deleted Groups</div></div>'+
-    '<div class="stat"><div class="stat-val">'+(deletedData.expenses?.length||0)+'</div><div class="stat-label">Deleted Expenses</div></div>';
+    '<div class="stat"><div class="stat-val">'+dg+'</div><div class="stat-label">Deleted Groups</div></div>'+
+    '<div class="stat"><div class="stat-val">'+de+'</div><div class="stat-label">Deleted Expenses</div></div>';
 }
 
 function renderUsers(){
-  const q=searchQ.toLowerCase();
-  const rows=allUsers.filter(u=>!q||u.name.toLowerCase().includes(q)||u.email.toLowerCase().includes(q));
-  const tb=document.getElementById('user-table');
+  var q=searchQ.toLowerCase();
+  var rows=allUsers.filter(function(u){return !q||u.name.toLowerCase().indexOf(q)>=0||u.email.toLowerCase().indexOf(q)>=0;});
+  var tb=document.getElementById("user-table");
   if(!rows.length){tb.innerHTML='<tr><td colspan="4" class="empty">No users found</td></tr>';return;}
-  tb.innerHTML=rows.map(u=>{
-    const badges=(u.isAdmin?'<span class="badge badge-admin">Admin</span> ':'')+(u.isGhost?'<span class="badge badge-ghost">Ghost</span>':'');
-    const acts=u.id===ME?'<span style="color:#555;font-size:.75rem">You</span>':
-      '<div class="actions">'+
-      '<button class="btn" onclick="resetPw(\\''+u.id+'\\',\\''+u.name.replace(/'/g,"\\\\'")+' ('+u.email+')\\')">&#128273; Reset PW</button>'+
-      (!u.isAdmin?'<button class="btn btn-danger" onclick="delUser(\\''+u.id+'\\',\\''+u.name.replace(/'/g,"\\\\'")+'\\')">&times; Delete</button>':'')+
-      '</div>';
-    return '<tr><td><div class="user-cell"><div class="avatar" style="background:'+u.avatarColor+'">'+u.name[0].toUpperCase()+'</div><div><div class="user-name">'+u.name+'</div></div></div></td><td class="user-email">'+u.email+'</td><td>'+badges+'</td><td style="text-align:right">'+acts+'</td></tr>';
-  }).join('');
+  tb.innerHTML=rows.map(function(u){
+    var badges=(u.isAdmin?'<span class="badge badge-admin">Admin</span> ':'')+(u.isGhost?'<span class="badge badge-ghost">Ghost</span>':'');
+    var acts;
+    if(u.id===ME){
+      acts='<span style="color:#555;font-size:.75rem">You</span>';
+    }else{
+      acts='<div class="actions">'+
+        '<button class="btn" data-uid="'+esc(u.id)+'" data-uname="'+esc(u.name)+'" data-uemail="'+esc(u.email)+'" onclick="resetPwBtn(this)">&#128273; Reset PW</button>'+
+        (!u.isAdmin?'<button class="btn btn-danger" data-uid="'+esc(u.id)+'" data-uname="'+esc(u.name)+'" onclick="delUserBtn(this)">&times; Delete</button>':'')+
+        '</div>';
+    }
+    return '<tr><td><div class="user-cell"><div class="avatar" style="background:'+u.avatarColor+'">'+esc(u.name[0]).toUpperCase()+'</div><div><div class="user-name">'+esc(u.name)+'</div></div></div></td><td class="user-email">'+esc(u.email)+'</td><td>'+badges+'</td><td style="text-align:right">'+acts+'</td></tr>';
+  }).join("");
 }
 
 function renderRecycle(){
-  const q=searchQ.toLowerCase();
-  const gs=(deletedData.groups||[]).filter(g=>!q||g.name.toLowerCase().includes(q)||g.createdByName.toLowerCase().includes(q));
-  const es=(deletedData.expenses||[]).filter(e=>!q||e.description.toLowerCase().includes(q)||e.paidByName.toLowerCase().includes(q)||String(e.amount).includes(q));
+  var q=searchQ.toLowerCase();
+  var gs=(deletedData.groups||[]).filter(function(g){return !q||g.name.toLowerCase().indexOf(q)>=0||(g.createdByName||"").toLowerCase().indexOf(q)>=0;});
+  var es=(deletedData.expenses||[]).filter(function(e){return !q||e.description.toLowerCase().indexOf(q)>=0||(e.paidByName||"").toLowerCase().indexOf(q)>=0||String(e.amount).indexOf(q)>=0;});
 
-  document.getElementById('group-count').textContent=gs.length+' group'+(gs.length!==1?'s':'');
-  document.getElementById('expense-count').textContent=es.length+' expense'+(es.length!==1?'s':'');
+  document.getElementById("group-count").textContent=gs.length+" group"+(gs.length!==1?"s":"");
+  document.getElementById("expense-count").textContent=es.length+" expense"+(es.length!==1?"s":"");
 
-  const gt=document.getElementById('group-table');
-  document.getElementById('no-groups').style.display=gs.length?'none':'';
-  gt.innerHTML=gs.map(g=>
-    '<tr><td><strong>'+g.name+'</strong> '+daysBadge(g.deletedAt)+'</td><td>'+g.createdByName+'</td><td>'+g.memberNames.length+'</td><td>'+fmtDate(g.deletedAt)+'</td><td style="text-align:right"><button class="btn btn-restore" onclick="restoreGroup(\\''+g.id+'\\')">Restore</button></td></tr>'
-  ).join('');
+  var gt=document.getElementById("group-table");
+  document.getElementById("no-groups").style.display=gs.length?"none":"";
+  gt.innerHTML=gs.map(function(g){
+    return '<tr><td><strong>'+esc(g.name)+'</strong> '+daysBadge(g.deletedAt)+'</td><td>'+esc(g.createdByName)+'</td><td>'+g.memberNames.length+'</td><td>'+fmtDate(g.deletedAt)+'</td><td style="text-align:right"><button class="btn btn-restore" data-gid="'+esc(g.id)+'" onclick="restoreGroupBtn(this)">Restore</button></td></tr>';
+  }).join("");
 
-  const et=document.getElementById('expense-table');
-  document.getElementById('no-expenses').style.display=es.length?'none':'';
-  et.innerHTML=es.map(e=>
-    '<tr><td><strong>'+e.description+'</strong> '+daysBadge(e.deletedAt)+'</td><td>$'+Number(e.amount).toFixed(2)+'</td><td>'+e.paidByName+'</td><td>'+fmtDate(e.deletedAt)+'</td><td style="text-align:right"><button class="btn btn-restore" onclick="restoreExpense(\\''+e.id+'\\')">Restore</button></td></tr>'
-  ).join('');
+  var et=document.getElementById("expense-table");
+  document.getElementById("no-expenses").style.display=es.length?"none":"";
+  et.innerHTML=es.map(function(e){
+    return '<tr><td><strong>'+esc(e.description)+'</strong> '+daysBadge(e.deletedAt)+'</td><td>$'+Number(e.amount).toFixed(2)+'</td><td>'+esc(e.paidByName)+'</td><td>'+fmtDate(e.deletedAt)+'</td><td style="text-align:right"><button class="btn btn-restore" data-eid="'+esc(e.id)+'" onclick="restoreExpenseBtn(this)">Restore</button></td></tr>';
+  }).join("");
 }
 
-async function loadAll(){
-  try{
-    const [u,d]=await Promise.all([api('GET','/api/admin/users'),api('GET','/api/admin/deleted')]);
-    allUsers=u; deletedData=d;
+function loadAll(){
+  Promise.all([api("GET","/api/admin/users"),api("GET","/api/admin/deleted")]).then(function(res){
+    allUsers=res[0]; deletedData=res[1];
     renderStats(); renderUsers(); renderRecycle();
-  }catch(e){toast('Failed to load: '+e.message,false);}
+  }).catch(function(e){toast("Failed to load: "+e.message,false);});
 }
 
-async function resetPw(id,label){
-  const pw=prompt('Set new password for '+label+':\\n\\nMin 6 characters.');
+function resetPwBtn(el){
+  var id=el.getAttribute("data-uid");
+  var label=el.getAttribute("data-uname")+" ("+el.getAttribute("data-uemail")+")";
+  var pw=prompt("Set new password for "+label+":\\n\\nMin 6 characters.");
   if(!pw)return;
-  if(pw.length<6){toast('Password must be at least 6 characters',false);return;}
-  try{await api('POST','/api/admin/users/'+id+'/reset-password',{newPassword:pw});toast('Password reset!');}
-  catch(e){toast('Failed: '+e.message,false);}
+  if(pw.length<6){toast("Password must be at least 6 characters",false);return;}
+  api("POST","/api/admin/users/"+id+"/reset-password",{newPassword:pw}).then(function(){toast("Password reset!");}).catch(function(e){toast("Failed: "+e.message,false);});
 }
 
-async function delUser(id,name){
-  if(!confirm('Delete '+name+'? This removes them and their friend links.'))return;
-  try{await api('DELETE','/api/admin/users/'+id);toast('User deleted');loadAll();}
-  catch(e){toast('Failed: '+e.message,false);}
+function delUserBtn(el){
+  var id=el.getAttribute("data-uid");
+  var name=el.getAttribute("data-uname");
+  if(!confirm("Delete "+name+"? This removes them and their friend links."))return;
+  api("DELETE","/api/admin/users/"+id).then(function(){toast("User deleted");loadAll();}).catch(function(e){toast("Failed: "+e.message,false);});
 }
 
-async function restoreGroup(id){
-  try{await api('POST','/api/admin/restore/group/'+id);toast('Group restored');loadAll();}
-  catch(e){toast('Failed: '+e.message,false);}
+function restoreGroupBtn(el){
+  var id=el.getAttribute("data-gid");
+  api("POST","/api/admin/restore/group/"+id).then(function(){toast("Group restored");loadAll();}).catch(function(e){toast("Failed: "+e.message,false);});
 }
 
-async function restoreExpense(id){
-  try{await api('POST','/api/admin/restore/expense/'+id);toast('Expense restored');loadAll();}
-  catch(e){toast('Failed: '+e.message,false);}
+function restoreExpenseBtn(el){
+  var id=el.getAttribute("data-eid");
+  api("POST","/api/admin/restore/expense/"+id).then(function(){toast("Expense restored");loadAll();}).catch(function(e){toast("Failed: "+e.message,false);});
 }
 
-document.getElementById('search').addEventListener('input',e=>{searchQ=e.target.value;renderUsers();renderRecycle();});
+document.getElementById("search").addEventListener("input",function(e){searchQ=e.target.value;renderUsers();renderRecycle();});
 
 loadAll();
 setInterval(loadAll,30000);
