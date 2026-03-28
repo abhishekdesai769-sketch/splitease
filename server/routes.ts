@@ -1842,8 +1842,7 @@ setInterval(loadAll,30000);
           if (i === importerIdx) continue;
           const ghost = await storage.createGhostUser(personNames[i]);
           colToUserId.set(i, ghost.id);
-            ghostMembers.push({ id: ghost.id, name: personNames[i] });
-          }
+          ghostMembers.push({ id: ghost.id, name: personNames[i] });
         }
 
         const allMemberIds = Array.from(colToUserId.values());
