@@ -421,6 +421,22 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
     },
   });
 
+  const deleteAllExpensesMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("DELETE", `/api/groups/${groupId}/expenses`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/expenses/group", groupId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/groups", groupId] });
+      toast({ title: "All expenses deleted" });
+    },
+    onError: (err: Error) => {
+      let msg = err.message;
+      try { msg = JSON.parse(msg.split(": ").slice(1).join(": ")).error; } catch {}
+      toast({ title: "Error", description: msg, variant: "destructive" });
+    },
+  });
+
   const resetForm = () => {
     setDescription("");
     setAmount("");
@@ -583,6 +599,15 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
             <DropdownMenuItem onClick={() => leaveGroupMutation.mutate()} disabled={leaveGroupMutation.isPending}>
               <LogOut className="w-4 h-4 mr-2" /> Leave Group
             </DropdownMenuItem>
+            {(isMeOwner || isMeAdmin || isMeGlobalAdmin) && expenses.length > 0 && (
+              <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => {
+                if (confirm(`Delete all ${expenses.length} expenses in this group? This cannot be undone.`)) {
+                  deleteAllExpensesMutation.mutate();
+                }
+              }}>
+                <Trash2 className="w-4 h-4 mr-2" /> Delete All Expenses
+              </DropdownMenuItem>
+            )}
             {(isMeOwner || isMeAdmin || isMeGlobalAdmin) && (
               <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setDeleteGroupStep(1)}>
                 <Trash2 className="w-4 h-4 mr-2" /> Delete Group
@@ -1076,60 +1101,9 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
         );
       })()}
 
-      {/* Export + Settle Up + Simplify Debts */}
-      {expenses.length > 0 && (
-        <Button
-          size="sm"
-          variant="outline"
-          className="w-full"
-          onClick={() => exportGroupMutation.mutate()}
-          disabled={exportGroupMutation.isPending}
-          data-testid="export-group-expenses-btn"
-        >
-          {exportGroupMutation.isPending ? (
-            <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
-          ) : (
-            <Mail className="w-4 h-4 mr-1.5" />
-          )}
-          {exportGroupMutation.isPending ? "Sending..." : `Export ${group.name} expenses`}
-        </Button>
-      )}
-
-      {/* Your Balances + Settle Up + Simplify Toggle */}
+      {/* Your Balances + Settle Up */}
       {expenses.length > 0 && (
         <div>
-          <div className="flex gap-2 mb-3">
-            {(isMeOwner || isMeAdmin || isMeGlobalAdmin) && (
-              <Button
-                variant={group.simplifyDebts ? "default" : "secondary"}
-                size="sm"
-                className="flex-1"
-                onClick={async () => {
-                  try {
-                    await apiRequest("PATCH", `/api/groups/${groupId}/simplify-debts`, {
-                      simplifyDebts: !group.simplifyDebts,
-                    });
-                    queryClient.invalidateQueries({ queryKey: ["/api/groups", groupId] });
-                  } catch {}
-                }}
-                data-testid="simplify-debts-btn"
-              >
-                <Shuffle className="w-4 h-4 mr-1.5" />
-                {group.simplifyDebts ? "Simplify: ON" : "Simplify: OFF"}
-              </Button>
-            )}
-            <Button
-              variant="outline"
-              size="sm"
-              className="flex-1"
-              onClick={() => setSettleUpOpen(true)}
-              data-testid="group-settle-up-btn"
-            >
-              <HandCoins className="w-4 h-4 mr-1.5" />
-              Settle Up
-            </Button>
-          </div>
-
           {/* Personal balance view */}
           {(() => {
             const mySettlements = group.simplifyDebts ? mySimplified : myPairwise;
@@ -1137,7 +1111,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
               <p className="text-sm text-muted-foreground text-center py-2">You're all settled up!</p>
             );
             return (
-              <div className="space-y-2 mb-4">
+              <div className="space-y-2 mb-3">
                 <h3 className="text-sm font-medium text-muted-foreground">
                   {group.simplifyDebts ? "Your simplified settlements:" : "Your balances:"}
                 </h3>
@@ -1176,6 +1150,39 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
               </div>
             );
           })()}
+
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full"
+            onClick={() => setSettleUpOpen(true)}
+            data-testid="group-settle-up-btn"
+          >
+            <HandCoins className="w-4 h-4 mr-1.5" />
+            Settle Up
+          </Button>
+        </div>
+      )}
+
+      {/* Member Balances — right before expenses */}
+      {balances.length > 0 && (
+        <div>
+          <h3 className="text-sm font-medium text-muted-foreground mb-2">Member Balances</h3>
+          <div className="space-y-1.5">
+            {balances.map((b) => (
+              <div key={b.personId} className="flex items-center justify-between gap-2 px-1">
+                <span className="text-sm">{getPersonName(b.personId)}</span>
+                <span
+                  className={`text-sm font-semibold ${
+                    b.amount > 0 ? "text-primary" : b.amount < 0 ? "text-destructive" : "text-muted-foreground"
+                  }`}
+                >
+                  {b.amount > 0 ? "gets back" : b.amount < 0 ? "pays" : "settled"}{" "}
+                  {b.amount !== 0 && `$${Math.abs(b.amount).toFixed(2)}`}
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -1370,28 +1377,6 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
             Any group member can add expenses. Start splitting.
           </p>
         </Card>
-      )}
-
-      {/* Per-member balances */}
-      {balances.length > 0 && (
-        <div>
-          <h3 className="text-sm font-medium text-muted-foreground mb-2">Member Balances</h3>
-          <div className="space-y-1.5">
-            {balances.map((b) => (
-              <div key={b.personId} className="flex items-center justify-between gap-2 px-1">
-                <span className="text-sm">{getPersonName(b.personId)}</span>
-                <span
-                  className={`text-sm font-semibold ${
-                    b.amount > 0 ? "text-primary" : b.amount < 0 ? "text-destructive" : "text-muted-foreground"
-                  }`}
-                >
-                  {b.amount > 0 ? "gets back" : b.amount < 0 ? "pays" : "settled"}{" "}
-                  {b.amount !== 0 && `$${Math.abs(b.amount).toFixed(2)}`}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
       )}
 
       {/* Delete Group 2-step Confirmation Dialog */}

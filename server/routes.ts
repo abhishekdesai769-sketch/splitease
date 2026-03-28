@@ -1006,6 +1006,27 @@ setInterval(loadAll,30000);
   });
 
   // POST /api/groups/:id/leave â any member can leave
+  // Delete all expenses in a group (admin/owner only)
+  app.delete("/api/groups/:id/expenses", requireAuth, async (req, res) => {
+    const userId = (req.session as any).userId;
+    const group = await storage.getGroup(req.params.id);
+    if (!group) return res.status(404).json({ error: "Group not found" });
+
+    const user = await storage.getUser(userId);
+    const isOwner = group.createdById === userId;
+    const isGroupAdmin = (group.adminIds || []).includes(userId);
+    const isGlobalAdmin = user?.isAdmin;
+    if (!isOwner && !isGroupAdmin && !isGlobalAdmin) {
+      return res.status(403).json({ error: "Only admins can delete all expenses" });
+    }
+
+    const expenses = await storage.getExpensesByGroup(group.id);
+    for (const exp of expenses) {
+      await storage.deleteExpense(exp.id);
+    }
+    res.json({ deleted: expenses.length });
+  });
+
   app.post("/api/groups/:id/leave", requireAuth, async (req, res) => {
     const userId = (req.session as any).userId;
     const user = await storage.getUser(userId);
