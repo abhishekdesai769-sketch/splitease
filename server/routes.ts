@@ -1971,6 +1971,156 @@ setInterval(loadAll,30000);
     }
   });
 
+  // ========== Import into existing group with explicit member mapping ==========
+  app.post("/api/groups/:groupId/import-mapped", requireAuth, upload.single("file"), async (req: Request, res: Response) => {
+    try {
+      const userId = (req.session as any).userId;
+      const currentUser = await storage.getUser(userId);
+      if (!currentUser) return res.status(401).json({ error: "User not found" });
+
+      const groupId = req.params.groupId;
+      const group = await storage.getGroup(groupId);
+      if (!group) return res.status(404).json({ error: "Group not found" });
+      if (!group.memberIds.includes(userId)) return res.status(403).json({ error: "Not a member" });
+
+      const file = (req as any).file;
+      if (!file) return res.status(400).json({ error: "No file uploaded" });
+      const mapping = JSON.parse(req.body.mapping || "{}");
+
+      const csvText = file.buffer.toString("utf-8");
+      const lines = csvText.split("\n").filter((l: string) => l.trim());
+      if (lines.length < 2) return res.status(400).json({ error: "CSV file is empty" });
+
+      const headers = importParseCSVLine(lines[0]);
+      const dateIdx = headers.indexOf("Date");
+      const descIdx = headers.indexOf("Description");
+      const costIdx = headers.indexOf("Cost");
+      const currIdx = headers.indexOf("Currency");
+      if (dateIdx === -1 || descIdx === -1 || costIdx === -1 || currIdx === -1) {
+        return res.status(400).json({ error: "Invalid Splitwise CSV" });
+      }
+
+      const personNames = headers.slice(currIdx + 1).map(n => n.trim()).filter(n => n);
+      const colToUserId = new Map<number, string>();
+      const ghostMembers: { id: string; name: string }[] = [];
+
+      // Build colToUserId from the explicit mapping
+      for (let i = 0; i < personNames.length; i++) {
+        const csvName = personNames[i];
+        const m = mapping[csvName];
+        if (!m) return res.status(400).json({ error: `No mapping for "${csvName}"` });
+
+        if (m.type === "self") {
+          colToUserId.set(i, userId);
+        } else if (m.type === "member") {
+          colToUserId.set(i, m.userId);
+        } else if (m.type === "new" && m.email) {
+          // Check if a real user with this email exists
+          const existing = await storage.getUserByEmail(m.email.toLowerCase().trim());
+          if (existing && !existing.isGhost) {
+            colToUserId.set(i, existing.id);
+            if (!group.memberIds.includes(existing.id)) {
+              await storage.updateGroupMembers(group.id, [...group.memberIds, existing.id]);
+              group.memberIds.push(existing.id);
+            }
+          } else {
+            // Create ghost + set email for invite
+            const ghost = await storage.createGhostUser(csvName);
+            await storage.updateUserEmail(ghost.id, m.email.toLowerCase().trim());
+            colToUserId.set(i, ghost.id);
+            ghostMembers.push({ id: ghost.id, name: csvName });
+            await storage.updateGroupMembers(group.id, [...group.memberIds, ghost.id]);
+            group.memberIds.push(ghost.id);
+
+            // Send invite email
+            try {
+              const { sendGhostInviteEmail } = await import("./email");
+              await sendGhostInviteEmail({
+                to: m.email.toLowerCase().trim(),
+                inviterName: currentUser.name,
+                ghostName: csvName,
+                groupName: group.name,
+              });
+            } catch {}
+          }
+        }
+      }
+
+      // Load existing expenses for dedup
+      const existingExpenses = await storage.getExpensesByGroup(group.id);
+
+      // Parse and import expenses
+      let imported = 0, skipped = 0;
+      const errors: string[] = [];
+
+      for (let i = 1; i < lines.length; i++) {
+        try {
+          const cols = importParseCSVLine(lines[i]);
+          const desc = cols[descIdx]?.trim();
+          const date = cols[dateIdx]?.trim();
+          const cost = parseFloat(cols[costIdx]?.trim() || "0");
+          if (!desc || !date || isNaN(cost) || cost === 0) { skipped++; continue; }
+          if (desc.toLowerCase().includes("total balance") || desc.toLowerCase().includes("settle all")) { skipped++; continue; }
+
+          const isSettlement = desc.toLowerCase().includes("payment") || desc.toLowerCase().includes("settle up") || desc.toLowerCase().includes("settled");
+
+          // Find payer: person with highest positive value
+          let payer = { idx: 0, amount: 0, userId: userId };
+          for (let p = 0; p < personNames.length; p++) {
+            const val = parseFloat(cols[currIdx + 1 + p]?.trim() || "0");
+            if (val > payer.amount) {
+              payer = { idx: p, amount: val, userId: colToUserId.get(p) || userId };
+            }
+          }
+
+          // Build split amounts
+          const splitAmounts: Record<string, number> = {};
+          const splitAmongIds: string[] = [];
+          for (let p = 0; p < personNames.length; p++) {
+            const val = parseFloat(cols[currIdx + 1 + p]?.trim() || "0");
+            const uid = colToUserId.get(p);
+            if (!uid) continue;
+            if (val < 0) {
+              splitAmounts[uid] = Math.abs(val);
+              splitAmongIds.push(uid);
+            } else if (val > 0 && uid === payer.userId) {
+              splitAmounts[uid] = val;
+              splitAmongIds.push(uid);
+            }
+          }
+          if (splitAmongIds.length === 0) { skipped++; continue; }
+
+          // Dedup
+          const isDuplicate = existingExpenses.some(e =>
+            e.date === date && Math.abs(e.amount - Math.abs(cost)) < 0.01 && e.description === sanitize(desc, 200)
+          );
+          if (isDuplicate) { skipped++; continue; }
+
+          await storage.createExpense({
+            description: sanitize(desc, 200),
+            amount: Math.abs(cost),
+            paidById: payer.userId,
+            splitAmongIds,
+            groupId: group.id,
+            date,
+            addedById: userId,
+            isSettlement,
+            splitAmounts: JSON.stringify(splitAmounts),
+          });
+          imported++;
+        } catch {
+          errors.push(`Row ${i + 1}: Failed`);
+          skipped++;
+        }
+      }
+
+      res.json({ imported, skipped, errors, groupId: group.id, groupName: group.name, ghostMembers });
+    } catch (err) {
+      console.error("Mapped import error:", err);
+      res.status(500).json({ error: "Import failed" });
+    }
+  });
+
   // ========== Ghost Member Invite ==========
   app.post("/api/ghost/:ghostId/invite", requireAuth, async (req, res) => {
     const userId = (req.session as any).userId;

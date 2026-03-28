@@ -9,7 +9,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, ArrowLeft, Trash2, Shuffle, Receipt, UserPlus, X, HandCoins, CheckCircle2, AlertTriangle, Camera, Mail, Loader2, Crown, Shield, LogOut, UserMinus, Clock, Check, Ghost, FileText, Pencil } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Plus, ArrowLeft, Trash2, Shuffle, Receipt, UserPlus, X, HandCoins, CheckCircle2, AlertTriangle, Camera, Mail, Loader2, Crown, Shield, LogOut, UserMinus, Clock, Check, Ghost, FileText, Pencil, MoreVertical, Upload, Download } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
@@ -64,6 +65,18 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
   const [ghostInviteMember, setGhostInviteMember] = useState<SafeUser | null>(null);
   const [ghostInviteEmail, setGhostInviteEmail] = useState("");
   const [ghostInviting, setGhostInviting] = useState(false);
+
+  // Import into group
+  const [importOpen, setImportOpen] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importStep, setImportStep] = useState<"upload" | "map" | "preview">("upload");
+  const [importCsvNames, setImportCsvNames] = useState<string[]>([]);
+  const [importMapping, setImportMapping] = useState<Record<string, string>>({}); // csvName → userId or "new:email"
+  const [importNewEmails, setImportNewEmails] = useState<Record<string, string>>({}); // csvName → email for new members
+  const [importPreview, setImportPreview] = useState<any[]>([]);
+  const [importImporterName, setImportImporterName] = useState("");
+  const [importLoading, setImportLoading] = useState(false);
+  const [importResult, setImportResult] = useState<any>(null);
 
   const [, setLocation] = useLocation();
 
@@ -535,6 +548,49 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
             {members.length} members · ${totalGroupSpend.toFixed(2)} total
           </p>
         </div>
+        {/* Three-dots group actions menu */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button size="icon" variant="ghost" data-testid="group-actions-menu">
+              <MoreVertical className="w-4 h-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-52">
+            {(isMeOwner || isMeAdmin || isMeGlobalAdmin) && (
+              <DropdownMenuItem onClick={() => { setNewGroupName(group.name); setRenaming(true); }}>
+                <Pencil className="w-4 h-4 mr-2" /> Rename Group
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuItem onClick={() => { setImportStep("upload"); setImportFile(null); setImportResult(null); setImportOpen(true); }}>
+              <Upload className="w-4 h-4 mr-2" /> Import from Splitwise
+            </DropdownMenuItem>
+            {expenses.length > 0 && (
+              <DropdownMenuItem onClick={() => exportGroupMutation.mutate()} disabled={exportGroupMutation.isPending}>
+                <Download className="w-4 h-4 mr-2" /> Export Expenses
+              </DropdownMenuItem>
+            )}
+            {(isMeOwner || isMeAdmin || isMeGlobalAdmin) && expenses.length > 0 && (
+              <DropdownMenuItem onClick={async () => {
+                try {
+                  await apiRequest("PATCH", `/api/groups/${groupId}/simplify-debts`, { simplifyDebts: !group.simplifyDebts });
+                  queryClient.invalidateQueries({ queryKey: ["/api/groups", groupId] });
+                } catch {}
+              }}>
+                <Shuffle className="w-4 h-4 mr-2" /> {group.simplifyDebts ? "Simplify: ON" : "Simplify: OFF"}
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => leaveGroupMutation.mutate()} disabled={leaveGroupMutation.isPending}>
+              <LogOut className="w-4 h-4 mr-2" /> Leave Group
+            </DropdownMenuItem>
+            {(isMeOwner || isMeAdmin || isMeGlobalAdmin) && (
+              <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setDeleteGroupStep(1)}>
+                <Trash2 className="w-4 h-4 mr-2" /> Delete Group
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+
         <Dialog open={addOpen} onOpenChange={setAddOpen}>
           <DialogTrigger asChild>
             <Button size="sm" data-testid="add-expense-btn">
@@ -1570,39 +1626,215 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
         </DialogContent>
       </Dialog>
 
-      {/* Leave Group + Delete Group buttons at the bottom */}
-      <div className="pt-2 space-y-1">
-        {/* Leave Group — shown for all members */}
-        <Button
-          variant="ghost"
-          size="sm"
-          className="w-full text-muted-foreground hover:text-foreground hover:bg-muted/50"
-          onClick={() => leaveGroupMutation.mutate()}
-          disabled={leaveGroupMutation.isPending}
-          data-testid="leave-group-btn"
-        >
-          {leaveGroupMutation.isPending ? (
-            <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
-          ) : (
-            <LogOut className="w-4 h-4 mr-1.5" />
-          )}
-          {leaveGroupMutation.isPending ? "Leaving..." : "Leave Group"}
-        </Button>
+      {/* Import from Splitwise Dialog */}
+      <Dialog open={importOpen} onOpenChange={(open) => { if (!open) { setImportOpen(false); setImportFile(null); setImportStep("upload"); setImportResult(null); } else { setImportOpen(true); }}}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Import from Splitwise</DialogTitle>
+          </DialogHeader>
 
-        {/* Delete Group button — owner, admin, or global admin */}
-        {(group.createdById === user?.id || (group.adminIds || []).includes(user?.id || "") || user?.isAdmin) && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="w-full text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-            onClick={() => setDeleteGroupStep(1)}
-            data-testid="delete-group-btn"
-          >
-            <Trash2 className="w-4 h-4 mr-1.5" />
-            Delete Group
-          </Button>
-        )}
-      </div>
+          {importResult ? (
+            <div className="space-y-3 pt-2">
+              <div className="flex items-center gap-2 text-primary">
+                <CheckCircle2 className="w-5 h-5" />
+                <span className="font-medium">Import complete!</span>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                {importResult.imported} expenses imported, {importResult.skipped} skipped.
+              </p>
+              {importResult.ghostMembers?.length > 0 && (
+                <div className="text-sm">
+                  <p className="font-medium mb-1">New members created (ghost):</p>
+                  {importResult.ghostMembers.map((g: any) => (
+                    <p key={g.id} className="text-muted-foreground">· {g.name}</p>
+                  ))}
+                </div>
+              )}
+              <Button className="w-full" onClick={() => { setImportOpen(false); queryClient.invalidateQueries({ queryKey: ["/api/expenses/group", groupId] }); queryClient.invalidateQueries({ queryKey: ["/api/groups", groupId] }); queryClient.invalidateQueries({ queryKey: ["/api/groups", groupId, "members"] }); }}>
+                Done
+              </Button>
+            </div>
+          ) : importStep === "upload" ? (
+            <div className="space-y-4 pt-2">
+              <p className="text-sm text-muted-foreground">
+                Upload your Splitwise CSV export. Go to Splitwise → Group → Export → Download CSV.
+              </p>
+              <div
+                className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6 text-center cursor-pointer hover:border-primary/50 transition-colors"
+                onClick={() => document.getElementById("import-csv-input")?.click()}
+              >
+                <Upload className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
+                {importFile ? (
+                  <p className="text-sm font-medium">{importFile.name}</p>
+                ) : (
+                  <p className="text-sm text-muted-foreground">Click to select CSV file</p>
+                )}
+                <input id="import-csv-input" type="file" accept=".csv" className="hidden" onChange={(e) => {
+                  const f = e.target.files?.[0]; if (f) setImportFile(f);
+                }} />
+              </div>
+              <Button className="w-full" disabled={!importFile || importLoading} onClick={async () => {
+                if (!importFile) return;
+                setImportLoading(true);
+                try {
+                  const text = await importFile.text();
+                  const lines = text.split(/\\r?\\n/).filter(l => l.trim());
+                  if (lines.length < 2) { toast({ title: "Error", description: "CSV is empty", variant: "destructive" }); return; }
+                  const headers = lines[0].split(",").map(h => h.replace(/^"|"$/g, "").trim());
+                  const currIdx = headers.findIndex(h => h.toLowerCase() === "currency");
+                  if (currIdx === -1) { toast({ title: "Error", description: "Invalid Splitwise CSV — missing Currency column", variant: "destructive" }); return; }
+                  const csvNames = headers.slice(currIdx + 1).map(n => n.trim()).filter(n => n);
+                  if (csvNames.length === 0) { toast({ title: "Error", description: "No person columns found in CSV", variant: "destructive" }); return; }
+
+                  // Auto-match: try to match CSV names to group members
+                  const mapping: Record<string, string> = {};
+                  for (const csvName of csvNames) {
+                    const cn = csvName.toLowerCase();
+                    const match = members.find(m => m.name.toLowerCase() === cn)
+                      || members.find(m => m.name.toLowerCase().includes(cn) || cn.includes(m.name.toLowerCase()))
+                      || members.find(m => m.name.toLowerCase().split(" ")[0] === cn.split(" ")[0]);
+                    if (match) mapping[csvName] = match.id;
+                  }
+
+                  // Parse preview rows
+                  const dateIdx = headers.findIndex(h => h.toLowerCase() === "date");
+                  const descIdx = headers.findIndex(h => h.toLowerCase() === "description");
+                  const costIdx = headers.findIndex(h => h.toLowerCase() === "cost");
+                  const preview = lines.slice(1, 26).map(line => {
+                    const cols = line.match(/("(?:[^"]|"")*"|[^,]*)/g)?.map(c => c.replace(/^"|"$/g, "").trim()) || [];
+                    return { date: cols[dateIdx] || "", description: cols[descIdx] || "", cost: cols[costIdx] || "0" };
+                  }).filter(r => r.description && !r.description.toLowerCase().includes("total balance"));
+
+                  setImportCsvNames(csvNames);
+                  setImportMapping(mapping);
+                  setImportNewEmails({});
+                  setImportPreview(preview);
+                  setImportImporterName("");
+                  setImportStep("map");
+                } catch (err: any) {
+                  toast({ title: "Error", description: "Failed to parse CSV", variant: "destructive" });
+                } finally {
+                  setImportLoading(false);
+                }
+              }}>
+                {importLoading ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : null}
+                {importLoading ? "Parsing..." : "Continue"}
+              </Button>
+            </div>
+          ) : importStep === "map" ? (
+            <div className="space-y-4 pt-2">
+              <p className="text-sm text-muted-foreground">
+                Match each person in the CSV to a group member. Select "You" for your own column.
+              </p>
+
+              {/* Which CSV column is YOU */}
+              <div className="space-y-2">
+                <Label>Which column is you?</Label>
+                <Select value={importImporterName} onValueChange={v => {
+                  setImportImporterName(v);
+                  setImportMapping(prev => ({ ...prev, [v]: user?.id || "" }));
+                }}>
+                  <SelectTrigger><SelectValue placeholder="Select your name in CSV" /></SelectTrigger>
+                  <SelectContent>
+                    {importCsvNames.map(n => <SelectItem key={n} value={n}>{n}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Map other CSV names to group members */}
+              {importCsvNames.filter(n => n !== importImporterName).map(csvName => (
+                <div key={csvName} className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">{csvName}</Label>
+                  <Select value={importMapping[csvName] || ""} onValueChange={v => {
+                    setImportMapping(prev => ({ ...prev, [csvName]: v }));
+                    if (v !== "__new__") setImportNewEmails(prev => { const n = { ...prev }; delete n[csvName]; return n; });
+                  }}>
+                    <SelectTrigger><SelectValue placeholder="Select member..." /></SelectTrigger>
+                    <SelectContent>
+                      {members.map(m => <SelectItem key={m.id} value={m.id}>{m.name} ({m.email.includes("placeholder") ? "ghost" : m.email})</SelectItem>)}
+                      <SelectItem value="__new__">+ New member (enter email)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {importMapping[csvName] === "__new__" && (
+                    <Input
+                      type="email"
+                      placeholder="Email address..."
+                      value={importNewEmails[csvName] || ""}
+                      onChange={e => setImportNewEmails(prev => ({ ...prev, [csvName]: e.target.value }))}
+                      className="h-8 text-sm"
+                    />
+                  )}
+                </div>
+              ))}
+
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={() => setImportStep("upload")}>Back</Button>
+                <Button className="flex-1" disabled={!importImporterName || importCsvNames.filter(n => n !== importImporterName).some(n => !importMapping[n] || (importMapping[n] === "__new__" && !importNewEmails[n]))} onClick={() => setImportStep("preview")}>
+                  Preview ({importPreview.length} expenses)
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4 pt-2">
+              <p className="text-sm text-muted-foreground">
+                {importPreview.length} expenses will be imported. Duplicates (same date + amount + description) are skipped.
+              </p>
+              <div className="max-h-48 overflow-y-auto space-y-1">
+                {importPreview.slice(0, 25).map((r, i) => (
+                  <div key={i} className="flex justify-between text-xs py-1 border-b border-muted/30">
+                    <span className="truncate flex-1">{r.description}</span>
+                    <span className="text-muted-foreground ml-2">{r.date}</span>
+                    <span className="font-medium ml-2">${Number(r.cost).toFixed(2)}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Mapping summary */}
+              <div className="text-xs space-y-0.5">
+                <p className="font-medium">Member mapping:</p>
+                {importCsvNames.map(n => {
+                  const mappedId = importMapping[n];
+                  const member = members.find(m => m.id === mappedId);
+                  const label = n === importImporterName ? "You" : mappedId === "__new__" ? `New (${importNewEmails[n]})` : member?.name || "?";
+                  return <p key={n} className="text-muted-foreground">{n} → {label}</p>;
+                })}
+              </div>
+
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={() => setImportStep("map")}>Back</Button>
+                <Button className="flex-1" disabled={importLoading} onClick={async () => {
+                  if (!importFile) return;
+                  setImportLoading(true);
+                  try {
+                    const formData = new FormData();
+                    formData.append("file", importFile);
+                    formData.append("groupId", groupId);
+                    formData.append("mapping", JSON.stringify(
+                      Object.fromEntries(importCsvNames.map(n => {
+                        if (n === importImporterName) return [n, { type: "self" }];
+                        if (importMapping[n] === "__new__") return [n, { type: "new", email: importNewEmails[n] }];
+                        return [n, { type: "member", userId: importMapping[n] }];
+                      }))
+                    ));
+                    const res = await apiFormRequest("POST", `/api/groups/${groupId}/import-mapped`, formData);
+                    const data = await res.json();
+                    setImportResult(data);
+                  } catch (err: any) {
+                    let msg = err.message;
+                    try { msg = JSON.parse(msg.split(": ").slice(1).join(": ")).error; } catch {}
+                    toast({ title: "Import failed", description: msg, variant: "destructive" });
+                  } finally {
+                    setImportLoading(false);
+                  }
+                }}>
+                  {importLoading ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Upload className="w-4 h-4 mr-1.5" />}
+                  {importLoading ? "Importing..." : "Import"}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
