@@ -1547,10 +1547,6 @@ export async function registerRoutes(
       let group: any;
       let existingExpenses: any[] = [];
 
-      // Pre-fetch ALL real (non-ghost) users so we can match CSV names to existing accounts
-      // This prevents creating ghost duplicates for people who already have accounts
-      const allRealUsers = await storage.getAllUsers();
-
       // Helper: match a CSV name against a list of users (exact → contains → first name)
       function matchUserByName(csvName: string, candidates: { id: string; name: string }[]): { id: string; name: string } | undefined {
         const cn = csvName.toLowerCase().trim();
@@ -1573,26 +1569,17 @@ export async function registerRoutes(
           return res.status(403).json({ error: "Not a member of this group" });
         }
 
-        // Match CSV person names: first try group members, then ALL users, then create ghost
+        // Match CSV person names to existing group members
         const groupMembers = await storage.getUsersSafe(group.memberIds);
         for (let i = 0; i < personNames.length; i++) {
           if (i === importerIdx) continue;
 
-          // 1. Try existing group members first
-          let matched = matchUserByName(personNames[i], groupMembers);
-
-          // 2. Try all real users in the system (someone who signed up but isn't in this group yet)
-          if (!matched) matched = matchUserByName(personNames[i], allRealUsers);
+          const matched = matchUserByName(personNames[i], groupMembers);
 
           if (matched) {
             colToUserId.set(i, matched.id);
-            // If matched user isn't in the group yet, add them
-            if (!group.memberIds.includes(matched.id)) {
-              await storage.updateGroupMembers(group.id, [...group.memberIds, matched.id]);
-              group.memberIds.push(matched.id);
-            }
           } else {
-            // No match anywhere — create a ghost user
+            // No match in group — create a ghost user and add to group
             const ghost = await storage.createGhostUser(personNames[i]);
             colToUserId.set(i, ghost.id);
             ghostMembers.push({ id: ghost.id, name: personNames[i] });
@@ -1604,16 +1591,12 @@ export async function registerRoutes(
         // Load existing expenses for dedup
         existingExpenses = await storage.getExpensesByGroup(group.id);
       } else {
-        // New import: match to existing users first, create ghosts only for unknowns
+        // New import: create ghost users for everyone except the importer
+        // (ghosts get linked to real accounts later via the invite flow, which uses email — reliable)
         for (let i = 0; i < personNames.length; i++) {
           if (i === importerIdx) continue;
-
-          const matched = matchUserByName(personNames[i], allRealUsers);
-          if (matched) {
-            colToUserId.set(i, matched.id);
-          } else {
-            const ghost = await storage.createGhostUser(personNames[i]);
-            colToUserId.set(i, ghost.id);
+          const ghost = await storage.createGhostUser(personNames[i]);
+          colToUserId.set(i, ghost.id);
             ghostMembers.push({ id: ghost.id, name: personNames[i] });
           }
         }
