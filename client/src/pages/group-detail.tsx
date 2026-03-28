@@ -1751,7 +1751,9 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                   }}>
                     <SelectTrigger><SelectValue placeholder="Select member..." /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="__skip__">Skip — don't add to group</SelectItem>
+                      {csvName.toLowerCase().includes("(removed)") && (
+                        <SelectItem value="__skip__">Skip — don't add to group</SelectItem>
+                      )}
                       {members.map(m => <SelectItem key={m.id} value={m.id}>{m.name} ({m.email.includes("placeholder") ? "ghost" : m.email})</SelectItem>)}
                       <SelectItem value="__new__">+ New member (enter email)</SelectItem>
                     </SelectContent>
