@@ -159,6 +159,240 @@ export async function registerRoutes(
     })
   );
 
+  // ========== Admin Dashboard (standalone desktop page) ==========
+  app.get("/admin-dashboard", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.redirect("/#/");
+    const user = await storage.getUser(userId);
+    if (!user || !user.isAdmin) return res.status(403).send("Access denied");
+
+    res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Spliiit Admin Dashboard</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0a0f0d;color:#d1d5db;line-height:1.5}
+.container{max-width:1100px;margin:0 auto;padding:1.5rem}
+h1{color:#f9fafb;font-size:1.5rem;margin-bottom:.25rem}
+h2{color:#f9fafb;font-size:1.1rem;margin:2rem 0 .75rem}
+.subtitle{color:#6b7280;font-size:.8rem}
+.topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;flex-wrap:wrap;gap:.75rem}
+.topbar-left{display:flex;align-items:center;gap:.75rem}
+.logo{display:flex;align-items:center;gap:.5rem;font-size:1.1rem;font-weight:600;color:#f9fafb}
+.logo span{color:#4fd1c5}
+.badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;font-size:.65rem;font-weight:600}
+.badge-admin{background:rgba(79,209,197,.15);color:#4fd1c5}
+.badge-ghost{background:rgba(234,179,8,.15);color:#eab308}
+.search{background:#1a1f1c;border:1px solid #2d3330;border-radius:8px;padding:.5rem .75rem;color:#d1d5db;width:300px;font-size:.85rem;outline:none}
+.search:focus{border-color:#4fd1c5}
+.search::placeholder{color:#555}
+table{width:100%;border-collapse:collapse;font-size:.85rem}
+th{text-align:left;padding:.5rem .75rem;color:#9ca3af;font-weight:500;font-size:.75rem;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #1f2937}
+td{padding:.6rem .75rem;border-bottom:1px solid #141a16}
+tr:hover{background:#111816}
+.avatar{width:32px;height:32px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;color:#fff;font-size:.75rem;font-weight:600;flex-shrink:0}
+.user-cell{display:flex;align-items:center;gap:.6rem}
+.user-name{color:#f9fafb;font-weight:500}
+.user-email{color:#6b7280;font-size:.75rem}
+.actions{display:flex;gap:.25rem}
+.btn{padding:.35rem .7rem;border-radius:6px;border:1px solid #2d3330;background:#1a1f1c;color:#d1d5db;cursor:pointer;font-size:.75rem;display:inline-flex;align-items:center;gap:4px;transition:all .15s}
+.btn:hover{background:#242a27;border-color:#3d4340}
+.btn-danger:hover{background:#7f1d1d;border-color:#991b1b;color:#fca5a5}
+.btn-restore{border-color:rgba(79,209,197,.3);color:#4fd1c5}
+.btn-restore:hover{background:rgba(79,209,197,.1)}
+.section{background:#111816;border:1px solid #1f2937;border-radius:12px;padding:1.25rem;margin-bottom:1.5rem}
+.section-title{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem}
+.count{color:#6b7280;font-size:.8rem}
+.days-badge{display:inline-flex;align-items:center;gap:3px;padding:1px 6px;border-radius:4px;font-size:.65rem;font-weight:600}
+.days-ok{background:rgba(107,114,128,.15);color:#9ca3af}
+.days-warn{background:rgba(245,158,11,.15);color:#f59e0b}
+.days-crit{background:rgba(239,68,68,.15);color:#ef4444}
+.empty{text-align:center;padding:2rem;color:#6b7280;font-size:.85rem}
+.toast{position:fixed;top:1rem;right:1rem;padding:.75rem 1.25rem;border-radius:8px;font-size:.85rem;z-index:9999;animation:fadeIn .2s}
+.toast-ok{background:#065f46;color:#6ee7b7;border:1px solid #047857}
+.toast-err{background:#7f1d1d;color:#fca5a5;border:1px solid #991b1b}
+@keyframes fadeIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
+.tabs{display:flex;gap:2px;background:#1a1f1c;border-radius:8px;padding:3px;margin-bottom:1.5rem;width:fit-content}
+.tab{padding:.4rem 1rem;border-radius:6px;border:none;background:transparent;color:#9ca3af;cursor:pointer;font-size:.8rem;font-weight:500;transition:all .15s}
+.tab.active{background:rgba(79,209,197,.15);color:#4fd1c5}
+.tab:hover:not(.active){color:#d1d5db}
+.stat-row{display:flex;gap:1rem;margin-bottom:1.5rem;flex-wrap:wrap}
+.stat{background:#111816;border:1px solid #1f2937;border-radius:10px;padding:1rem 1.25rem;flex:1;min-width:140px}
+.stat-val{font-size:1.5rem;font-weight:700;color:#f9fafb}
+.stat-label{font-size:.7rem;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;margin-top:2px}
+a.back{color:#4fd1c5;text-decoration:none;font-size:.8rem}
+a.back:hover{text-decoration:underline}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="logo">Spl<span>iii</span>t <span style="font-weight:400;font-size:.8rem;color:#6b7280;margin-left:4px">Admin</span></div>
+      <a href="/" class="back">&larr; Back to app</a>
+    </div>
+    <input class="search" id="search" placeholder="Search users, groups, expenses..." />
+  </div>
+
+  <div class="stat-row" id="stats"></div>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="users" onclick="switchTab('users')">Users</button>
+    <button class="tab" data-tab="recycle" onclick="switchTab('recycle')">Recycle Bin</button>
+  </div>
+
+  <div id="users-section">
+    <div class="section">
+      <table><thead><tr><th>User</th><th>Email</th><th>Status</th><th style="text-align:right">Actions</th></tr></thead><tbody id="user-table"></tbody></table>
+    </div>
+  </div>
+
+  <div id="recycle-section" style="display:none">
+    <div class="section">
+      <div class="section-title"><h2 style="margin:0">Deleted Groups</h2><span class="count" id="group-count"></span></div>
+      <table><thead><tr><th>Group</th><th>Created By</th><th>Members</th><th>Deleted</th><th style="text-align:right">Action</th></tr></thead><tbody id="group-table"></tbody></table>
+      <div class="empty" id="no-groups" style="display:none">No deleted groups</div>
+    </div>
+    <div class="section">
+      <div class="section-title"><h2 style="margin:0">Deleted Expenses</h2><span class="count" id="expense-count"></span></div>
+      <table><thead><tr><th>Description</th><th>Amount</th><th>Paid By</th><th>Deleted</th><th style="text-align:right">Action</th></tr></thead><tbody id="expense-table"></tbody></table>
+      <div class="empty" id="no-expenses" style="display:none">No deleted expenses</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const ME = ${JSON.stringify(user.id)};
+let allUsers=[], deletedData={groups:[],expenses:[]}, searchQ='';
+
+function toast(msg,ok=true){
+  const d=document.createElement('div');
+  d.className='toast '+(ok?'toast-ok':'toast-err');
+  d.textContent=msg;
+  document.body.appendChild(d);
+  setTimeout(()=>d.remove(),3000);
+}
+
+async function api(method,url,body){
+  const opts={method,credentials:'include',headers:{}};
+  if(body){opts.headers['Content-Type']='application/json';opts.body=JSON.stringify(body);}
+  const r=await fetch(url,opts);
+  if(!r.ok){const t=await r.text();throw new Error(t);}
+  if(r.status===204) return null;
+  return r.json();
+}
+
+function daysLeft(deletedAt){
+  if(!deletedAt)return 30;
+  const exp=new Date(new Date(deletedAt).getTime()+30*86400000);
+  return Math.max(0,Math.ceil((exp-Date.now())/86400000));
+}
+
+function daysBadge(deletedAt){
+  const d=daysLeft(deletedAt);
+  const cls=d<=3?'days-crit':d<=7?'days-warn':'days-ok';
+  return '<span class="days-badge '+cls+'">'+d+'d left</span>';
+}
+
+function fmtDate(s){if(!s)return'';return new Date(s).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});}
+
+function switchTab(t){
+  document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
+  document.getElementById('users-section').style.display=t==='users'?'':'none';
+  document.getElementById('recycle-section').style.display=t==='recycle'?'':'none';
+}
+
+function renderStats(){
+  const gh=allUsers.filter(u=>u.isGhost).length;
+  document.getElementById('stats').innerHTML=
+    '<div class="stat"><div class="stat-val">'+allUsers.length+'</div><div class="stat-label">Total Users</div></div>'+
+    '<div class="stat"><div class="stat-val">'+allUsers.filter(u=>!u.isGhost).length+'</div><div class="stat-label">Active</div></div>'+
+    '<div class="stat"><div class="stat-val">'+gh+'</div><div class="stat-label">Ghost</div></div>'+
+    '<div class="stat"><div class="stat-val">'+(deletedData.groups?.length||0)+'</div><div class="stat-label">Deleted Groups</div></div>'+
+    '<div class="stat"><div class="stat-val">'+(deletedData.expenses?.length||0)+'</div><div class="stat-label">Deleted Expenses</div></div>';
+}
+
+function renderUsers(){
+  const q=searchQ.toLowerCase();
+  const rows=allUsers.filter(u=>!q||u.name.toLowerCase().includes(q)||u.email.toLowerCase().includes(q));
+  const tb=document.getElementById('user-table');
+  if(!rows.length){tb.innerHTML='<tr><td colspan="4" class="empty">No users found</td></tr>';return;}
+  tb.innerHTML=rows.map(u=>{
+    const badges=(u.isAdmin?'<span class="badge badge-admin">Admin</span> ':'')+(u.isGhost?'<span class="badge badge-ghost">Ghost</span>':'');
+    const acts=u.id===ME?'<span style="color:#555;font-size:.75rem">You</span>':
+      '<div class="actions">'+
+      '<button class="btn" onclick="resetPw(\\''+u.id+'\\',\\''+u.name.replace(/'/g,"\\\\'")+' ('+u.email+')\\')">&#128273; Reset PW</button>'+
+      (!u.isAdmin?'<button class="btn btn-danger" onclick="delUser(\\''+u.id+'\\',\\''+u.name.replace(/'/g,"\\\\'")+'\\')">&times; Delete</button>':'')+
+      '</div>';
+    return '<tr><td><div class="user-cell"><div class="avatar" style="background:'+u.avatarColor+'">'+u.name[0].toUpperCase()+'</div><div><div class="user-name">'+u.name+'</div></div></div></td><td class="user-email">'+u.email+'</td><td>'+badges+'</td><td style="text-align:right">'+acts+'</td></tr>';
+  }).join('');
+}
+
+function renderRecycle(){
+  const q=searchQ.toLowerCase();
+  const gs=(deletedData.groups||[]).filter(g=>!q||g.name.toLowerCase().includes(q)||g.createdByName.toLowerCase().includes(q));
+  const es=(deletedData.expenses||[]).filter(e=>!q||e.description.toLowerCase().includes(q)||e.paidByName.toLowerCase().includes(q)||String(e.amount).includes(q));
+
+  document.getElementById('group-count').textContent=gs.length+' group'+(gs.length!==1?'s':'');
+  document.getElementById('expense-count').textContent=es.length+' expense'+(es.length!==1?'s':'');
+
+  const gt=document.getElementById('group-table');
+  document.getElementById('no-groups').style.display=gs.length?'none':'';
+  gt.innerHTML=gs.map(g=>
+    '<tr><td><strong>'+g.name+'</strong> '+daysBadge(g.deletedAt)+'</td><td>'+g.createdByName+'</td><td>'+g.memberNames.length+'</td><td>'+fmtDate(g.deletedAt)+'</td><td style="text-align:right"><button class="btn btn-restore" onclick="restoreGroup(\\''+g.id+'\\')">Restore</button></td></tr>'
+  ).join('');
+
+  const et=document.getElementById('expense-table');
+  document.getElementById('no-expenses').style.display=es.length?'none':'';
+  et.innerHTML=es.map(e=>
+    '<tr><td><strong>'+e.description+'</strong> '+daysBadge(e.deletedAt)+'</td><td>$'+Number(e.amount).toFixed(2)+'</td><td>'+e.paidByName+'</td><td>'+fmtDate(e.deletedAt)+'</td><td style="text-align:right"><button class="btn btn-restore" onclick="restoreExpense(\\''+e.id+'\\')">Restore</button></td></tr>'
+  ).join('');
+}
+
+async function loadAll(){
+  try{
+    const [u,d]=await Promise.all([api('GET','/api/admin/users'),api('GET','/api/admin/deleted')]);
+    allUsers=u; deletedData=d;
+    renderStats(); renderUsers(); renderRecycle();
+  }catch(e){toast('Failed to load: '+e.message,false);}
+}
+
+async function resetPw(id,label){
+  const pw=prompt('Set new password for '+label+':\\n\\nMin 6 characters.');
+  if(!pw)return;
+  if(pw.length<6){toast('Password must be at least 6 characters',false);return;}
+  try{await api('POST','/api/admin/users/'+id+'/reset-password',{newPassword:pw});toast('Password reset!');}
+  catch(e){toast('Failed: '+e.message,false);}
+}
+
+async function delUser(id,name){
+  if(!confirm('Delete '+name+'? This removes them and their friend links.'))return;
+  try{await api('DELETE','/api/admin/users/'+id);toast('User deleted');loadAll();}
+  catch(e){toast('Failed: '+e.message,false);}
+}
+
+async function restoreGroup(id){
+  try{await api('POST','/api/admin/restore/group/'+id);toast('Group restored');loadAll();}
+  catch(e){toast('Failed: '+e.message,false);}
+}
+
+async function restoreExpense(id){
+  try{await api('POST','/api/admin/restore/expense/'+id);toast('Expense restored');loadAll();}
+  catch(e){toast('Failed: '+e.message,false);}
+}
+
+document.getElementById('search').addEventListener('input',e=>{searchQ=e.target.value;renderUsers();renderRecycle();});
+
+loadAll();
+setInterval(loadAll,30000);
+</script>
+</body>
+</html>`);
+  });
+
   // ========== Auth (rate limited) ==========
   const authLimiter = rateLimit(15 * 60 * 1000, 20); // 20 attempts per 15 min
 
