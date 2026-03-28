@@ -1751,6 +1751,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                   }}>
                     <SelectTrigger><SelectValue placeholder="Select member..." /></SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="__skip__">Skip — don't add to group</SelectItem>
                       {members.map(m => <SelectItem key={m.id} value={m.id}>{m.name} ({m.email.includes("placeholder") ? "ghost" : m.email})</SelectItem>)}
                       <SelectItem value="__new__">+ New member (enter email)</SelectItem>
                     </SelectContent>
@@ -1795,7 +1796,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                 {importCsvNames.map(n => {
                   const mappedId = importMapping[n];
                   const member = members.find(m => m.id === mappedId);
-                  const label = n === importImporterName ? "You" : mappedId === "__new__" ? `New (${importNewEmails[n]})` : member?.name || "?";
+                  const label = n === importImporterName ? "You" : mappedId === "__skip__" ? "Skipped" : mappedId === "__new__" ? `New (${importNewEmails[n]})` : member?.name || "?";
                   return <p key={n} className="text-muted-foreground">{n} → {label}</p>;
                 })}
               </div>
@@ -1812,6 +1813,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                     formData.append("mapping", JSON.stringify(
                       Object.fromEntries(importCsvNames.map(n => {
                         if (n === importImporterName) return [n, { type: "self" }];
+                        if (importMapping[n] === "__skip__") return [n, { type: "skip" }];
                         if (importMapping[n] === "__new__") return [n, { type: "new", email: importNewEmails[n] }];
                         return [n, { type: "member", userId: importMapping[n] }];
                       }))

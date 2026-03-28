@@ -2009,7 +2009,10 @@ setInterval(loadAll,30000);
         const m = mapping[csvName];
         if (!m) return res.status(400).json({ error: `No mapping for "${csvName}"` });
 
-        if (m.type === "self") {
+        if (m.type === "skip") {
+          // Skipped person — don't add to group, their expense share is ignored
+          continue;
+        } else if (m.type === "self") {
           colToUserId.set(i, userId);
         } else if (m.type === "member") {
           colToUserId.set(i, m.userId);
@@ -2063,12 +2066,14 @@ setInterval(loadAll,30000);
 
           const isSettlement = desc.toLowerCase().includes("payment") || desc.toLowerCase().includes("settle up") || desc.toLowerCase().includes("settled");
 
-          // Find payer: person with highest positive value
+          // Find payer: person with highest positive value (skip unmapped people)
           let payer = { idx: 0, amount: 0, userId: userId };
           for (let p = 0; p < personNames.length; p++) {
+            const uid = colToUserId.get(p);
+            if (!uid) continue; // skipped person
             const val = parseFloat(cols[currIdx + 1 + p]?.trim() || "0");
             if (val > payer.amount) {
-              payer = { idx: p, amount: val, userId: colToUserId.get(p) || userId };
+              payer = { idx: p, amount: val, userId: uid };
             }
           }
 
