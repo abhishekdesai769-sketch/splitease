@@ -1696,14 +1696,15 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                     if (match) mapping[csvName] = match.id;
                   }
 
-                  // Parse preview rows
+                  // Parse ALL data rows for accurate count, show first 25 in preview
                   const dateIdx = headers.findIndex(h => h.toLowerCase() === "date");
                   const descIdx = headers.findIndex(h => h.toLowerCase() === "description");
                   const costIdx = headers.findIndex(h => h.toLowerCase() === "cost");
-                  const preview = lines.slice(1, Math.min(lines.length, 26)).map(line => {
+                  const allRows = lines.slice(1).map(line => {
                     const cols = line.split(",").map(c => c.replace(/^"|"$/g, "").trim());
                     return { date: cols[dateIdx] || "", description: cols[descIdx] || "", cost: cols[costIdx] || "0" };
                   }).filter(r => r.description && r.description.length > 0 && !r.description.toLowerCase().includes("total balance"));
+                  const preview = allRows;
 
                   setImportCsvNames(csvNames);
                   setImportMapping(mapping);
@@ -1790,6 +1791,9 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                     <span className="font-medium ml-2">${Number(r.cost).toFixed(2)}</span>
                   </div>
                 ))}
+                {importPreview.length > 25 && (
+                  <p className="text-xs text-muted-foreground text-center py-1">... and {importPreview.length - 25} more</p>
+                )}
               </div>
 
               {/* Mapping summary */}
