@@ -15,14 +15,25 @@ export function hashPassword(password: string): string {
 }
 
 export function verifyPassword(password: string, storedHash: string): boolean {
-  if (storedHash.startsWith("scrypt:")) {
-    const [, salt, hash] = storedHash.split(":");
-    const derived = scryptSync(password, salt, 64).toString("hex");
-    return timingSafeEqual(Buffer.from(hash, "hex"), Buffer.from(derived, "hex"));
+  try {
+    if (storedHash.startsWith("scrypt:")) {
+      const [, salt, hash] = storedHash.split(":");
+      if (!salt || !hash) return false;
+      const derived = scryptSync(password, salt, 64).toString("hex");
+      const hashBuf = Buffer.from(hash, "hex");
+      const derivedBuf = Buffer.from(derived, "hex");
+      if (hashBuf.length !== derivedBuf.length) return false;
+      return timingSafeEqual(hashBuf, derivedBuf);
+    }
+    // Legacy SHA-256 fallback — constant-time comparison
+    const sha256 = createHash("sha256").update(password).digest("hex");
+    const sha256Buf = Buffer.from(sha256, "hex");
+    const storedBuf = Buffer.from(storedHash, "hex");
+    if (sha256Buf.length !== storedBuf.length) return false;
+    return timingSafeEqual(sha256Buf, storedBuf);
+  } catch {
+    return false;
   }
-  // Legacy SHA-256 fallback — constant-time comparison
-  const sha256 = createHash("sha256").update(password).digest("hex");
-  return timingSafeEqual(Buffer.from(sha256, "hex"), Buffer.from(storedHash, "hex"));
 }
 
 export function needsHashUpgrade(storedHash: string): boolean {

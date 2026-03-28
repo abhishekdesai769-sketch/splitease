@@ -257,34 +257,45 @@ export async function registerRoutes(
   });
 
   app.post("/api/auth/login", authLimiter, async (req, res) => {
-    const parsed = loginSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ error: parsed.error.errors[0]?.message || "Invalid input" });
+    try {
+      const parsed = loginSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: parsed.error.errors[0]?.message || "Invalid input" });
+      }
+
+      const { email, password } = parsed.data;
+      const cleanEmail = email.toLowerCase().trim();
+      const user = await storage.getUserByEmail(cleanEmail);
+
+      if (!user) {
+        console.log(`[login] no user found for ${cleanEmail}`);
+        return res.status(401).json({ error: "Invalid email or password" });
+      }
+
+      if (!verifyPassword(password, user.password)) {
+        console.log(`[login] password mismatch for ${cleanEmail} (hash starts: ${user.password.substring(0, 10)}...)`);
+        return res.status(401).json({ error: "Invalid email or password" });
+      }
+
+      // Ghost users need to sign up first to claim their account
+      if (user.isGhost) {
+        return res.status(403).json({ error: "ghost_account" });
+      }
+
+      // Transparently upgrade legacy SHA-256 hash to scrypt on successful login
+      if (needsHashUpgrade(user.password)) {
+        const upgraded = hashPassword(password);
+        await storage.updateUserPassword(user.id, upgraded);
+      }
+
+      (req.session as any).userId = user.id;
+
+      const { password: _, ...safeUser } = user;
+      res.json(safeUser);
+    } catch (err) {
+      console.error(`[login] unexpected error:`, err);
+      res.status(500).json({ error: "Login failed — please try again or reset your password" });
     }
-
-    const { email, password } = parsed.data;
-    const user = await storage.getUserByEmail(email.toLowerCase().trim());
-
-    if (!user || !verifyPassword(password, user.password)) {
-      // Generic message to prevent email enumeration
-      return res.status(401).json({ error: "Invalid email or password" });
-    }
-
-    // Ghost users need to sign up first to claim their account
-    if (user.isGhost) {
-      return res.status(403).json({ error: "ghost_account" });
-    }
-
-    // Transparently upgrade legacy SHA-256 hash to scrypt on successful login
-    if (needsHashUpgrade(user.password)) {
-      const upgraded = hashPassword(password);
-      await storage.updateUserPassword(user.id, upgraded);
-    }
-
-    (req.session as any).userId = user.id;
-
-    const { password: _, ...safeUser } = user;
-    res.json(safeUser);
   });
 
   app.post("/api/auth/logout", (req, res) => {
@@ -385,6 +396,18 @@ export async function registerRoutes(
     if (!updated) return res.status(404).json({ error: "User not found" });
     const { password: _, ...safeUser } = updated;
     res.json(safeUser);
+  });
+
+  // Admin: force-reset a user's password (for locked-out users)
+  app.post("/api/admin/users/:id/reset-password", requireAuth, requireAdmin, async (req, res) => {
+    const { newPassword } = req.body;
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).json({ error: "Password must be at least 6 characters" });
+    }
+    const user = await storage.getUser(req.params.id);
+    if (!user) return res.status(404).json({ error: "User not found" });
+    await storage.updateUserPassword(user.id, hashPassword(newPassword));
+    res.json({ message: `Password reset for ${user.email}` });
   });
 
   app.delete("/api/admin/users/:id", requireAuth, requireAdmin, async (req, res) => {

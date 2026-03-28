@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Shield, Trash2, RotateCcw, FolderX, ReceiptText,
-  Search, Clock, AlertTriangle
+  Search, Clock, AlertTriangle, KeyRound
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
@@ -118,6 +118,19 @@ export default function Admin() {
     },
   });
 
+  const resetPasswordMutation = useMutation({
+    mutationFn: async ({ userId, newPassword }: { userId: string; newPassword: string }) => {
+      const res = await apiRequest("POST", `/api/admin/users/${userId}/reset-password`, { newPassword });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      toast({ title: "Password reset", description: data.message });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
   const deleteMutation = useMutation({
     mutationFn: async (userId: string) => {
       await apiRequest("DELETE", `/api/admin/users/${userId}`);
@@ -209,20 +222,39 @@ export default function Admin() {
                 </div>
                 <p className="text-xs text-muted-foreground truncate">{u.email}</p>
               </div>
-              {u.id !== user?.id && !u.isAdmin && (
+              {u.id !== user?.id && (
                 <div className="flex items-center gap-1">
                   <Button
                     size="icon"
                     variant="ghost"
+                    title="Reset password"
                     onClick={() => {
-                      if (confirm(`Delete ${u.name}? This removes them and their friend links.`)) {
-                        deleteMutation.mutate(u.id);
+                      const pw = prompt(`Set new password for ${u.name} (${u.email}):\n\nMin 6 characters.`);
+                      if (pw && pw.length >= 6) {
+                        resetPasswordMutation.mutate({ userId: u.id, newPassword: pw });
+                      } else if (pw) {
+                        toast({ title: "Error", description: "Password must be at least 6 characters", variant: "destructive" });
                       }
                     }}
-                    data-testid={`delete-${u.id}`}
+                    data-testid={`reset-pw-${u.id}`}
                   >
-                    <Trash2 className="w-4 h-4 text-muted-foreground" />
+                    <KeyRound className="w-4 h-4 text-muted-foreground" />
                   </Button>
+                  {!u.isAdmin && (
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      title="Delete user"
+                      onClick={() => {
+                        if (confirm(`Delete ${u.name}? This removes them and their friend links.`)) {
+                          deleteMutation.mutate(u.id);
+                        }
+                      }}
+                      data-testid={`delete-${u.id}`}
+                    >
+                      <Trash2 className="w-4 h-4 text-muted-foreground" />
+                    </Button>
+                  )}
                 </div>
               )}
             </Card>
