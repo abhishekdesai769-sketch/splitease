@@ -1678,7 +1678,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                 setImportLoading(true);
                 try {
                   const text = await importFile.text();
-                  const lines = text.split(/\\r?\\n/).filter(l => l.trim());
+                  const lines = text.split(/\r?\n/).filter(l => l.trim());
                   if (lines.length < 2) { toast({ title: "Error", description: "CSV is empty", variant: "destructive" }); return; }
                   const headers = lines[0].split(",").map(h => h.replace(/^"|"$/g, "").trim());
                   const currIdx = headers.findIndex(h => h.toLowerCase() === "currency");
