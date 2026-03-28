@@ -2098,19 +2098,27 @@ setInterval(loadAll,30000);
             }
           }
 
-          // Build split amounts
-          const splitAmounts: Record<string, number> = {};
-          const splitAmongIds: string[] = [];
+          // Build split amounts — match original import logic exactly
+          // CSV: negative = owes, positive = is owed (payer)
+          // We store: how much each person's share is (what they owe for this expense)
+          const personValues: { userId: string; value: number }[] = [];
           for (let p = 0; p < personNames.length; p++) {
             const val = parseFloat(cols[currIdx + 1 + p]?.trim() || "0");
             const uid = colToUserId.get(p);
             if (!uid) continue;
-            if (val < 0) {
-              splitAmounts[uid] = Math.abs(val);
-              splitAmongIds.push(uid);
-            } else if (val > 0 && uid === payer.userId) {
-              splitAmounts[uid] = val;
-              splitAmongIds.push(uid);
+            if (val !== 0) personValues.push({ userId: uid, value: val });
+          }
+
+          const splitAmounts: Record<string, number> = {};
+          const splitAmongIds: string[] = [];
+          for (const pv of personValues) {
+            splitAmongIds.push(pv.userId);
+            if (pv.userId === payer.userId) {
+              // Payer's own share = total cost - what they're owed back
+              splitAmounts[pv.userId] = Math.round((Math.abs(cost) - payer.amount) * 100) / 100;
+            } else {
+              // Others: their share = absolute value of their negative CSV value
+              splitAmounts[pv.userId] = Math.round(Math.abs(pv.value) * 100) / 100;
             }
           }
           if (splitAmongIds.length === 0) { skipped++; continue; }
