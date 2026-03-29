@@ -55,8 +55,17 @@ jobs:
 
       - name: Add iOS platform and sync
         run: |
-          npx cap add ios || true
+          # Remove partial ios directory if exists (let Capacitor generate fresh)
+          rm -rf ios
+          npx cap add ios
           npx cap sync ios
+
+      - name: Copy app icons and Info.plist
+        run: |
+          # Copy our custom icons over Capacitor's defaults
+          cp -r ios-assets/Assets.xcassets/AppIcon.appiconset/* ios/App/App/Assets.xcassets/AppIcon.appiconset/
+          # Copy our Info.plist (has camera/photo permissions)
+          cp ios-assets/Info.plist ios/App/App/Info.plist
 
       - name: Set up App Store Connect API key
         env:
