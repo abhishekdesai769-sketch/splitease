@@ -2,23 +2,15 @@
 # iOS Build & App Store Upload — Spliiit
 # ============================================================
 # Builds the Capacitor iOS app and uploads to TestFlight.
+# Uses Xcode automatic signing — no Match or Cloud Mac needed.
 #
 # REQUIRED GITHUB SECRETS:
 #   ASC_KEY_ID          — App Store Connect API Key ID
 #   ASC_ISSUER_ID       — App Store Connect Issuer ID
 #   ASC_KEY_CONTENT     — Base64-encoded .p8 API key file
-#   MATCH_GIT_TOKEN     — GitHub PAT with repo access to certificates repo
-#   MATCH_PASSWORD       — Encryption password for match certificates
 #
 # MANUAL TRIGGER:
 #   Actions tab > "iOS Build & TestFlight" > "Run workflow"
-#   Or: gh workflow run ios-build.yml
-#
-# SETUP (one-time, done on the cloud Mac):
-#   1. Create App Store Connect API key
-#   2. Run: fastlane match init (creates certificates repo)
-#   3. Run: fastlane match appstore (generates certs + profiles)
-#   4. Add all secrets to GitHub
 # ============================================================
 
 name: iOS Build & TestFlight
@@ -38,8 +30,8 @@ on:
 jobs:
   build:
     name: Build iOS & Upload to TestFlight
-    runs-on: macos-14  # Apple Silicon (M1) runner — faster builds
-    timeout-minutes: 30
+    runs-on: macos-14
+    timeout-minutes: 45
 
     steps:
       - name: Checkout code
@@ -57,61 +49,110 @@ jobs:
       - name: Build web app
         run: npm run build
 
-      - name: Install Capacitor CLI
+      - name: Install Capacitor
         run: |
-          npm install -g @capacitor/cli
-          npm install @capacitor/core @capacitor/ios
+          npm install @capacitor/core @capacitor/ios @capacitor/cli
 
-      - name: Initialize Capacitor iOS platform
+      - name: Add iOS platform and sync
         run: |
-          # Add iOS platform if not already present
-          if [ ! -d "ios/App/App.xcworkspace" ]; then
-            npx cap add ios
-          fi
-          # Sync web assets to iOS project
+          npx cap add ios || true
           npx cap sync ios
 
-      - name: Set up Ruby & Fastlane
-        uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: "3.2"
-          bundler-cache: true
-
-      - name: Install Fastlane
+      - name: Set up App Store Connect API key
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_CONTENT: ${{ secrets.ASC_KEY_CONTENT }}
         run: |
-          gem install fastlane -N
-          gem install cocoapods -N
+          mkdir -p ~/private_keys
+          echo "$ASC_KEY_CONTENT" | base64 --decode > ~/private_keys/AuthKey_${ASC_KEY_ID}.p8
 
-      - name: Install CocoaPods dependencies
+      - name: Install CocoaPods
         run: |
           cd ios/App
           pod install || pod install --repo-update
 
-      - name: Set up code signing via Match
+      - name: Set up Xcode automatic signing
         env:
-          MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_TOKEN }}
-          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-          ASC_KEY_CONTENT: ${{ secrets.ASC_KEY_CONTENT }}
         run: |
-          fastlane match appstore --readonly
+          # Use xcodebuild with App Store Connect API key for automatic signing
+          # This creates and downloads certificates + provisioning profiles automatically
+          cd ios/App
 
-      - name: Build & upload to TestFlight
-        env:
-          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-          ASC_KEY_CONTENT: ${{ secrets.ASC_KEY_CONTENT }}
-          MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_TOKEN }}
-          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
-        run: |
-          fastlane ios beta
+          # Update the project to use automatic signing
+          sed -i '' 's/CODE_SIGN_STYLE = Manual/CODE_SIGN_STYLE = Automatic/g' App.xcodeproj/project.pbxproj 2>/dev/null || true
+          sed -i '' 's/PROVISIONING_PROFILE_SPECIFIER = .*/PROVISIONING_PROFILE_SPECIFIER = ""/g' App.xcodeproj/project.pbxproj 2>/dev/null || true
 
-      - name: Submit to App Store review (optional)
-        if: ${{ github.event.inputs.submit_to_review == 'true' }}
+      - name: Build archive
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-          ASC_KEY_CONTENT: ${{ secrets.ASC_KEY_CONTENT }}
         run: |
-          fastlane ios release
+          cd ios/App
+
+          # Generate timestamp-based build number
+          BUILD_NUMBER=$(date +%Y%m%d%H%M)
+
+          xcodebuild archive \
+            -workspace App.xcworkspace \
+            -scheme App \
+            -archivePath $RUNNER_TEMP/App.xcarchive \
+            -destination "generic/platform=iOS" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath ~/private_keys/AuthKey_${ASC_KEY_ID}.p8 \
+            -authenticationKeyID $ASC_KEY_ID \
+            -authenticationKeyIssuerID $ASC_ISSUER_ID \
+            CURRENT_PROJECT_VERSION=$BUILD_NUMBER \
+            MARKETING_VERSION=1.0.0 \
+            CODE_SIGN_STYLE=Automatic \
+            DEVELOPMENT_TEAM="" \
+            | xcpretty || true
+
+      - name: Export IPA
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          # Create export options plist
+          cat > $RUNNER_TEMP/ExportOptions.plist << 'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>method</key>
+              <string>app-store</string>
+              <key>destination</key>
+              <string>upload</string>
+              <key>signingStyle</key>
+              <string>automatic</string>
+          </dict>
+          </plist>
+          PLIST
+
+          xcodebuild -exportArchive \
+            -archivePath $RUNNER_TEMP/App.xcarchive \
+            -exportOptionsPlist $RUNNER_TEMP/ExportOptions.plist \
+            -exportPath $RUNNER_TEMP/export \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath ~/private_keys/AuthKey_${ASC_KEY_ID}.p8 \
+            -authenticationKeyID $ASC_KEY_ID \
+            -authenticationKeyIssuerID $ASC_ISSUER_ID \
+            | xcpretty || true
+
+      - name: Upload to TestFlight
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          xcrun altool --upload-app \
+            --type ios \
+            --file "$RUNNER_TEMP/export/App.ipa" \
+            --apiKey $ASC_KEY_ID \
+            --apiIssuer $ASC_ISSUER_ID \
+            || xcrun notarytool submit "$RUNNER_TEMP/export/App.ipa" \
+              --key ~/private_keys/AuthKey_${ASC_KEY_ID}.p8 \
+              --key-id $ASC_KEY_ID \
+              --issuer $ASC_ISSUER_ID \
+              --wait
