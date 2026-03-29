@@ -15,6 +15,7 @@ const config: CapacitorConfig = {
     contentInset: "automatic",
     preferredContentMode: "mobile",
     scheme: "Spliiit",
+    minVersion: "16.0",
   },
   plugins: {
     SplashScreen: {
