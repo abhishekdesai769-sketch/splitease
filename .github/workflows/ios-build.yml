@@ -91,8 +91,23 @@ jobs:
           ASC_KEY_CONTENT: ${{ secrets.ASC_KEY_CONTENT }}
         run: |
           mkdir -p ~/private_keys
-          echo "$ASC_KEY_CONTENT" | base64 --decode | tr -d '\r' > ~/private_keys/AuthKey_${ASC_KEY_ID}.p8
-          chmod 600 ~/private_keys/AuthKey_${ASC_KEY_ID}.p8
+          P8_PATH=~/private_keys/AuthKey_${ASC_KEY_ID}.p8
+          # The secret may be stored as:
+          #   (a) raw base64-encoded .p8 content (needs decode)
+          #   (b) the literal PEM text (already starts with -----BEGIN)
+          # Detect by checking if it starts with "-----" after trimming.
+          TRIMMED=$(echo "$ASC_KEY_CONTENT" | tr -d '\r\n ' | head -c 5)
+          if [ "$TRIMMED" = "-----" ]; then
+            # Already a PEM — write directly, preserving newlines
+            printf '%s' "$ASC_KEY_CONTENT" | tr -d '\r' > "$P8_PATH"
+          else
+            # Base64-encoded — strip whitespace then decode
+            echo "$ASC_KEY_CONTENT" | tr -d '\r\n ' | base64 --decode > "$P8_PATH"
+          fi
+          chmod 600 "$P8_PATH"
+          # Confirm the file looks like a PEM (first line should be -----BEGIN...)
+          echo "p8 first line: $(head -1 $P8_PATH)"
+          echo "p8 file size: $(wc -c < $P8_PATH) bytes"
 
       - name: Set Xcode automatic signing
         env:
