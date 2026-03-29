@@ -8,6 +8,7 @@
 #   ASC_KEY_ID          — App Store Connect API Key ID
 #   ASC_ISSUER_ID       — App Store Connect Issuer ID
 #   ASC_KEY_CONTENT     — Base64-encoded .p8 API key file
+#   APPLE_TEAM_ID       — Apple Developer Team ID (e.g. 7JUGQ64AX4)
 #
 # MANUAL TRIGGER:
 #   Actions tab > "iOS Build & TestFlight" > "Run workflow"
@@ -31,7 +32,7 @@ jobs:
   build:
     name: Build iOS & Upload to TestFlight
     runs-on: macos-14
-    timeout-minutes: 45
+    timeout-minutes: 60
 
     steps:
       - name: Checkout code
@@ -49,24 +50,30 @@ jobs:
       - name: Build web app
         run: npm run build
 
-      - name: Install Capacitor
+      - name: Install Capacitor (pinned to v7)
         run: |
-          npm install @capacitor/core @capacitor/ios @capacitor/cli
+          npm install @capacitor/core@7 @capacitor/ios@7 @capacitor/cli@7
 
-      - name: Add iOS platform and sync
-        env:
-          CAPACITOR_SKIP_POD_INSTALL: "true"
+      - name: Add iOS platform (allow pod install to fail — we fix it next)
         run: |
           rm -rf ios
-          npx cap add ios
+          # cap add ios creates the template + Podfile even if pod install fails
+          # because the default Podfile targets iOS 13 but Capacitor pods need 16+
+          npx cap add ios || true
 
-          # Fix the deployment target in Podfile (Capacitor pods need iOS 16+)
+      - name: Fix deployment target and install pods
+        run: |
           cd ios/App
-          sed -i '' "s/platform :ios, '.*'/platform :ios, '16.0'/" Podfile
-          sed -i '' "s/IPHONEOS_DEPLOYMENT_TARGET = .*/IPHONEOS_DEPLOYMENT_TARGET = 16.0;/g" App.xcodeproj/project.pbxproj
 
-          # Now run pod install with corrected Podfile
+          # Fix Podfile: bump platform to 16.0
+          sed -i '' "s/platform :ios, '.*'/platform :ios, '16.0'/" Podfile
+
+          # Fix Xcode project: bump all deployment target entries
+          sed -i '' "s/IPHONEOS_DEPLOYMENT_TARGET = [0-9.]*/IPHONEOS_DEPLOYMENT_TARGET = 16.0/g" App.xcodeproj/project.pbxproj
+
+          # Now pod install will succeed
           pod install
+
           cd ../..
 
           # Copy web assets into the iOS project
@@ -74,48 +81,41 @@ jobs:
 
       - name: Copy app icons and Info.plist
         run: |
-          # Copy our custom icons over Capacitor's defaults
-          cp -r ios-assets/Assets.xcassets/AppIcon.appiconset/* ios/App/App/Assets.xcassets/AppIcon.appiconset/
-          # Copy our Info.plist (has camera/photo permissions)
+          cp -r ios-assets/Assets.xcassets/AppIcon.appiconset/* \
+            ios/App/App/Assets.xcassets/AppIcon.appiconset/
           cp ios-assets/Info.plist ios/App/App/Info.plist
 
       - name: Set up App Store Connect API key
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           ASC_KEY_CONTENT: ${{ secrets.ASC_KEY_CONTENT }}
         run: |
           mkdir -p ~/private_keys
           echo "$ASC_KEY_CONTENT" | base64 --decode > ~/private_keys/AuthKey_${ASC_KEY_ID}.p8
+          chmod 600 ~/private_keys/AuthKey_${ASC_KEY_ID}.p8
 
-      - name: Install CocoaPods
-        run: |
-          cd ios/App
-          pod install || pod install --repo-update
-
-      - name: Set up Xcode automatic signing
+      - name: Set Xcode automatic signing
         env:
-          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          # Use xcodebuild with App Store Connect API key for automatic signing
-          # This creates and downloads certificates + provisioning profiles automatically
           cd ios/App
-
-          # Update the project to use automatic signing
-          sed -i '' 's/CODE_SIGN_STYLE = Manual/CODE_SIGN_STYLE = Automatic/g' App.xcodeproj/project.pbxproj 2>/dev/null || true
-          sed -i '' 's/PROVISIONING_PROFILE_SPECIFIER = .*/PROVISIONING_PROFILE_SPECIFIER = ""/g' App.xcodeproj/project.pbxproj 2>/dev/null || true
+          sed -i '' \
+            "s/CODE_SIGN_STYLE = Manual/CODE_SIGN_STYLE = Automatic/g" \
+            App.xcodeproj/project.pbxproj 2>/dev/null || true
+          sed -i '' \
+            "s/PROVISIONING_PROFILE_SPECIFIER = .*/PROVISIONING_PROFILE_SPECIFIER = \"\";/g" \
+            App.xcodeproj/project.pbxproj 2>/dev/null || true
 
       - name: Build archive
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           cd ios/App
-
-          # Generate timestamp-based build number
           BUILD_NUMBER=$(date +%Y%m%d%H%M)
 
+          set -o pipefail
           xcodebuild archive \
             -workspace App.xcworkspace \
             -scheme App \
@@ -128,16 +128,17 @@ jobs:
             CURRENT_PROJECT_VERSION=$BUILD_NUMBER \
             MARKETING_VERSION=1.0.0 \
             CODE_SIGN_STYLE=Automatic \
-            DEVELOPMENT_TEAM="" \
-            | xcpretty || true
+            DEVELOPMENT_TEAM=$APPLE_TEAM_ID \
+            | xcpretty
 
       - name: Export IPA
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          # Create export options plist
-          cat > $RUNNER_TEMP/ExportOptions.plist << 'PLIST'
+          # teamID must be expanded — use unquoted heredoc delimiter
+          cat > $RUNNER_TEMP/ExportOptions.plist << PLIST
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
@@ -148,10 +149,13 @@ jobs:
               <string>upload</string>
               <key>signingStyle</key>
               <string>automatic</string>
+              <key>teamID</key>
+              <string>${APPLE_TEAM_ID}</string>
           </dict>
           </plist>
           PLIST
 
+          set -o pipefail
           xcodebuild -exportArchive \
             -archivePath $RUNNER_TEMP/App.xcarchive \
             -exportOptionsPlist $RUNNER_TEMP/ExportOptions.plist \
@@ -160,20 +164,18 @@ jobs:
             -authenticationKeyPath ~/private_keys/AuthKey_${ASC_KEY_ID}.p8 \
             -authenticationKeyID $ASC_KEY_ID \
             -authenticationKeyIssuerID $ASC_ISSUER_ID \
-            | xcpretty || true
+            | xcpretty
 
       - name: Upload to TestFlight
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
         run: |
-          xcrun altool --upload-app \
+          xcrun altool --upload-package \
+            "$RUNNER_TEMP/export/App.ipa" \
             --type ios \
-            --file "$RUNNER_TEMP/export/App.ipa" \
+            --bundle-id ca.klarityit.spliiit \
+            --bundle-version $(date +%Y%m%d%H%M) \
+            --bundle-short-version-string 1.0.0 \
             --apiKey $ASC_KEY_ID \
-            --apiIssuer $ASC_ISSUER_ID \
-            || xcrun notarytool submit "$RUNNER_TEMP/export/App.ipa" \
-              --key ~/private_keys/AuthKey_${ASC_KEY_ID}.p8 \
-              --key-id $ASC_KEY_ID \
-              --issuer $ASC_ISSUER_ID \
-              --wait
+            --apiIssuer $ASC_ISSUER_ID
