@@ -12,24 +12,32 @@ const EMAIL_LOGO = `
 <table cellpadding="0" cellspacing="0" border="0" style="margin-bottom:20px;">
   <tr>
     <td style="vertical-align:middle;padding-right:10px;">
-      <table cellpadding="0" cellspacing="0" border="0" style="width:36px;height:36px;border-radius:8px;background-color:#1a2e2a;" role="img" aria-label="Spliiit logo">
-        <tr><td style="padding:6px 5px;">
+      <table cellpadding="0" cellspacing="0" border="0" style="width:36px;height:36px;border-radius:8px;background-color:rgba(45,212,168,0.12);" role="img" aria-label="Spliiit logo">
+        <tr><td style="padding:6px 5px;position:relative;">
           <table cellpadding="0" cellspacing="0" border="0" style="width:100%;">
             <tr>
-              <td style="width:30%;height:0;border-top:2px solid #2dd4a8;font-size:0;line-height:0;">&nbsp;</td>
-              <td style="width:2px;background-color:#2dd4a8;height:6px;font-size:0;line-height:0;" rowspan="1">&nbsp;</td>
+              <td style="width:48%;height:0;border-top:2px solid #2dd4a8;font-size:0;line-height:0;">&nbsp;</td>
+              <td style="width:2px;background-color:#2dd4a8;font-size:0;line-height:0;">&nbsp;</td>
               <td style="height:0;border-top:2px solid #2dd4a8;font-size:0;line-height:0;">&nbsp;</td>
             </tr>
-            <tr><td colspan="3" style="height:4px;font-size:0;line-height:0;">&nbsp;</td></tr>
+            <tr>
+              <td style="height:3px;font-size:0;line-height:0;">&nbsp;</td>
+              <td style="width:2px;background-color:#2dd4a8;font-size:0;line-height:0;">&nbsp;</td>
+              <td style="height:3px;font-size:0;line-height:0;">&nbsp;</td>
+            </tr>
             <tr>
               <td style="height:0;border-top:2px solid #2dd4a8;font-size:0;line-height:0;">&nbsp;</td>
-              <td style="width:2px;background-color:#2dd4a8;height:6px;font-size:0;line-height:0;" rowspan="1">&nbsp;</td>
-              <td style="width:25%;height:0;border-top:2px solid #2dd4a8;font-size:0;line-height:0;">&nbsp;</td>
+              <td style="width:2px;background-color:#2dd4a8;font-size:0;line-height:0;">&nbsp;</td>
+              <td style="height:0;border-top:2px solid #2dd4a8;font-size:0;line-height:0;">&nbsp;</td>
             </tr>
-            <tr><td colspan="3" style="height:4px;font-size:0;line-height:0;">&nbsp;</td></tr>
             <tr>
-              <td style="width:50%;height:0;border-top:2px solid #2dd4a8;font-size:0;line-height:0;">&nbsp;</td>
-              <td style="width:2px;background-color:#2dd4a8;height:6px;font-size:0;line-height:0;" rowspan="1">&nbsp;</td>
+              <td style="height:3px;font-size:0;line-height:0;">&nbsp;</td>
+              <td style="width:2px;background-color:#2dd4a8;font-size:0;line-height:0;">&nbsp;</td>
+              <td style="height:3px;font-size:0;line-height:0;">&nbsp;</td>
+            </tr>
+            <tr>
+              <td style="height:0;border-top:2px solid #2dd4a8;font-size:0;line-height:0;">&nbsp;</td>
+              <td style="width:2px;background-color:#2dd4a8;font-size:0;line-height:0;">&nbsp;</td>
               <td style="height:0;border-top:2px solid #2dd4a8;font-size:0;line-height:0;">&nbsp;</td>
             </tr>
           </table>
