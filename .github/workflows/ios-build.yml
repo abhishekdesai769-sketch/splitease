@@ -53,18 +53,28 @@ jobs:
         run: |
           npm install @capacitor/core @capacitor/ios @capacitor/cli
 
-      - name: Add iOS platform and sync
+      - name: Add iOS platform
         run: |
-          # Remove partial ios directory if exists (let Capacitor generate fresh)
           rm -rf ios
           npx cap add ios
 
-          # Fix minimum deployment target for CocoaPods compatibility
+      - name: Fix deployment target and sync
+        run: |
+          # Capacitor's CocoaPods spec needs iOS 16+
           cd ios/App
           sed -i '' "s/platform :ios, '.*'/platform :ios, '16.0'/" Podfile
+
+          # Also update the Xcode project deployment target
+          sed -i '' "s/IPHONEOS_DEPLOYMENT_TARGET = .*/IPHONEOS_DEPLOYMENT_TARGET = 16.0;/g" App.xcodeproj/project.pbxproj
           cd ../..
 
-          npx cap sync ios
+          # Now sync (this runs pod install with the corrected Podfile)
+          cd ios/App
+          pod install
+          cd ../..
+
+          # Copy web assets
+          npx cap copy ios
 
       - name: Copy app icons and Info.plist
         run: |
