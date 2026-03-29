@@ -39,6 +39,9 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
   // Delete expense confirmation
   const [deleteExpenseId, setDeleteExpenseId] = useState<string | null>(null);
 
+  // Expense detail dialog
+  const [detailExpense, setDetailExpense] = useState<any>(null);
+
   // Receipt detail dialog
   const [receiptExpenseId, setReceiptExpenseId] = useState<string | null>(null);
   const [receiptData, setReceiptData] = useState<any>(null);
@@ -1338,8 +1341,9 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
             .map((expense) => (
               <Card
                 key={expense.id}
-                className={`p-3 ${expense.isSettlement ? "border-primary/30 bg-primary/5" : ""}`}
+                className={`p-3 cursor-pointer ${expense.isSettlement ? "border-primary/30 bg-primary/5" : ""}`}
                 data-testid={`expense-card-${expense.id}`}
+                onClick={() => setDetailExpense(expense)}
               >
                 <div className="flex items-center gap-3">
                   <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${expense.isSettlement ? "bg-primary/20" : "bg-primary/10"}`}>
@@ -1349,10 +1353,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                       <Receipt className="w-4 h-4 text-primary" />
                     )}
                   </div>
-                  <div
-                    className={`flex-1 min-w-0 ${(expense as any).receiptData ? "cursor-pointer" : ""}`}
-                    onClick={() => { if ((expense as any).receiptData) handleViewReceipt(expense.id); }}
-                  >
+                  <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">
                       {expense.isSettlement ? "Settlement" : expense.description}
                       {(expense as any).receiptData && (
@@ -1373,7 +1374,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                     <Button
                       size="icon"
                       variant="ghost"
-                      onClick={() => setDeleteExpenseId(expense.id)}
+                      onClick={(e) => { e.stopPropagation(); setDeleteExpenseId(expense.id); }}
                       data-testid={`delete-group-expense-${expense.id}`}
                     >
                       <Trash2 className="w-4 h-4 text-muted-foreground" />
@@ -1394,6 +1395,77 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
           </p>
         </Card>
       )}
+
+      {/* Expense Detail Dialog */}
+      <Dialog open={!!detailExpense} onOpenChange={(open) => { if (!open) setDetailExpense(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{detailExpense?.isSettlement ? "Settlement" : detailExpense?.description}</DialogTitle>
+          </DialogHeader>
+          {detailExpense && (
+            <div className="space-y-4 pt-2">
+              {/* Amount + Date */}
+              <div className="flex items-center justify-between">
+                <span className="text-2xl font-bold text-primary">${detailExpense.amount.toFixed(2)}</span>
+                <span className="text-sm text-muted-foreground">{new Date(detailExpense.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
+              </div>
+
+              {/* Paid by */}
+              <div className="rounded-lg bg-muted/50 p-3">
+                <p className="text-xs text-muted-foreground mb-1">Paid by</p>
+                <div className="flex items-center gap-2">
+                  <div
+                    className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-semibold shrink-0"
+                    style={{ backgroundColor: getPersonColor(detailExpense.paidById) }}
+                  >
+                    {getPersonName(detailExpense.paidById)[0]?.toUpperCase()}
+                  </div>
+                  <span className="text-sm font-medium">{getPersonName(detailExpense.paidById)}</span>
+                </div>
+              </div>
+
+              {/* Split between */}
+              <div>
+                <p className="text-xs text-muted-foreground mb-2">
+                  {detailExpense.isSettlement ? "Paid to" : `Split between ${detailExpense.splitAmongIds.length} ${detailExpense.splitAmongIds.length === 1 ? "person" : "people"}`}
+                </p>
+                <div className="space-y-1.5">
+                  {(() => {
+                    let customSplits: Record<string, number> | null = null;
+                    if ((detailExpense as any).splitAmounts) {
+                      try { customSplits = JSON.parse((detailExpense as any).splitAmounts); } catch {}
+                    }
+                    return detailExpense.splitAmongIds.map((personId: string) => {
+                      const share = customSplits
+                        ? (customSplits[personId] || 0)
+                        : detailExpense.amount / detailExpense.splitAmongIds.length;
+                      return (
+                        <div key={personId} className="flex items-center justify-between gap-2 py-1">
+                          <div className="flex items-center gap-2">
+                            <div
+                              className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-semibold shrink-0"
+                              style={{ backgroundColor: getPersonColor(personId) }}
+                            >
+                              {getPersonName(personId)[0]?.toUpperCase()}
+                            </div>
+                            <span className="text-sm">{getPersonName(personId)}</span>
+                          </div>
+                          <span className="text-sm font-medium">${share.toFixed(2)}</span>
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
+              </div>
+
+              {/* Added by */}
+              <p className="text-xs text-muted-foreground">
+                Added by {getPersonName(detailExpense.addedById)}
+              </p>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Delete Group 2-step Confirmation Dialog */}
       <Dialog open={deleteGroupStep > 0} onOpenChange={(open) => { if (!open) setDeleteGroupStep(0); }}>
