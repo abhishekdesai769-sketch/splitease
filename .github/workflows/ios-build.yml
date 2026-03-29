@@ -90,34 +90,37 @@ jobs:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_KEY_CONTENT: ${{ secrets.ASC_KEY_CONTENT }}
         run: |
-          mkdir -p ~/private_keys
+          # xcodebuild looks for keys in TWO locations:
+          #   ~/private_keys/AuthKey_<ID>.p8
+          #   ~/.appstoreconnect/private_keys/AuthKey_<ID>.p8
+          mkdir -p ~/private_keys ~/.appstoreconnect/private_keys
           P8_PATH=~/private_keys/AuthKey_${ASC_KEY_ID}.p8
-          # Diagnostics (values masked by GitHub — lengths/types are safe to log)
+          P8_PATH2=~/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8
+
+          # Detect format and write the key
           RAW_LEN=${#ASC_KEY_CONTENT}
-          RAW_FIRST5=$(echo "$ASC_KEY_CONTENT" | cut -c1-5)
-          RAW_STRIPPED_FIRST5=$(echo "$ASC_KEY_CONTENT" | tr -d '\r\n ' | cut -c1-5)
           echo "secret raw length: $RAW_LEN"
-          echo "secret first 5 chars (raw): $RAW_FIRST5"
-          echo "secret first 5 chars (stripped): $RAW_STRIPPED_FIRST5"
-          # Try all three strategies and pick the one that produces a valid PEM
-          # Strategy 1: treat as base64, decode directly (most common GitHub secret format)
-          echo "$ASC_KEY_CONTENT" | tr -d '\r\n ' | base64 --decode > "$P8_PATH" 2>/dev/null
-          STRATEGY1_SIZE=$(wc -c < "$P8_PATH")
-          STRATEGY1_FIRST=$(head -c 5 "$P8_PATH" 2>/dev/null || echo "")
-          echo "strategy1 (b64 decode) size: $STRATEGY1_SIZE, first5: $STRATEGY1_FIRST"
-          if [ "$STRATEGY1_FIRST" = "-----" ] && [ "$STRATEGY1_SIZE" -gt 100 ]; then
-            echo "Using strategy 1: base64 decode"
-          else
-            # Strategy 2: treat as literal PEM, write directly (expand \n with $'...' via Python)
-            python3 -c "import os,sys; s=os.environ['ASC_KEY_CONTENT']; s=s.replace('\\\\n','\n').replace('\\r',''); open(sys.argv[1],'w').write(s)" "$P8_PATH"
-            STRATEGY2_SIZE=$(wc -c < "$P8_PATH")
-            STRATEGY2_LINES=$(wc -l < "$P8_PATH")
-            echo "strategy2 (python write) size: $STRATEGY2_SIZE lines: $STRATEGY2_LINES"
+          # b64-decode: strip whitespace first, then decode
+          echo "$ASC_KEY_CONTENT" | tr -d '\r\n ' | base64 --decode > "$P8_PATH" 2>/dev/null || true
+          DECODED_SIZE=$(wc -c < "$P8_PATH")
+          DECODED_FIRST=$(head -c 5 "$P8_PATH" 2>/dev/null || echo "")
+          echo "decoded size: $DECODED_SIZE first5: $DECODED_FIRST"
+
+          if [ "$DECODED_FIRST" != "-----" ] || [ "$DECODED_SIZE" -lt 100 ]; then
+            echo "WARNING: base64 decode produced invalid/small PEM (${DECODED_SIZE} bytes)."
+            echo "The ASC_KEY_CONTENT secret appears to be incomplete."
+            echo "Expected: a base64-encoded .p8 file (~230+ bytes decoded)."
+            echo "Got: ${DECODED_SIZE} bytes. Attempting to write raw secret as PEM..."
+            # Write raw secret directly — maybe it's already a PEM (not base64)
+            printf '%s\n' "$ASC_KEY_CONTENT" > "$P8_PATH"
           fi
-          chmod 600 "$P8_PATH"
+
+          # Copy to second location
+          cp "$P8_PATH" "$P8_PATH2"
+          chmod 600 "$P8_PATH" "$P8_PATH2"
+          echo "final p8 size: $(wc -c < $P8_PATH) bytes"
+          echo "final p8 lines: $(wc -l < $P8_PATH)"
           echo "final p8 first line: $(head -1 $P8_PATH)"
-          echo "final p8 line count: $(wc -l < $P8_PATH)"
-          echo "final p8 file size:  $(wc -c < $P8_PATH) bytes"
 
       - name: Set Xcode automatic signing
         env:
