@@ -92,25 +92,32 @@ jobs:
         run: |
           mkdir -p ~/private_keys
           P8_PATH=~/private_keys/AuthKey_${ASC_KEY_ID}.p8
-          # The secret may be stored in one of these formats:
-          #   (a) base64-encoded blob (decoded result is the PEM)
-          #   (b) literal PEM with real newlines
-          #   (c) literal PEM with escaped \n sequences (single-line)
-          # Strategy: check first 5 non-whitespace chars.
-          #   If "-----" → PEM format (b or c): use printf %b to expand \n escapes
-          #   Otherwise  → base64 (a): strip whitespace and decode
-          TRIMMED=$(echo "$ASC_KEY_CONTENT" | tr -d '\r\n ' | cut -c1-5)
-          if [ "$TRIMMED" = "-----" ]; then
-            # PEM text — printf %b expands literal \n sequences into real newlines
-            printf '%b' "$ASC_KEY_CONTENT" | tr -d '\r' > "$P8_PATH"
+          # Diagnostics (values masked by GitHub — lengths/types are safe to log)
+          RAW_LEN=${#ASC_KEY_CONTENT}
+          RAW_FIRST5=$(echo "$ASC_KEY_CONTENT" | cut -c1-5)
+          RAW_STRIPPED_FIRST5=$(echo "$ASC_KEY_CONTENT" | tr -d '\r\n ' | cut -c1-5)
+          echo "secret raw length: $RAW_LEN"
+          echo "secret first 5 chars (raw): $RAW_FIRST5"
+          echo "secret first 5 chars (stripped): $RAW_STRIPPED_FIRST5"
+          # Try all three strategies and pick the one that produces a valid PEM
+          # Strategy 1: treat as base64, decode directly (most common GitHub secret format)
+          echo "$ASC_KEY_CONTENT" | tr -d '\r\n ' | base64 --decode > "$P8_PATH" 2>/dev/null
+          STRATEGY1_SIZE=$(wc -c < "$P8_PATH")
+          STRATEGY1_FIRST=$(head -c 5 "$P8_PATH" 2>/dev/null || echo "")
+          echo "strategy1 (b64 decode) size: $STRATEGY1_SIZE, first5: $STRATEGY1_FIRST"
+          if [ "$STRATEGY1_FIRST" = "-----" ] && [ "$STRATEGY1_SIZE" -gt 100 ]; then
+            echo "Using strategy 1: base64 decode"
           else
-            # Base64-encoded — strip all whitespace then decode
-            echo "$ASC_KEY_CONTENT" | tr -d '\r\n ' | base64 --decode > "$P8_PATH"
+            # Strategy 2: treat as literal PEM, write directly (expand \n with $'...' via Python)
+            python3 -c "import os,sys; s=os.environ['ASC_KEY_CONTENT']; s=s.replace('\\\\n','\n').replace('\\r',''); open(sys.argv[1],'w').write(s)" "$P8_PATH"
+            STRATEGY2_SIZE=$(wc -c < "$P8_PATH")
+            STRATEGY2_LINES=$(wc -l < "$P8_PATH")
+            echo "strategy2 (python write) size: $STRATEGY2_SIZE lines: $STRATEGY2_LINES"
           fi
           chmod 600 "$P8_PATH"
-          echo "p8 first line: $(head -1 $P8_PATH)"
-          echo "p8 line count: $(wc -l < $P8_PATH)"
-          echo "p8 file size:  $(wc -c < $P8_PATH) bytes"
+          echo "final p8 first line: $(head -1 $P8_PATH)"
+          echo "final p8 line count: $(wc -l < $P8_PATH)"
+          echo "final p8 file size:  $(wc -c < $P8_PATH) bytes"
 
       - name: Set Xcode automatic signing
         env:
