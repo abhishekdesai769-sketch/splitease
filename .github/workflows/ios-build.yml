@@ -44,7 +44,7 @@ jobs:
           cache: "npm"
 
       - name: Install Node dependencies
-        run: npm ci
+        run: npm install
 
       - name: Build web app
         run: npm run build
