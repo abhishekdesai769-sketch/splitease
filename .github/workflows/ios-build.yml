@@ -58,6 +58,12 @@ jobs:
           # Remove partial ios directory if exists (let Capacitor generate fresh)
           rm -rf ios
           npx cap add ios
+
+          # Fix minimum deployment target for CocoaPods compatibility
+          cd ios/App
+          sed -i '' "s/platform :ios, '.*'/platform :ios, '16.0'/" Podfile
+          cd ../..
+
           npx cap sync ios
 
       - name: Copy app icons and Info.plist
