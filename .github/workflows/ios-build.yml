@@ -92,22 +92,25 @@ jobs:
         run: |
           mkdir -p ~/private_keys
           P8_PATH=~/private_keys/AuthKey_${ASC_KEY_ID}.p8
-          # The secret may be stored as:
-          #   (a) raw base64-encoded .p8 content (needs decode)
-          #   (b) the literal PEM text (already starts with -----BEGIN)
-          # Detect by checking if it starts with "-----" after trimming.
-          TRIMMED=$(echo "$ASC_KEY_CONTENT" | tr -d '\r\n ' | head -c 5)
+          # The secret may be stored in one of these formats:
+          #   (a) base64-encoded blob (decoded result is the PEM)
+          #   (b) literal PEM with real newlines
+          #   (c) literal PEM with escaped \n sequences (single-line)
+          # Strategy: check first 5 non-whitespace chars.
+          #   If "-----" → PEM format (b or c): use printf %b to expand \n escapes
+          #   Otherwise  → base64 (a): strip whitespace and decode
+          TRIMMED=$(echo "$ASC_KEY_CONTENT" | tr -d '\r\n ' | cut -c1-5)
           if [ "$TRIMMED" = "-----" ]; then
-            # Already a PEM — write directly, preserving newlines
-            printf '%s' "$ASC_KEY_CONTENT" | tr -d '\r' > "$P8_PATH"
+            # PEM text — printf %b expands literal \n sequences into real newlines
+            printf '%b' "$ASC_KEY_CONTENT" | tr -d '\r' > "$P8_PATH"
           else
-            # Base64-encoded — strip whitespace then decode
+            # Base64-encoded — strip all whitespace then decode
             echo "$ASC_KEY_CONTENT" | tr -d '\r\n ' | base64 --decode > "$P8_PATH"
           fi
           chmod 600 "$P8_PATH"
-          # Confirm the file looks like a PEM (first line should be -----BEGIN...)
           echo "p8 first line: $(head -1 $P8_PATH)"
-          echo "p8 file size: $(wc -c < $P8_PATH) bytes"
+          echo "p8 line count: $(wc -l < $P8_PATH)"
+          echo "p8 file size:  $(wc -c < $P8_PATH) bytes"
 
       - name: Set Xcode automatic signing
         env:
