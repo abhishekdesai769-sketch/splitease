@@ -128,20 +128,50 @@ jobs:
           echo "final p8 lines: $(wc -l < $P8_PATH)"
           echo "final p8 first line: $(head -1 $P8_PATH)"
 
-      - name: Download provisioning profiles from ASC
+      - name: Download provisioning profiles and find App Store profile UUID
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
         run: |
           # Download all provisioning profiles for this team from App Store Connect.
-          # This installs them to ~/Library/MobileDevice/Provisioning Profiles/
-          # so Manual signing can find the App Store distribution profile.
           xcodebuild -downloadAllProvisioningProfiles \
             -authenticationKeyPath $HOME/private_keys/AuthKey_${ASC_KEY_ID}.p8 \
             -authenticationKeyID $ASC_KEY_ID \
             -authenticationKeyIssuerID $ASC_ISSUER_ID 2>&1 | tail -20
-          echo "Installed profiles:"
-          ls ~/Library/MobileDevice/Provisioning\ Profiles/ 2>/dev/null | head -20 || echo "No profiles installed"
+          echo "--- Installed profiles ---"
+          PROFILES_DIR=~/Library/MobileDevice/Provisioning\ Profiles
+          ls "$PROFILES_DIR" 2>/dev/null | head -20 || echo "No profiles dir"
+          # Find the App Store distribution profile for ca.klarityit.spliiit
+          BUNDLE_ID="ca.klarityit.spliiit"
+          PROFILE_UUID=""
+          for f in "$PROFILES_DIR"/*.mobileprovision 2>/dev/null; do
+            [ -f "$f" ] || continue
+            PLIST=$(security cms -D -i "$f" 2>/dev/null)
+            ENTITLEMENTS=$(echo "$PLIST" | plutil -extract Entitlements xml1 -o - - 2>/dev/null || true)
+            APP_ID=$(echo "$PLIST" | plutil -extract Entitlements.application-identifier raw -o - - 2>/dev/null || true)
+            PLATFORMS=$(echo "$PLIST" | plutil -extract ProvisionsAllDevices raw -o - - 2>/dev/null || echo "false")
+            HAS_BUNDLE=$(echo "$APP_ID" | grep -c "$BUNDLE_ID" || true)
+            # app-store profiles have no ProvisionsAllDevices and no devices list
+            DEVICES=$(echo "$PLIST" | plutil -extract ProvisionedDevices raw -o - - 2>/dev/null || echo "none")
+            if [ "$HAS_BUNDLE" -gt 0 ] && [ "$DEVICES" = "none" ]; then
+              PROFILE_UUID=$(echo "$PLIST" | plutil -extract UUID raw -o - - 2>/dev/null || true)
+              PROFILE_NAME=$(echo "$PLIST" | plutil -extract Name raw -o - - 2>/dev/null || true)
+              echo "Found App Store profile: $PROFILE_NAME (UUID: $PROFILE_UUID)"
+              break
+            fi
+          done
+          if [ -z "$PROFILE_UUID" ]; then
+            echo "WARNING: No App Store distribution profile found for $BUNDLE_ID"
+            echo "Available profiles:"
+            for f in "$PROFILES_DIR"/*.mobileprovision 2>/dev/null; do
+              [ -f "$f" ] || continue
+              PLIST=$(security cms -D -i "$f" 2>/dev/null)
+              NAME=$(echo "$PLIST" | plutil -extract Name raw -o - - 2>/dev/null || echo "unknown")
+              APP_ID=$(echo "$PLIST" | plutil -extract Entitlements.application-identifier raw -o - - 2>/dev/null || echo "unknown")
+              echo "  $NAME — $APP_ID"
+            done
+          fi
+          echo "PROFILE_UUID=$PROFILE_UUID" >> $GITHUB_ENV
 
       - name: Set Xcode signing for distribution
         env:
@@ -149,7 +179,6 @@ jobs:
         run: |
           cd ios/App
           # Use Manual signing with Apple Distribution identity.
-          # Provisioning profiles were downloaded in the previous step.
           sed -i '' \
             "s/CODE_SIGN_STYLE = Automatic/CODE_SIGN_STYLE = Manual/g" \
             App.xcodeproj/project.pbxproj 2>/dev/null || true
@@ -159,10 +188,11 @@ jobs:
           sed -i '' \
             "s/DEVELOPMENT_TEAM = \"\";/DEVELOPMENT_TEAM = ${APPLE_TEAM_ID};/g" \
             App.xcodeproj/project.pbxproj 2>/dev/null || true
-          # Clear provisioning profile specifier — xcodebuild will match by bundle ID
+          # Clear provisioning profile specifier — we pass it on the command line
           sed -i '' \
             "s/PROVISIONING_PROFILE_SPECIFIER = [^;]*;/PROVISIONING_PROFILE_SPECIFIER = \"\";/g" \
             App.xcodeproj/project.pbxproj 2>/dev/null || true
+          echo "PROFILE_UUID from env: $PROFILE_UUID"
           echo "Signing settings:"
           grep -E "CODE_SIGN_STYLE|DEVELOPMENT_TEAM|CODE_SIGN_IDENTITY|PROVISIONING_PROFILE" App.xcodeproj/project.pbxproj | head -20
 
@@ -175,6 +205,12 @@ jobs:
           cd ios/App
           BUILD_NUMBER=$(date +%Y%m%d%H%M)
           set -o pipefail
+          echo "Using PROFILE_UUID: $PROFILE_UUID"
+          # If we found a profile UUID, use it; otherwise let -allowProvisioningUpdates handle it
+          PROV_ARGS=""
+          if [ -n "$PROFILE_UUID" ]; then
+            PROV_ARGS="PROVISIONING_PROFILE=$PROFILE_UUID"
+          fi
           xcodebuild archive \
             -workspace App.xcworkspace \
             -scheme App \
@@ -189,7 +225,8 @@ jobs:
             MARKETING_VERSION=1.0.0 \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="Apple Distribution" \
-            DEVELOPMENT_TEAM=$APPLE_TEAM_ID 2>&1 | tee /tmp/xcodebuild-archive.log | tail -80
+            DEVELOPMENT_TEAM=$APPLE_TEAM_ID \
+            $PROV_ARGS 2>&1 | tee /tmp/xcodebuild-archive.log | tail -80
           echo "--- Archive exit code: $? ---"
           ls -la $RUNNER_TEMP/App.xcarchive/ 2>/dev/null || echo "Archive not created!"
 
