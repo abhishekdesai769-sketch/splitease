@@ -128,15 +128,20 @@ jobs:
           echo "final p8 lines: $(wc -l < $P8_PATH)"
           echo "final p8 first line: $(head -1 $P8_PATH)"
 
-      - name: Set Xcode automatic signing
+      - name: Set Xcode signing for distribution
         env:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           cd ios/App
-          # Ensure Automatic signing is set
+          # Switch to Manual signing so we can specify Apple Distribution identity
+          # (Automatic signing always uses Development certs on CI, conflicting with Distribution)
           sed -i '' \
-            "s/CODE_SIGN_STYLE = Manual/CODE_SIGN_STYLE = Automatic/g" \
+            "s/CODE_SIGN_STYLE = Automatic/CODE_SIGN_STYLE = Manual/g" \
             App.xcodeproj/project.pbxproj 2>/dev/null || true
+          sed -i '' \
+            "s/CODE_SIGN_STYLE = \"Automatic\"/CODE_SIGN_STYLE = Manual/g" \
+            App.xcodeproj/project.pbxproj 2>/dev/null || true
+          # Clear provisioning profile specifier so xcodebuild auto-creates it
           sed -i '' \
             "s/PROVISIONING_PROFILE_SPECIFIER = .*/PROVISIONING_PROFILE_SPECIFIER = \"\";/g" \
             App.xcodeproj/project.pbxproj 2>/dev/null || true
@@ -145,7 +150,7 @@ jobs:
             "s/DEVELOPMENT_TEAM = \"\";/DEVELOPMENT_TEAM = ${APPLE_TEAM_ID};/g" \
             App.xcodeproj/project.pbxproj 2>/dev/null || true
           echo "Signing settings:"
-          grep -E "CODE_SIGN_STYLE|DEVELOPMENT_TEAM" App.xcodeproj/project.pbxproj | head -20
+          grep -E "CODE_SIGN_STYLE|DEVELOPMENT_TEAM|CODE_SIGN_IDENTITY" App.xcodeproj/project.pbxproj | head -20
 
       - name: Build archive
         env:
@@ -168,7 +173,7 @@ jobs:
             -authenticationKeyIssuerID $ASC_ISSUER_ID \
             CURRENT_PROJECT_VERSION=$BUILD_NUMBER \
             MARKETING_VERSION=1.0.0 \
-            CODE_SIGN_STYLE=Automatic \
+            CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="Apple Distribution" \
             DEVELOPMENT_TEAM=$APPLE_TEAM_ID 2>&1 | tee /tmp/xcodebuild-archive.log | tail -80
           echo "--- Archive exit code: $? ---"
