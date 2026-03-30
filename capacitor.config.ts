@@ -5,9 +5,8 @@ const config: CapacitorConfig = {
   appName: "Spliiit",
   webDir: "dist/public",
   server: {
-    // In production, the app loads from the bundled web assets.
-    // During development, you can uncomment the url below to use live reload:
-    // url: "http://192.168.x.x:5000",
+    // Load from the live Render backend so API calls work on device
+    url: "https://splitease-81re.onrender.com",
     androidScheme: "https",
     iosScheme: "https",
   },
