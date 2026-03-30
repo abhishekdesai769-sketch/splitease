@@ -119,38 +119,34 @@ jobs:
             "$ASC_KEY_ID" "$ASC_ISSUER_ID" "$P8_CONTENT" > /tmp/asc_api_key.json
           echo "API key JSON written ($(wc -c < /tmp/asc_api_key.json) bytes)"
 
-      - name: Fetch Distribution certificate via Fastlane cert
+      - name: Fetch Distribution certificate and provisioning profile via Fastlane
         env:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           KEYCHAIN_PASSWORD: ${{ env.KEYCHAIN_PASSWORD }}
         run: |
           gem list fastlane | grep -q fastlane || gem install fastlane --no-document
-          mkdir -p /tmp/certs
+          mkdir -p /tmp/certs /tmp/profiles
+
+          # cert: fetch/create Apple Distribution certificate and import into keychain
+          # --development false = Distribution cert (default for cert action)
           fastlane cert \
             --api_key_path /tmp/asc_api_key.json \
-            --team_id $APPLE_TEAM_ID \
+            --team_id "$APPLE_TEAM_ID" \
             --output_path /tmp/certs \
             --keychain_path ~/Library/Keychains/build.keychain-db \
             --keychain_password "$KEYCHAIN_PASSWORD" \
-            --platform ios \
-            --type distribution 2>&1 || true
-          echo "Certs fetched:"
-          ls -la /tmp/certs/ 2>/dev/null || echo "(no /tmp/certs)"
-          echo "Signing identities:"
+            --development false 2>&1 || true
+
+          echo "Signing identities after cert:"
           security find-identity -v -p codesigning build.keychain || true
 
-      - name: Fetch provisioning profile via Fastlane sigh
-        env:
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          mkdir -p /tmp/profiles
+          # sigh: download/create App Store distribution provisioning profile
+          # Default behavior of sigh is App Store distribution — no type flag needed
           fastlane sigh \
             --api_key_path /tmp/asc_api_key.json \
-            --team_id $APPLE_TEAM_ID \
+            --team_id "$APPLE_TEAM_ID" \
             --app_identifier ca.klarityit.spliiit \
-            --output_path /tmp/profiles \
-            --platform ios \
-            --app_store 2>&1
+            --output_path /tmp/profiles 2>&1
           echo "Profiles fetched:"
           ls -la /tmp/profiles/ 2>/dev/null || echo "(no profiles)"
 
