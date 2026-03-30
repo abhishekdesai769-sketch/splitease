@@ -72,13 +72,10 @@ jobs:
           sed -i '' "s/IPHONEOS_DEPLOYMENT_TARGET = [0-9.]*/IPHONEOS_DEPLOYMENT_TARGET = 16.0/g" App.xcodeproj/project.pbxproj
 
           # Disable code signing for pod targets so they don't conflict with App Distribution signing
-          # (Using grep+printf to avoid YAML/shell quoting issues with Python -c or heredoc)
-          if ! grep -q 'CODE_SIGNING_ALLOWED' Podfile; then
-            printf '\npost_install do |installer|\n  installer.pods_project.targets.each do |target|\n    target.build_configurations.each do |config|\n      config.build_settings["CODE_SIGN_IDENTITY"] = ""\n      config.build_settings["CODE_SIGNING_REQUIRED"] = "NO"\n      config.build_settings["CODE_SIGNING_ALLOWED"] = "NO"\n    end\n  end\nend\n' >> Podfile
-            echo "Added post_install hook to Podfile"
-          fi
+          # Use a Ruby script to safely inject into the existing post_install hook
+          ruby ../../scripts/patch_podfile_signing.rb Podfile
           echo "Podfile tail:"
-          tail -15 Podfile
+          tail -20 Podfile
 
           # Now pod install will succeed
           pod install
