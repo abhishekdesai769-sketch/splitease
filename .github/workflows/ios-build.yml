@@ -71,6 +71,22 @@ jobs:
           # Fix Xcode project: bump all deployment target entries
           sed -i '' "s/IPHONEOS_DEPLOYMENT_TARGET = [0-9.]*/IPHONEOS_DEPLOYMENT_TARGET = 16.0/g" App.xcodeproj/project.pbxproj
 
+          # Disable code signing for pod targets so they don't conflict with App Distribution signing
+          if ! grep -q "CODE_SIGN_IDENTITY.*post_install" Podfile; then
+            cat >> Podfile << 'PODEOF'
+
+post_install do |installer|
+  installer.pods_project.targets.each do |target|
+    target.build_configurations.each do |config|
+      config.build_settings['CODE_SIGN_IDENTITY'] = ''
+      config.build_settings['CODE_SIGNING_REQUIRED'] = 'NO'
+      config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
+    end
+  end
+end
+PODEOF
+          fi
+
           # Now pod install will succeed
           pod install
 
@@ -127,12 +143,19 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           cd ios/App
+          # Ensure Automatic signing is set
           sed -i '' \
             "s/CODE_SIGN_STYLE = Manual/CODE_SIGN_STYLE = Automatic/g" \
             App.xcodeproj/project.pbxproj 2>/dev/null || true
           sed -i '' \
             "s/PROVISIONING_PROFILE_SPECIFIER = .*/PROVISIONING_PROFILE_SPECIFIER = \"\";/g" \
             App.xcodeproj/project.pbxproj 2>/dev/null || true
+          # Set DEVELOPMENT_TEAM everywhere it's empty
+          sed -i '' \
+            "s/DEVELOPMENT_TEAM = \"\";/DEVELOPMENT_TEAM = ${APPLE_TEAM_ID};/g" \
+            App.xcodeproj/project.pbxproj 2>/dev/null || true
+          echo "Signing settings:"
+          grep -E "CODE_SIGN_STYLE|DEVELOPMENT_TEAM" App.xcodeproj/project.pbxproj | head -20
 
       - name: Build archive
         env:
@@ -156,6 +179,7 @@ jobs:
             CURRENT_PROJECT_VERSION=$BUILD_NUMBER \
             MARKETING_VERSION=1.0.0 \
             CODE_SIGN_STYLE=Automatic \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
             DEVELOPMENT_TEAM=$APPLE_TEAM_ID 2>&1 | tee /tmp/xcodebuild-archive.log | tail -80
           echo "--- Archive exit code: $? ---"
           ls -la $RUNNER_TEMP/App.xcarchive/ 2>/dev/null || echo "Archive not created!"
