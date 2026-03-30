@@ -336,11 +336,16 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
                     setImportLoading(true);
                     try {
                       const text = await importFile.text();
-                      const lines = text.split(/\r?\n/).filter(l => l.trim());
-                      if (lines.length < 2) { toast({ title: "Error", description: "CSV is empty", variant: "destructive" }); return; }
+                      const allLines = text.split(/\r?\n/).filter(l => l.trim());
+                      if (allLines.length < 2) { toast({ title: "Error", description: "CSV is empty", variant: "destructive" }); return; }
+                      // Friends CSV starts with a "Note:" line — find the real header row by locating "Currency"
+                      const headerIdx = allLines.findIndex(l =>
+                        l.split(",").some(h => h.replace(/^"|"$/g, "").trim().toLowerCase() === "currency")
+                      );
+                      if (headerIdx === -1) { toast({ title: "Error", description: "Invalid Splitwise CSV — missing Currency column", variant: "destructive" }); return; }
+                      const lines = allLines.slice(headerIdx); // lines[0] = header, lines[1+] = data
                       const headers = lines[0].split(",").map(h => h.replace(/^"|"$/g, "").trim());
                       const currIdx = headers.findIndex(h => h.toLowerCase() === "currency");
-                      if (currIdx === -1) { toast({ title: "Error", description: "Invalid Splitwise CSV — missing Currency column", variant: "destructive" }); return; }
                       const csvNames = headers.slice(currIdx + 1).map(n => n.trim()).filter(n => n);
                       if (csvNames.length < 2) { toast({ title: "Error", description: "CSV must have at least 2 person columns", variant: "destructive" }); return; }
                       // Build preview

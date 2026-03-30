@@ -2008,14 +2008,19 @@ setInterval(loadAll,30000);
       const mapping = JSON.parse(req.body.mapping || "{}");
 
       const csvText = file.buffer.toString("utf-8");
-      const lines = csvText.split("\n").filter((l: string) => l.trim());
-      if (lines.length < 2) return res.status(400).json({ error: "CSV file is empty" });
+      const allLines = csvText.split("\n").filter((l: string) => l.trim());
+      if (allLines.length < 2) return res.status(400).json({ error: "CSV file is empty" });
+
+      // Handle Splitwise CSVs that start with a "Note:" line — find real header by locating "Currency"
+      const headerLineIdx = allLines.findIndex(l => importParseCSVLine(l).some(h => h.toLowerCase() === "currency"));
+      if (headerLineIdx === -1) return res.status(400).json({ error: "Invalid Splitwise CSV — missing Currency column" });
+      const lines = allLines.slice(headerLineIdx);
 
       const headers = importParseCSVLine(lines[0]);
-      const dateIdx = headers.indexOf("Date");
-      const descIdx = headers.indexOf("Description");
-      const costIdx = headers.indexOf("Cost");
-      const currIdx = headers.indexOf("Currency");
+      const dateIdx = headers.findIndex(h => h.toLowerCase() === "date");
+      const descIdx = headers.findIndex(h => h.toLowerCase() === "description");
+      const costIdx = headers.findIndex(h => h.toLowerCase() === "cost");
+      const currIdx = headers.findIndex(h => h.toLowerCase() === "currency");
       if (dateIdx === -1 || descIdx === -1 || costIdx === -1 || currIdx === -1) {
         return res.status(400).json({ error: "Invalid Splitwise CSV" });
       }
@@ -2180,14 +2185,19 @@ setInterval(loadAll,30000);
       if (!importerName) return res.status(400).json({ error: "importerName is required" });
 
       const csvText = file.buffer.toString("utf-8");
-      const lines = csvText.split("\n").filter((l: string) => l.trim());
-      if (lines.length < 2) return res.status(400).json({ error: "CSV file is empty" });
+      const allLines = csvText.split("\n").filter((l: string) => l.trim());
+      if (allLines.length < 2) return res.status(400).json({ error: "CSV file is empty" });
+
+      // Friends CSV starts with a "Note:" line — find the real header row by locating "Currency"
+      const headerLineIdx = allLines.findIndex(l => importParseCSVLine(l).some(h => h.toLowerCase() === "currency"));
+      if (headerLineIdx === -1) return res.status(400).json({ error: "Invalid Splitwise CSV — missing Currency column" });
+      const lines = allLines.slice(headerLineIdx); // lines[0] = header, lines[1+] = data
 
       const headers = importParseCSVLine(lines[0]);
-      const dateIdx = headers.indexOf("Date");
-      const descIdx = headers.indexOf("Description");
-      const costIdx = headers.indexOf("Cost");
-      const currIdx = headers.indexOf("Currency");
+      const dateIdx = headers.findIndex(h => h.toLowerCase() === "date");
+      const descIdx = headers.findIndex(h => h.toLowerCase() === "description");
+      const costIdx = headers.findIndex(h => h.toLowerCase() === "cost");
+      const currIdx = headers.findIndex(h => h.toLowerCase() === "currency");
       if (dateIdx === -1 || descIdx === -1 || costIdx === -1 || currIdx === -1) {
         return res.status(400).json({ error: "Invalid Splitwise CSV — missing required columns" });
       }
