@@ -163,8 +163,11 @@ jobs:
             echo "ERROR: No .mobileprovision found!"
             exit 1
           fi
-          # Extract UUID using PlistBuddy on the decoded plist
-          PROFILE_UUID=$(security cms -D -i "$PROFILE" | /usr/libexec/PlistBuddy -c 'Print UUID' /dev/stdin)
+          # Decode the CMS-signed profile to a temp plist, then extract UUID
+          DECODED_PLIST=$(mktemp /tmp/profile_decoded.XXXXXX.plist)
+          security cms -D -i "$PROFILE" -o "$DECODED_PLIST"
+          PROFILE_UUID=$(/usr/libexec/PlistBuddy -c 'Print UUID' "$DECODED_PLIST")
+          rm -f "$DECODED_PLIST"
           echo "Profile UUID: $PROFILE_UUID"
           echo "PROFILE_UUID=$PROFILE_UUID" >> $GITHUB_ENV
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
