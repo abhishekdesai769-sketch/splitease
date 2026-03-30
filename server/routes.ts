@@ -765,6 +765,22 @@ setInterval(loadAll,30000);
     res.status(204).send();
   });
 
+  // Delete all direct expenses between current user and a friend
+  app.delete("/api/friends/:friendId/expenses", requireAuth, async (req, res) => {
+    const userId = (req.session as any).userId;
+    const { friendId } = req.params;
+    const allDirect = await storage.getDirectExpensesForUser(userId);
+    const toDelete = allDirect.filter(
+      (e: any) =>
+        (e.paidById === userId && e.splitAmongIds.includes(friendId)) ||
+        (e.paidById === friendId && e.splitAmongIds.includes(userId))
+    );
+    for (const exp of toDelete) {
+      await storage.deleteExpense(exp.id);
+    }
+    res.json({ deleted: toDelete.length });
+  });
+
   // Direct expenses between friends (no group)
   app.get("/api/friends/expenses", requireAuth, async (req, res) => {
     const userId = (req.session as any).userId;

@@ -7,9 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Plus, Trash2, Receipt, CheckCircle2, HandCoins, AlertTriangle, UserMinus, Camera, X, Mail, Loader2, FileText, Upload, MoreVertical } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Receipt, CheckCircle2, HandCoins, AlertTriangle, UserMinus, Camera, X, Mail, Loader2, FileText, Upload, MoreVertical, Download } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
@@ -199,6 +199,20 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
     },
   });
 
+  const deleteAllExpensesMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("DELETE", `/api/friends/${friendId}/expenses`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/friends/expenses"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/friends", friendId] });
+      toast({ title: "All expenses deleted" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
   const importFriendMutation = useMutation({
     mutationFn: async () => {
       if (!importFile || !importImporterName) return;
@@ -284,11 +298,32 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
               <MoreVertical className="w-4 h-4" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
+          <DropdownMenuContent align="end" className="w-52">
             <DropdownMenuItem onClick={() => setImportOpen(true)}>
               <Upload className="w-4 h-4 mr-2" />
               Import from another app
             </DropdownMenuItem>
+            {friendExpenses.length > 0 && (
+              <DropdownMenuItem onClick={() => exportFriendMutation.mutate()} disabled={exportFriendMutation.isPending}>
+                <Download className="w-4 h-4 mr-2" />
+                Export expenses
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuSeparator />
+            {friendExpenses.length > 0 && (
+              <DropdownMenuItem
+                className="text-destructive focus:text-destructive"
+                onClick={() => {
+                  if (confirm(`Delete all ${friendExpenses.length} expenses with ${friend.name}? This cannot be undone.`)) {
+                    deleteAllExpensesMutation.mutate();
+                  }
+                }}
+                disabled={deleteAllExpensesMutation.isPending}
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                Delete All Expenses
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem
               className="text-destructive focus:text-destructive"
               onClick={() => setDeleteFriendStep(1)}
@@ -561,25 +596,6 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
           </DialogContent>
         </Dialog>
       </div>
-
-      {/* Export + Balance summary */}
-      {friendExpenses.length > 0 && (
-        <Button
-          size="sm"
-          variant="outline"
-          className="w-full"
-          onClick={() => exportFriendMutation.mutate()}
-          disabled={exportFriendMutation.isPending}
-          data-testid="export-friend-expenses-btn"
-        >
-          {exportFriendMutation.isPending ? (
-            <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
-          ) : (
-            <Mail className="w-4 h-4 mr-1.5" />
-          )}
-          {exportFriendMutation.isPending ? "Sending..." : `Export expenses with ${friend.name}`}
-        </Button>
-      )}
 
       {/* Balance summary */}
       <Card className="p-4">
