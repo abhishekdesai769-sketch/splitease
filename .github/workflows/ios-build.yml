@@ -142,27 +142,22 @@ jobs:
         run: |
           cd ios/App
           BUILD_NUMBER=$(date +%Y%m%d%H%M)
-
-          # Show key file info for debugging
-          echo "p8 key path: ~/private_keys/AuthKey_${ASC_KEY_ID}.p8"
-          ls -la ~/private_keys/ ~/.appstoreconnect/private_keys/ 2>/dev/null || true
-          head -1 ~/private_keys/AuthKey_${ASC_KEY_ID}.p8 2>/dev/null || echo "key file not found!"
-          wc -c ~/private_keys/AuthKey_${ASC_KEY_ID}.p8 2>/dev/null || echo "key file not found!"
-
-          # Run xcodebuild WITHOUT xcpretty so we see full error output
+          set -o pipefail
           xcodebuild archive \
             -workspace App.xcworkspace \
             -scheme App \
             -archivePath $RUNNER_TEMP/App.xcarchive \
             -destination "generic/platform=iOS" \
             -allowProvisioningUpdates \
-            -authenticationKeyPath ~/private_keys/AuthKey_${ASC_KEY_ID}.p8 \
+            -authenticationKeyPath $HOME/private_keys/AuthKey_${ASC_KEY_ID}.p8 \
             -authenticationKeyID $ASC_KEY_ID \
             -authenticationKeyIssuerID $ASC_ISSUER_ID \
             CURRENT_PROJECT_VERSION=$BUILD_NUMBER \
             MARKETING_VERSION=1.0.0 \
             CODE_SIGN_STYLE=Automatic \
-            DEVELOPMENT_TEAM=$APPLE_TEAM_ID 2>&1 | tail -100
+            DEVELOPMENT_TEAM=$APPLE_TEAM_ID 2>&1 | tee /tmp/xcodebuild-archive.log | tail -50
+          echo "Archive exit code: $?"
+          ls -la $RUNNER_TEMP/App.xcarchive/ 2>/dev/null || echo "Archive not created!"
 
       - name: Export IPA
         env:
@@ -170,7 +165,7 @@ jobs:
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          # teamID must be expanded — use unquoted heredoc delimiter
+          # Export locally (not upload) so we get a local .ipa file
           cat > $RUNNER_TEMP/ExportOptions.plist << PLIST
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -178,8 +173,6 @@ jobs:
           <dict>
               <key>method</key>
               <string>app-store</string>
-              <key>destination</key>
-              <string>upload</string>
               <key>signingStyle</key>
               <string>automatic</string>
               <key>teamID</key>
@@ -188,22 +181,33 @@ jobs:
           </plist>
           PLIST
 
+          set -o pipefail
           xcodebuild -exportArchive \
             -archivePath $RUNNER_TEMP/App.xcarchive \
             -exportOptionsPlist $RUNNER_TEMP/ExportOptions.plist \
             -exportPath $RUNNER_TEMP/export \
             -allowProvisioningUpdates \
-            -authenticationKeyPath ~/private_keys/AuthKey_${ASC_KEY_ID}.p8 \
+            -authenticationKeyPath $HOME/private_keys/AuthKey_${ASC_KEY_ID}.p8 \
             -authenticationKeyID $ASC_KEY_ID \
             -authenticationKeyIssuerID $ASC_ISSUER_ID 2>&1 | tail -50
+          echo "Export contents:"
+          find $RUNNER_TEMP/export -type f 2>/dev/null || echo "Export dir empty!"
 
       - name: Upload to TestFlight
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
         run: |
+          # Find the IPA — filename may differ from scheme name
+          IPA_PATH=$(find $RUNNER_TEMP/export -name "*.ipa" | head -1)
+          echo "IPA path: $IPA_PATH"
+          if [ -z "$IPA_PATH" ]; then
+            echo "ERROR: No .ipa file found in export directory"
+            ls -la $RUNNER_TEMP/export/ || true
+            exit 1
+          fi
           xcrun altool --upload-package \
-            "$RUNNER_TEMP/export/App.ipa" \
+            "$IPA_PATH" \
             --type ios \
             --bundle-id ca.klarityit.spliiit \
             --bundle-version $(date +%Y%m%d%H%M) \
