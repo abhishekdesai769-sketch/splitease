@@ -146,6 +146,7 @@ jobs:
           xcodebuild archive \
             -workspace App.xcworkspace \
             -scheme App \
+            -configuration Release \
             -archivePath $RUNNER_TEMP/App.xcarchive \
             -destination "generic/platform=iOS" \
             -allowProvisioningUpdates \
@@ -155,8 +156,9 @@ jobs:
             CURRENT_PROJECT_VERSION=$BUILD_NUMBER \
             MARKETING_VERSION=1.0.0 \
             CODE_SIGN_STYLE=Automatic \
-            DEVELOPMENT_TEAM=$APPLE_TEAM_ID 2>&1 | tee /tmp/xcodebuild-archive.log | tail -50
-          echo "Archive exit code: $?"
+            CODE_SIGN_IDENTITY="iPhone Distribution" \
+            DEVELOPMENT_TEAM=$APPLE_TEAM_ID 2>&1 | tee /tmp/xcodebuild-archive.log | tail -80
+          echo "--- Archive exit code: $? ---"
           ls -la $RUNNER_TEMP/App.xcarchive/ 2>/dev/null || echo "Archive not created!"
 
       - name: Export IPA
