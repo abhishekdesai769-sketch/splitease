@@ -7,13 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Plus, Trash2, Receipt, CheckCircle2, HandCoins, AlertTriangle, UserMinus, Camera, X, Mail, Loader2, FileText, Upload } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Receipt, CheckCircle2, HandCoins, AlertTriangle, UserMinus, Camera, X, Mail, Loader2, FileText, Upload, MoreVertical } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { calculateGroupBalances } from "@/lib/simplify";
-import { ocrReceipt, parseReceiptText } from "@/lib/receipt-ocr";
 
 export default function FriendDetail({ friendId }: { friendId: string }) {
   const { user } = useAuth();
@@ -27,12 +27,6 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
   const [splitType, setSplitType] = useState<"equal" | "they_pay" | "you_pay">("equal");
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
 
-  // Receipt scanning confirmation flow (free tier — Tesseract)
-  const [receiptScanning, setReceiptScanning] = useState(false);
-  const [receiptPreview, setReceiptPreview] = useState<any>(null);
-  const [receiptRawText, setReceiptRawText] = useState("");
-  const [receiptConfirmStep, setReceiptConfirmStep] = useState<"preview" | "edit" | "options" | null>(null);
-  const [editItems, setEditItems] = useState<{ name: string; price: string }[]>([]);
 
   // Splitwise import state
   const [importOpen, setImportOpen] = useState(false);
@@ -117,10 +111,6 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
       if (receiptFile) {
         formData.append("receipt", receiptFile);
       }
-      if (receiptPreview && receiptPreview.items?.length > 0) {
-        formData.append("receiptData", JSON.stringify(receiptPreview));
-      }
-
       const res = await apiFormRequest("POST", "/api/friends/expenses", formData);
       return res.json();
     },
@@ -287,17 +277,34 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
           <h1 className="text-xl font-semibold tracking-tight truncate">{friend.name}</h1>
           <p className="text-sm text-muted-foreground truncate">{friend.email}</p>
         </div>
-        {/* Import from Splitwise */}
+        {/* ⋮ Three-dot menu: Import + Remove Friend */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button size="icon" variant="ghost" data-testid="friend-detail-more-btn">
+              <MoreVertical className="w-4 h-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => setImportOpen(true)}>
+              <Upload className="w-4 h-4 mr-2" />
+              Import from another app
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="text-destructive focus:text-destructive"
+              onClick={() => setDeleteFriendStep(1)}
+            >
+              <UserMinus className="w-4 h-4 mr-2" />
+              Remove Friend
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        {/* Import Dialog (triggered from ⋮ menu) */}
         <Dialog open={importOpen} onOpenChange={(open) => {
           setImportOpen(open);
           if (!open) { setImportStep("upload"); setImportFile(null); setImportImporterName(""); setImportPreview([]); }
         }}>
-          <DialogTrigger asChild>
-            <Button size="sm" variant="outline" data-testid="friend-import-splitwise-btn">
-              <Upload className="w-4 h-4 mr-1.5" />
-              Import
-            </Button>
-          </DialogTrigger>
+          <DialogTrigger className="hidden" />
           <DialogContent className="max-h-[85vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Import from Splitwise</DialogTitle>
@@ -509,149 +516,28 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
                   )}
                 </div>
               )}
-              {/* Receipt upload + scanning */}
+              {/* Receipt upload (simple attach — photo is emailed to all participants) */}
               <div className="space-y-2">
                 <Label>Receipt (optional)</Label>
-                {receiptFile && !receiptScanning && !receiptConfirmStep ? (
+                {receiptFile ? (
                   <div className="flex items-center gap-2 rounded-lg border border-border p-2.5">
                     <Camera className="w-4 h-4 text-primary shrink-0" />
                     <span className="text-sm truncate flex-1">{receiptFile.name}</span>
                     <button type="button" className="text-muted-foreground hover:text-foreground"
-                      onClick={() => { setReceiptFile(null); setReceiptPreview(null); setReceiptConfirmStep(null); }}
+                      onClick={() => setReceiptFile(null)}
                     ><X className="w-4 h-4" /></button>
                   </div>
-                ) : receiptScanning ? (
-                  <div className="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 p-3">
-                    <Loader2 className="w-4 h-4 text-primary animate-spin shrink-0" />
-                    <span className="text-sm text-primary">Scanning receipt...</span>
-                  </div>
-                ) : !receiptFile ? (
+                ) : (
                   <label className="flex items-center gap-2 rounded-lg border border-dashed border-muted-foreground/30 p-3 cursor-pointer hover:bg-muted/50 transition-colors">
                     <Camera className="w-4 h-4 text-muted-foreground" />
                     <span className="text-sm text-muted-foreground">Attach receipt photo</span>
                     <input type="file" accept="image/*" className="hidden"
-                      onChange={async (e) => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-                        setReceiptFile(file);
-                        setReceiptScanning(true);
-                        setReceiptConfirmStep(null);
-                        setReceiptPreview(null);
-                        try {
-                          const rawText = await ocrReceipt(file);
-                          setReceiptRawText(rawText);
-                          const parsed = parseReceiptText(rawText);
-                          setReceiptPreview(parsed);
-                          setEditItems(parsed.items.map(it => ({ name: it.name, price: it.price.toFixed(2) })));
-                          setReceiptConfirmStep("preview");
-                        } catch {
-                          toast({ title: "Scan failed", description: "Could not read the receipt. Try a clearer photo.", variant: "destructive" });
-                          setReceiptFile(null);
-                        } finally {
-                          setReceiptScanning(false);
-                        }
-                      }}
+                      onChange={(e) => { const f = e.target.files?.[0]; if (f) setReceiptFile(f); }}
                       data-testid="input-friend-receipt"
                     />
                   </label>
-                ) : null}
-
-                {receiptConfirmStep === "preview" && receiptPreview && (
-                  <div className="rounded-lg border border-border p-3 space-y-2">
-                    <p className="text-xs font-medium text-primary">Scanned: {receiptPreview.merchant}</p>
-                    {receiptPreview.items.length > 0 ? (
-                      <div className="max-h-32 overflow-y-auto space-y-1">
-                        {receiptPreview.items.map((item: any, i: number) => (
-                          <div key={i} className="flex justify-between text-xs">
-                            <span className="truncate">{item.name}</span>
-                            <span className="font-medium shrink-0 ml-2">${item.price.toFixed(2)}</span>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-xs text-muted-foreground">No items could be extracted.</p>
-                    )}
-                    {receiptPreview.total != null && (
-                      <div className="flex justify-between text-xs font-semibold border-t border-border pt-1">
-                        <span>Total</span><span>${receiptPreview.total.toFixed(2)}</span>
-                      </div>
-                    )}
-                    <div className="flex gap-2 pt-1">
-                      <Button type="button" size="sm" variant="default" className="flex-1 h-7 text-xs"
-                        onClick={() => setReceiptConfirmStep(null)}
-                      >Looks good</Button>
-                      <Button type="button" size="sm" variant="outline" className="flex-1 h-7 text-xs"
-                        onClick={() => setReceiptConfirmStep("options")}
-                      >Not right</Button>
-                    </div>
-                  </div>
                 )}
-
-                {receiptConfirmStep === "options" && (
-                  <div className="rounded-lg border border-border p-3 space-y-2">
-                    <p className="text-xs text-muted-foreground">The scan didn't look right? Try one of these:</p>
-                    <Button type="button" size="sm" variant="outline" className="w-full h-8 text-xs justify-start"
-                      onClick={() => { setReceiptFile(null); setReceiptConfirmStep(null); setReceiptPreview(null); }}
-                    ><Camera className="w-3 h-3 mr-2" />Scan again with a new photo</Button>
-                    <Button type="button" size="sm" variant="outline" className="w-full h-8 text-xs justify-start"
-                      onClick={() => setReceiptConfirmStep("edit")}
-                    ><FileText className="w-3 h-3 mr-2" />Edit extracted text manually</Button>
-                    <Button type="button" size="sm" variant="outline" className="w-full h-8 text-xs justify-start"
-                      onClick={() => { setReceiptPreview(null); setReceiptConfirmStep(null); }}
-                    ><Camera className="w-3 h-3 mr-2" />Just attach the photo</Button>
-                    <div className="rounded-md bg-amber-500/10 border border-amber-500/20 p-2">
-                      <p className="text-xs text-amber-600">
-                        <strong>Premium</strong> — Get 95%+ accuracy with AI-powered scanning. Coming soon!
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {receiptConfirmStep === "edit" && (
-                  <div className="rounded-lg border border-border p-3 space-y-2">
-                    <p className="text-xs font-medium">Edit items:</p>
-                    <div className="max-h-40 overflow-y-auto space-y-1">
-                      {editItems.map((item, i) => (
-                        <div key={i} className="flex gap-1">
-                          <input className="flex-1 text-xs border border-border rounded px-2 py-1 bg-background"
-                            value={item.name} onChange={(e) => {
-                              const copy = [...editItems]; copy[i] = { ...copy[i], name: e.target.value }; setEditItems(copy);
-                            }} placeholder="Item name" />
-                          <input className="w-20 text-xs border border-border rounded px-2 py-1 bg-background text-right"
-                            value={item.price} onChange={(e) => {
-                              const copy = [...editItems]; copy[i] = { ...copy[i], price: e.target.value }; setEditItems(copy);
-                            }} placeholder="0.00" />
-                          <button type="button" className="text-muted-foreground hover:text-destructive"
-                            onClick={() => setEditItems(editItems.filter((_, j) => j !== i))}
-                          ><X className="w-3 h-3" /></button>
-                        </div>
-                      ))}
-                    </div>
-                    <button type="button" className="text-xs text-primary hover:underline"
-                      onClick={() => setEditItems([...editItems, { name: "", price: "" }])}
-                    >+ Add item</button>
-                    <div className="flex gap-2">
-                      <Button type="button" size="sm" variant="default" className="flex-1 h-7 text-xs"
-                        onClick={() => {
-                          const items = editItems.filter(it => it.name.trim() && parseFloat(it.price) > 0)
-                            .map(it => ({ name: it.name.trim(), price: parseFloat(it.price) }));
-                          const total = items.reduce((s, it) => s + it.price, 0);
-                          setReceiptPreview({ ...receiptPreview, items, total: Math.round(total * 100) / 100 });
-                          setReceiptConfirmStep(null);
-                        }}
-                      >Save changes</Button>
-                      <Button type="button" size="sm" variant="ghost" className="h-7 text-xs"
-                        onClick={() => setReceiptConfirmStep("options")}
-                      >Back</Button>
-                    </div>
-                  </div>
-                )}
-
-                {!receiptConfirmStep && !receiptScanning && (
-                  <p className="text-xs text-muted-foreground">
-                    {receiptPreview ? "Receipt scanned. Items will be saved with this expense." : "Photo will be sent via email to everyone in the split."}
-                  </p>
-                )}
+                <p className="text-xs text-muted-foreground">Photo will be sent via email to everyone in the split.</p>
               </div>
               <Button
                 type="submit"
@@ -993,19 +879,6 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
         </Card>
       )}
 
-      {/* Remove Friend button — at the bottom, subtle */}
-      <div className="pt-2">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="w-full text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-          onClick={() => setDeleteFriendStep(1)}
-          data-testid="remove-friend-btn"
-        >
-          <UserMinus className="w-4 h-4 mr-1.5" />
-          Remove Friend
-        </Button>
-      </div>
     </div>
   );
 }

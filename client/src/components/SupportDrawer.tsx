@@ -520,7 +520,7 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
             },
             {
               q: "Can I import expenses for a friend (not a group)?",
-              a: "Yes! Open the friend's detail page, tap the '↑ Import' button, and upload your Splitwise CSV. Just select which column in the CSV is you — the rest gets mapped to your friend automatically.",
+              a: "Yes! Open the friend's detail page, tap the three-dot menu (⋮) next to the friend's name, then tap 'Import from another app'. Upload your Splitwise CSV and select which column is you.",
             },
             {
               q: "How do I export my expenses?",
@@ -535,20 +535,20 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
               a: "Tap 'Invite a Friend' in this menu and share the link via WhatsApp, SMS, or email. You can also add them to a group — they'll automatically receive an invite when you include their email.",
             },
             {
-              q: "Can I scan a receipt?",
-              a: "Yes! When adding an expense, tap the camera icon to attach a receipt photo. Spliiit will try to extract the total automatically using OCR.",
+              q: "Are receipt photos stored in the app?",
+              a: "No — receipt photos are never stored in Spliiit. When you attach a photo to an expense, it is sent directly to everyone included in that split via email. Nothing is saved inside the app.",
+            },
+            {
+              q: "How many transactions and receipt photos can I add per day?",
+              a: "You can add unlimited transactions and attach unlimited receipt photos every day. This is a core feature of Spliiit and will always be completely free.",
             },
             {
               q: "How do I delete an expense?",
               a: "Open the expense in a group or friend detail page, then tap the trash icon next to it. You can only delete expenses you added (unless you're an admin).",
             },
             {
-              q: "Why is my balance showing incorrectly?",
-              a: "Make sure all expenses have the correct 'paid by' person and the split amounts are accurate. Settlement payments (Settle Up) zero out the balance — check if one was recorded by mistake.",
-            },
-            {
               q: "How do I change the app theme (dark/light mode)?",
-              a: "Spliiit follows your device's system theme. To switch between dark and light mode, change your phone's display settings.",
+              a: "Tap the sun/moon icon at the top right of the home page — it's just to the left of the logout button. Tap it to toggle between light and dark mode.",
             },
             {
               q: "How do I delete my account?",
