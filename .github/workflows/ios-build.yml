@@ -2,7 +2,8 @@
 # iOS Build & App Store Upload — Spliiit
 # ============================================================
 # Builds the Capacitor iOS app and uploads to TestFlight.
-# Uses Xcode automatic signing — no Match or Cloud Mac needed.
+# Uses Fastlane cert + sigh to create/import the Distribution
+# certificate via ASC API — no Match, no P12 secret needed.
 #
 # REQUIRED GITHUB SECRETS:
 #   ASC_KEY_ID          — App Store Connect API Key ID
@@ -114,10 +115,7 @@ jobs:
 
           if [ "$DECODED_FIRST" != "-----" ] || [ "$DECODED_SIZE" -lt 100 ]; then
             echo "WARNING: base64 decode produced invalid/small PEM (${DECODED_SIZE} bytes)."
-            echo "The ASC_KEY_CONTENT secret appears to be incomplete."
-            echo "Expected: a base64-encoded .p8 file (~230+ bytes decoded)."
-            echo "Got: ${DECODED_SIZE} bytes. Attempting to write raw secret as PEM..."
-            # Write raw secret directly — maybe it's already a PEM (not base64)
+            echo "Attempting to write raw secret as PEM..."
             printf '%s\n' "$ASC_KEY_CONTENT" > "$P8_PATH"
           fi
 
@@ -128,24 +126,116 @@ jobs:
           echo "final p8 lines: $(wc -l < $P8_PATH)"
           echo "final p8 first line: $(head -1 $P8_PATH)"
 
+      - name: Create temporary keychain
+        run: |
+          KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
+          echo "KEYCHAIN_PASSWORD=$KEYCHAIN_PASSWORD" >> $GITHUB_ENV
+          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          # Keep keychain unlocked for xcodebuild
+          security set-keychain-settings -t 3600 -l build.keychain
+          # Add to keychain search list
+          security list-keychains -s build.keychain $(security list-keychains | tr -d '"')
+
+      - name: Fetch Distribution certificate via Fastlane cert
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          KEYCHAIN_PASSWORD: ${{ env.KEYCHAIN_PASSWORD }}
+        run: |
+          # Install fastlane if not present
+          gem list fastlane | grep fastlane || gem install fastlane --no-document
+
+          # Build the API key JSON that fastlane expects
+          cat > /tmp/asc_api_key.json << JSON
+          {
+            "key_id": "${ASC_KEY_ID}",
+            "issuer_id": "${ASC_ISSUER_ID}",
+            "key": "$(cat ~/private_keys/AuthKey_${ASC_KEY_ID}.p8 | tr -d '\n')",
+            "in_house": false
+          }
+          JSON
+
+          mkdir -p /tmp/certs
+
+          # Use fastlane cert to create/fetch Apple Distribution cert and install into keychain
+          fastlane cert \
+            --api_key_path /tmp/asc_api_key.json \
+            --team_id $APPLE_TEAM_ID \
+            --output_path /tmp/certs \
+            --keychain_path ~/Library/Keychains/build.keychain-db \
+            --keychain_password "$KEYCHAIN_PASSWORD" \
+            --platform ios \
+            --type distribution 2>&1 || true
+
+          echo "Certs fetched:"
+          ls -la /tmp/certs/ 2>/dev/null || echo "(no /tmp/certs dir)"
+
+          # List signing identities now available
+          echo "Signing identities in keychain:"
+          security find-identity -v -p codesigning build.keychain || true
+
+      - name: Fetch provisioning profile via Fastlane sigh
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          mkdir -p /tmp/profiles
+
+          # Use fastlane sigh to download/create App Store distribution profile
+          fastlane sigh \
+            --api_key_path /tmp/asc_api_key.json \
+            --team_id $APPLE_TEAM_ID \
+            --app_identifier ca.klarityit.spliiit \
+            --output_path /tmp/profiles \
+            --platform ios \
+            --app_store 2>&1
+
+          echo "Profiles fetched:"
+          ls -la /tmp/profiles/ 2>/dev/null
+
+          # Install the profile
+          PROFILE=$(find /tmp/profiles -name "*.mobileprovision" | head -1)
+          if [ -n "$PROFILE" ]; then
+            PROFILE_UUID=$(grep -a -o '"UUID".*' "$PROFILE" | head -1 | grep -o '[0-9A-F-]\{36\}' || \
+              /usr/libexec/PlistBuddy -c 'Print UUID' /dev/stdin <<< $(security cms -D -i "$PROFILE") 2>/dev/null || \
+              python3 -c "
+import subprocess, plistlib, sys
+out = subprocess.check_output(['security', 'cms', '-D', '-i', sys.argv[1]])
+pl = plistlib.loads(out)
+print(pl['UUID'])
+" "$PROFILE")
+            echo "Profile UUID: $PROFILE_UUID"
+            echo "PROFILE_UUID=$PROFILE_UUID" >> $GITHUB_ENV
+            mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+            cp "$PROFILE" ~/Library/MobileDevice/Provisioning\ Profiles/${PROFILE_UUID}.mobileprovision
+            echo "Profile installed at: ~/Library/MobileDevice/Provisioning Profiles/${PROFILE_UUID}.mobileprovision"
+          else
+            echo "ERROR: No .mobileprovision file found!"
+            exit 1
+          fi
+
       - name: Set Xcode signing for distribution
         env:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           cd ios/App
-          # Keep Automatic signing — xcodebuild will use -allowProvisioningUpdates
-          # with the ASC API key to auto-fetch/create the App Store profile.
-          # Ensure CODE_SIGN_STYLE stays Automatic (Capacitor may set it already).
+          # Set Manual signing with Apple Distribution + the profile UUID we just downloaded
           sed -i '' \
-            "s/CODE_SIGN_STYLE = Manual/CODE_SIGN_STYLE = Automatic/g" \
+            "s/CODE_SIGN_STYLE = Automatic/CODE_SIGN_STYLE = Manual/g" \
             App.xcodeproj/project.pbxproj 2>/dev/null || true
-          # Ensure DEVELOPMENT_TEAM is set (required for Automatic signing)
+          sed -i '' \
+            "s/CODE_SIGN_STYLE = \"Automatic\"/CODE_SIGN_STYLE = Manual/g" \
+            App.xcodeproj/project.pbxproj 2>/dev/null || true
           sed -i '' \
             "s/DEVELOPMENT_TEAM = \"\";/DEVELOPMENT_TEAM = ${APPLE_TEAM_ID};/g" \
             App.xcodeproj/project.pbxproj 2>/dev/null || true
-          # Clear any stale profile specifier so Automatic signing isn't confused
+          # Set profile specifier to the UUID we fetched
           sed -i '' \
-            "s/PROVISIONING_PROFILE_SPECIFIER = [^;]*;/PROVISIONING_PROFILE_SPECIFIER = \"\";/g" \
+            "s/PROVISIONING_PROFILE_SPECIFIER = [^;]*;/PROVISIONING_PROFILE_SPECIFIER = \"${PROFILE_UUID}\";/g" \
             App.xcodeproj/project.pbxproj 2>/dev/null || true
           echo "Signing settings:"
           grep -E "CODE_SIGN_STYLE|DEVELOPMENT_TEAM|CODE_SIGN_IDENTITY|PROVISIONING_PROFILE" App.xcodeproj/project.pbxproj | head -20
@@ -159,8 +249,7 @@ jobs:
           cd ios/App
           BUILD_NUMBER=$(date +%Y%m%d%H%M)
           set -o pipefail
-          # Automatic signing + -allowProvisioningUpdates + ASC API key:
-          # xcodebuild will auto-fetch/create the App Store distribution profile.
+          # Manual signing with the Distribution cert + profile UUID installed by fastlane cert/sigh
           xcodebuild archive \
             -workspace App.xcworkspace \
             -scheme App \
@@ -171,9 +260,12 @@ jobs:
             -authenticationKeyPath $HOME/private_keys/AuthKey_${ASC_KEY_ID}.p8 \
             -authenticationKeyID $ASC_KEY_ID \
             -authenticationKeyIssuerID $ASC_ISSUER_ID \
+            OTHER_CODE_SIGN_FLAGS="--keychain ~/Library/Keychains/build.keychain-db" \
             CURRENT_PROJECT_VERSION=$BUILD_NUMBER \
             MARKETING_VERSION=1.0.0 \
-            CODE_SIGN_STYLE=Automatic \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
+            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_UUID" \
             DEVELOPMENT_TEAM=$APPLE_TEAM_ID 2>&1 | tee /tmp/xcodebuild-archive.log | tail -80
           echo "--- Archive exit code: $? ---"
           ls -la $RUNNER_TEMP/App.xcarchive/ 2>/dev/null || echo "Archive not created!"
@@ -184,7 +276,6 @@ jobs:
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          # Export locally (not upload) so we get a local .ipa file
           cat > $RUNNER_TEMP/ExportOptions.plist << PLIST
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -193,9 +284,14 @@ jobs:
               <key>method</key>
               <string>app-store</string>
               <key>signingStyle</key>
-              <string>automatic</string>
+              <string>manual</string>
               <key>teamID</key>
               <string>${APPLE_TEAM_ID}</string>
+              <key>provisioningProfiles</key>
+              <dict>
+                  <key>ca.klarityit.spliiit</key>
+                  <string>${PROFILE_UUID}</string>
+              </dict>
           </dict>
           </plist>
           PLIST
