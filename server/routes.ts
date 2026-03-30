@@ -2256,19 +2256,21 @@ setInterval(loadAll,30000);
           }
           if (payerAmount <= 0) { skipped++; continue; }
 
-          // Calculate each person's share from their CSV column values
-          const userVal = parseFloat(cols[currIdx + 1 + importerColIdx]?.trim() || "0");
-          // Find the friend's column(s) — if multiple non-importer columns, sum their absolute values
-          let friendOwes = 0;
-          for (let p = 0; p < personNames.length; p++) {
-            if (p === importerColIdx) continue;
-            const val = parseFloat(cols[currIdx + 1 + p]?.trim() || "0");
-            if (val < 0) friendOwes += Math.abs(val);
-          }
-
+          // Calculate each person's share using payerAmount (the max positive column value).
+          // payerAmount = what the payer gets back from others = what the ower actually owes.
+          // So: ower's share = payerAmount, payer's share = totalCost - payerAmount.
           const totalCost = Math.abs(cost);
-          const splitAmountFriend = Math.round(friendOwes * 100) / 100;
-          const splitAmountUser = Math.round((totalCost - splitAmountFriend) * 100) / 100;
+          let splitAmountUser: number;
+          let splitAmountFriend: number;
+          if (payerUserId === userId) {
+            // Abhishek paid: he gets back payerAmount, so his share = totalCost - payerAmount
+            splitAmountUser = Math.round((totalCost - payerAmount) * 100) / 100;
+            splitAmountFriend = Math.round(payerAmount * 100) / 100;
+          } else {
+            // Friend paid: friend gets back payerAmount, so friend's share = totalCost - payerAmount
+            splitAmountFriend = Math.round((totalCost - payerAmount) * 100) / 100;
+            splitAmountUser = Math.round(payerAmount * 100) / 100;
+          }
 
           if (splitAmountFriend === 0 && splitAmountUser === 0) { skipped++; continue; }
 
