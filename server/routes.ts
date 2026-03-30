@@ -2162,6 +2162,141 @@ setInterval(loadAll,30000);
     }
   });
 
+  // ========== Import Splitwise CSV for a direct friend (no group) ==========
+  app.post("/api/friends/:friendId/import-splitwise", requireAuth, upload.single("file"), async (req: Request, res: Response) => {
+    try {
+      const userId = (req.session as any).userId;
+      const currentUser = await storage.getUser(userId);
+      if (!currentUser) return res.status(401).json({ error: "User not found" });
+
+      const friendId = req.params.friendId;
+      const friend = await storage.getUser(friendId);
+      if (!friend) return res.status(404).json({ error: "Friend not found" });
+
+      const file = (req as any).file;
+      if (!file) return res.status(400).json({ error: "No file uploaded" });
+
+      const importerName = (req.body.importerName || "").trim();
+      if (!importerName) return res.status(400).json({ error: "importerName is required" });
+
+      const csvText = file.buffer.toString("utf-8");
+      const lines = csvText.split("\n").filter((l: string) => l.trim());
+      if (lines.length < 2) return res.status(400).json({ error: "CSV file is empty" });
+
+      const headers = importParseCSVLine(lines[0]);
+      const dateIdx = headers.indexOf("Date");
+      const descIdx = headers.indexOf("Description");
+      const costIdx = headers.indexOf("Cost");
+      const currIdx = headers.indexOf("Currency");
+      if (dateIdx === -1 || descIdx === -1 || costIdx === -1 || currIdx === -1) {
+        return res.status(400).json({ error: "Invalid Splitwise CSV — missing required columns" });
+      }
+
+      const personNames = headers.slice(currIdx + 1).map(n => n.trim()).filter(n => n);
+      if (personNames.length < 2) return res.status(400).json({ error: "CSV must have at least 2 person columns" });
+
+      // Map CSV columns: importerName → current user, everything else → friend
+      const colToUserId = new Map<number, string>();
+      let importerColIdx = -1;
+      for (let i = 0; i < personNames.length; i++) {
+        if (personNames[i] === importerName) {
+          colToUserId.set(i, userId);
+          importerColIdx = i;
+        } else {
+          colToUserId.set(i, friendId);
+        }
+      }
+      if (importerColIdx === -1) return res.status(400).json({ error: `Column "${importerName}" not found in CSV` });
+
+      // Load existing direct expenses for deduplication
+      const existingExpenses = await storage.getDirectExpensesForUser(userId);
+      const existingDirect = existingExpenses.filter(e =>
+        (e.paidById === userId && e.splitAmongIds.includes(friendId)) ||
+        (e.paidById === friendId && e.splitAmongIds.includes(userId))
+      );
+
+      let imported = 0, skipped = 0;
+
+      for (let i = 1; i < lines.length; i++) {
+        try {
+          const cols = importParseCSVLine(lines[i]);
+          const desc = cols[descIdx]?.trim();
+          const date = cols[dateIdx]?.trim();
+          const cost = parseFloat(cols[costIdx]?.trim() || "0");
+          if (!desc || !date || isNaN(cost) || cost === 0) { skipped++; continue; }
+          if (desc.toLowerCase().includes("total balance")) { skipped++; continue; }
+
+          const isSettlement =
+            desc.toLowerCase().includes("payment") ||
+            desc.toLowerCase().includes("settle up") ||
+            desc.toLowerCase().includes("settled") ||
+            desc.toLowerCase().includes("settle all");
+
+          // Find payer: the column with the highest positive value
+          let payerUserId = userId;
+          let payerAmount = 0;
+          for (let p = 0; p < personNames.length; p++) {
+            const uid = colToUserId.get(p);
+            if (!uid) continue;
+            const val = parseFloat(cols[currIdx + 1 + p]?.trim() || "0");
+            if (val > payerAmount) {
+              payerAmount = val;
+              payerUserId = uid;
+            }
+          }
+          if (payerAmount <= 0) { skipped++; continue; }
+
+          // Calculate each person's share from their CSV column values
+          const userVal = parseFloat(cols[currIdx + 1 + importerColIdx]?.trim() || "0");
+          // Find the friend's column(s) — if multiple non-importer columns, sum their absolute values
+          let friendOwes = 0;
+          for (let p = 0; p < personNames.length; p++) {
+            if (p === importerColIdx) continue;
+            const val = parseFloat(cols[currIdx + 1 + p]?.trim() || "0");
+            if (val < 0) friendOwes += Math.abs(val);
+          }
+
+          const totalCost = Math.abs(cost);
+          const splitAmountFriend = Math.round(friendOwes * 100) / 100;
+          const splitAmountUser = Math.round((totalCost - splitAmountFriend) * 100) / 100;
+
+          if (splitAmountFriend === 0 && splitAmountUser === 0) { skipped++; continue; }
+
+          const splitAmounts: Record<string, number> = {
+            [userId]: splitAmountUser,
+            [friendId]: splitAmountFriend,
+          };
+
+          // Dedup: skip if same date + amount + description already exists
+          const isDuplicate = existingDirect.some(e =>
+            e.date === date && Math.abs(e.amount - totalCost) < 0.01 && e.description === sanitize(desc, 200)
+          );
+          if (isDuplicate) { skipped++; continue; }
+
+          await storage.createExpense({
+            description: sanitize(desc, 200),
+            amount: totalCost,
+            paidById: payerUserId,
+            splitAmongIds: [userId, friendId],
+            groupId: null,
+            date,
+            addedById: userId,
+            isSettlement,
+            splitAmounts: JSON.stringify(splitAmounts),
+          });
+          imported++;
+        } catch {
+          skipped++;
+        }
+      }
+
+      res.json({ imported, skipped });
+    } catch (err) {
+      console.error("Friend import error:", err);
+      res.status(500).json({ error: "Import failed" });
+    }
+  });
+
   // ========== Ghost Member Invite ==========
   app.post("/api/ghost/:ghostId/invite", requireAuth, async (req, res) => {
     const userId = (req.session as any).userId;

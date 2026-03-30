@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Plus, Trash2, Receipt, CheckCircle2, HandCoins, AlertTriangle, UserMinus, Camera, X, Mail, Loader2, FileText } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Receipt, CheckCircle2, HandCoins, AlertTriangle, UserMinus, Camera, X, Mail, Loader2, FileText, Upload } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
@@ -33,6 +33,15 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
   const [receiptRawText, setReceiptRawText] = useState("");
   const [receiptConfirmStep, setReceiptConfirmStep] = useState<"preview" | "edit" | "options" | null>(null);
   const [editItems, setEditItems] = useState<{ name: string; price: string }[]>([]);
+
+  // Splitwise import state
+  const [importOpen, setImportOpen] = useState(false);
+  const [importStep, setImportStep] = useState<"upload" | "map" | "preview">("upload");
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importLoading, setImportLoading] = useState(false);
+  const [importCsvNames, setImportCsvNames] = useState<string[]>([]);
+  const [importImporterName, setImportImporterName] = useState("");
+  const [importPreview, setImportPreview] = useState<{ date: string; description: string; cost: string }[]>([]);
 
   // Delete friend: 2-step confirmation
   const [deleteFriendStep, setDeleteFriendStep] = useState<0 | 1 | 2>(0); // 0=closed, 1=first confirm, 2=final warning
@@ -200,6 +209,43 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
     },
   });
 
+  const importFriendMutation = useMutation({
+    mutationFn: async () => {
+      if (!importFile || !importImporterName) return;
+      const formData = new FormData();
+      formData.append("file", importFile);
+      formData.append("importerName", importImporterName);
+      const res = await fetch(`/api/friends/${friendId}/import-splitwise`, {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Import failed");
+      }
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/friends/expenses"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
+      setImportOpen(false);
+      setImportStep("upload");
+      setImportFile(null);
+      setImportImporterName("");
+      setImportPreview([]);
+      toast({
+        title: "Import complete",
+        description: `${data.imported} expenses imported${data.skipped > 0 ? `, ${data.skipped} skipped` : ""}.`,
+      });
+    },
+    onError: (err: Error) => {
+      let msg = err.message;
+      try { msg = JSON.parse(msg.split(": ").slice(1).join(": ")).error; } catch {}
+      toast({ title: "Import failed", description: msg, variant: "destructive" });
+    },
+  });
+
   const resetExpenseForm = () => {
     setDescription("");
     setAmount("");
@@ -241,6 +287,120 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
           <h1 className="text-xl font-semibold tracking-tight truncate">{friend.name}</h1>
           <p className="text-sm text-muted-foreground truncate">{friend.email}</p>
         </div>
+        {/* Import from Splitwise */}
+        <Dialog open={importOpen} onOpenChange={(open) => {
+          setImportOpen(open);
+          if (!open) { setImportStep("upload"); setImportFile(null); setImportImporterName(""); setImportPreview([]); }
+        }}>
+          <DialogTrigger asChild>
+            <Button size="sm" variant="outline" data-testid="friend-import-splitwise-btn">
+              <Upload className="w-4 h-4 mr-1.5" />
+              Import
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-h-[85vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Import from Splitwise</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 pt-2">
+              {importStep === "upload" && (
+                <>
+                  <p className="text-sm text-muted-foreground">
+                    Export your Splitwise history with <span className="font-medium text-foreground">{friend.name}</span> as a CSV, then upload it here.
+                  </p>
+                  <ol className="text-xs text-muted-foreground space-y-1 list-decimal list-inside bg-muted/40 rounded-lg p-3">
+                    <li>In Splitwise, open your friend or group with {friend.name}</li>
+                    <li>Tap the settings / export icon and choose "Export to CSV"</li>
+                    <li>Upload that CSV file below</li>
+                  </ol>
+                  <label className="flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-muted-foreground/30 p-6 cursor-pointer hover:bg-muted/40 transition-colors">
+                    <Upload className="w-8 h-8 text-muted-foreground" />
+                    {importFile ? (
+                      <p className="text-sm font-medium text-foreground">{importFile.name}</p>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">Tap to select CSV file</p>
+                    )}
+                    <input type="file" accept=".csv" className="hidden" onChange={(e) => {
+                      const f = e.target.files?.[0]; if (f) setImportFile(f);
+                    }} />
+                  </label>
+                  <Button className="w-full" disabled={!importFile || importLoading} onClick={async () => {
+                    if (!importFile) return;
+                    setImportLoading(true);
+                    try {
+                      const text = await importFile.text();
+                      const lines = text.split(/\r?\n/).filter(l => l.trim());
+                      if (lines.length < 2) { toast({ title: "Error", description: "CSV is empty", variant: "destructive" }); return; }
+                      const headers = lines[0].split(",").map(h => h.replace(/^"|"$/g, "").trim());
+                      const currIdx = headers.findIndex(h => h.toLowerCase() === "currency");
+                      if (currIdx === -1) { toast({ title: "Error", description: "Invalid Splitwise CSV — missing Currency column", variant: "destructive" }); return; }
+                      const csvNames = headers.slice(currIdx + 1).map(n => n.trim()).filter(n => n);
+                      if (csvNames.length < 2) { toast({ title: "Error", description: "CSV must have at least 2 person columns", variant: "destructive" }); return; }
+                      // Build preview
+                      const dateIdx = headers.findIndex(h => h.toLowerCase() === "date");
+                      const descIdx = headers.findIndex(h => h.toLowerCase() === "description");
+                      const costIdx = headers.findIndex(h => h.toLowerCase() === "cost");
+                      const preview = lines.slice(1).map(line => {
+                        const cols = line.split(",").map(c => c.replace(/^"|"$/g, "").trim());
+                        return { date: cols[dateIdx] || "", description: cols[descIdx] || "", cost: cols[costIdx] || "0" };
+                      }).filter(r => r.description && !r.description.toLowerCase().includes("total balance"));
+                      setImportCsvNames(csvNames);
+                      setImportPreview(preview);
+                      // Auto-detect importer column: match against current user's name
+                      const userName = user?.name?.toLowerCase() || "";
+                      const autoMatch = csvNames.find(n => n.toLowerCase() === userName || userName.includes(n.toLowerCase()) || n.toLowerCase().includes(userName));
+                      if (autoMatch) setImportImporterName(autoMatch);
+                      setImportStep("map");
+                    } catch {
+                      toast({ title: "Error", description: "Failed to parse CSV", variant: "destructive" });
+                    } finally {
+                      setImportLoading(false);
+                    }
+                  }}>
+                    {importLoading ? <><Loader2 className="w-4 h-4 mr-1.5 animate-spin" />Parsing...</> : "Continue"}
+                  </Button>
+                </>
+              )}
+
+              {importStep === "map" && (
+                <>
+                  <p className="text-sm text-muted-foreground">
+                    Which column in the CSV is <span className="font-medium text-foreground">you</span>? The other column(s) will be mapped to <span className="font-medium text-foreground">{friend.name}</span>.
+                  </p>
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium">Your name in the CSV</p>
+                    <Select value={importImporterName} onValueChange={setImportImporterName}>
+                      <SelectTrigger><SelectValue placeholder="Select your column..." /></SelectTrigger>
+                      <SelectContent>
+                        {importCsvNames.map(n => <SelectItem key={n} value={n}>{n}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {importImporterName && (
+                    <div className="rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground space-y-1">
+                      <p>✓ <span className="text-foreground font-medium">{importImporterName}</span> → You</p>
+                      {importCsvNames.filter(n => n !== importImporterName).map(n => (
+                        <p key={n}>✓ <span className="text-foreground font-medium">{n}</span> → {friend.name}</p>
+                      ))}
+                      <p className="pt-1 border-t border-border mt-1">{importPreview.length} expenses found in CSV</p>
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    <Button variant="outline" className="flex-1" onClick={() => setImportStep("upload")}>Back</Button>
+                    <Button
+                      className="flex-1"
+                      disabled={!importImporterName || importFriendMutation.isPending}
+                      onClick={() => importFriendMutation.mutate()}
+                    >
+                      {importFriendMutation.isPending ? <><Loader2 className="w-4 h-4 mr-1.5 animate-spin" />Importing...</> : `Import ${importPreview.length} expenses`}
+                    </Button>
+                  </div>
+                </>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
+
         <Dialog open={addExpenseOpen} onOpenChange={setAddExpenseOpen}>
           <DialogTrigger asChild>
             <Button size="sm" data-testid="add-friend-expense-btn">

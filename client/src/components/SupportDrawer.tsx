@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { apiRequest } from "@/lib/queryClient";
-import { Headphones, Send, Loader2, CheckCircle2, ExternalLink, UserPlus, Copy, Check, MessageCircle, Mail, Trash2, AlertTriangle, Upload } from "lucide-react";
+import { Headphones, Send, Loader2, CheckCircle2, ExternalLink, UserPlus, Copy, Check, MessageCircle, Mail, Trash2, AlertTriangle, Upload, HelpCircle, ChevronDown } from "lucide-react";
 import { useLocation } from "wouter";
 
 export function SupportDrawer({ children }: { children: React.ReactNode }) {
@@ -15,7 +15,8 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const [open, setOpen] = useState(false);
-  const [view, setView] = useState<"menu" | "support" | "invite" | "delete" | "sent">("menu");
+  const [view, setView] = useState<"menu" | "support" | "invite" | "delete" | "sent" | "faq">("menu");
+  const [faqOpen, setFaqOpen] = useState<number | null>(null);
 
   // Support form state
   const [name, setName] = useState(user?.name || "");
@@ -176,6 +177,21 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
               <div>
                 <p className="text-sm font-medium">Import from Splitwise</p>
                 <p className="text-xs text-muted-foreground">Import expenses from a CSV file</p>
+              </div>
+            </button>
+
+            {/* FAQs */}
+            <button
+              onClick={() => setView("faq")}
+              className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-muted/50 transition-colors text-left group"
+              data-testid="menu-faq"
+            >
+              <div className="w-9 h-9 rounded-lg bg-violet-500/10 flex items-center justify-center flex-shrink-0">
+                <HelpCircle className="w-4.5 h-4.5 text-violet-500" />
+              </div>
+              <div>
+                <p className="text-sm font-medium">FAQs</p>
+                <p className="text-xs text-muted-foreground">How to use Spliiit</p>
               </div>
             </button>
 
@@ -478,6 +494,98 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
             )}
           </div>
         )}
+
+        {/* ===== FAQ VIEW ===== */}
+        {view === "faq" && (() => {
+          const faqs = [
+            {
+              q: "How do I add an expense with a friend?",
+              a: "Go to the Friends tab, tap a friend's name to open their detail page, then tap the '+ Expense' button in the top right. Enter the description, amount, who paid, and how to split it.",
+            },
+            {
+              q: "How do I add an expense in a group?",
+              a: "Open the group from the Groups tab, then tap '+ Add Expense'. Fill in the description, amount, who paid, and choose how to split (equally, by percentage, or custom amounts).",
+            },
+            {
+              q: "What's the difference between Groups and Friends?",
+              a: "Groups are for shared expenses among 3+ people (e.g. roommates, trips). Friends are for one-on-one expenses directly between you and another person. Both track who owes whom.",
+            },
+            {
+              q: "How do I settle up with someone?",
+              a: "On a friend's detail page or a group page, tap the 'Settle Up' button when you have an outstanding balance. This records a payment and resets the balance to zero.",
+            },
+            {
+              q: "How do I import expenses from Splitwise?",
+              a: "In Splitwise, export a group as a CSV file. In Spliiit, tap 'Import from Splitwise' in this menu, then follow the steps to upload the CSV, match names to your contacts, and import.",
+            },
+            {
+              q: "Can I import expenses for a friend (not a group)?",
+              a: "Yes! Open the friend's detail page, tap the '↑ Import' button, and upload your Splitwise CSV. Just select which column in the CSV is you — the rest gets mapped to your friend automatically.",
+            },
+            {
+              q: "How do I export my expenses?",
+              a: "On a friend's detail page or group page, tap 'Export expenses'. A CSV summary will be sent to your email address.",
+            },
+            {
+              q: "What is a 'ghost member'?",
+              a: "A ghost member is a placeholder for someone you split with who hasn't joined Spliiit yet. Their expenses are tracked, and they receive an email invite to claim their account.",
+            },
+            {
+              q: "How do I invite someone to join?",
+              a: "Tap 'Invite a Friend' in this menu and share the link via WhatsApp, SMS, or email. You can also add them to a group — they'll automatically receive an invite when you include their email.",
+            },
+            {
+              q: "Can I scan a receipt?",
+              a: "Yes! When adding an expense, tap the camera icon to attach a receipt photo. Spliiit will try to extract the total automatically using OCR.",
+            },
+            {
+              q: "How do I delete an expense?",
+              a: "Open the expense in a group or friend detail page, then tap the trash icon next to it. You can only delete expenses you added (unless you're an admin).",
+            },
+            {
+              q: "Why is my balance showing incorrectly?",
+              a: "Make sure all expenses have the correct 'paid by' person and the split amounts are accurate. Settlement payments (Settle Up) zero out the balance — check if one was recorded by mistake.",
+            },
+            {
+              q: "How do I change the app theme (dark/light mode)?",
+              a: "Spliiit follows your device's system theme. To switch between dark and light mode, change your phone's display settings.",
+            },
+            {
+              q: "How do I delete my account?",
+              a: "Tap 'Delete Account' at the bottom of this menu. You'll be asked to confirm twice. This permanently removes all your data including expenses, groups, and friends — it cannot be undone.",
+            },
+          ];
+          return (
+            <div className="flex-1 flex flex-col px-5 overflow-y-auto">
+              <button
+                onClick={() => { setView("menu"); setFaqOpen(null); }}
+                className="text-xs text-muted-foreground hover:text-foreground mb-3 self-start flex-shrink-0"
+              >
+                ← Back
+              </button>
+              <h3 className="text-sm font-semibold mb-1 flex-shrink-0">Frequently Asked Questions</h3>
+              <p className="text-xs text-muted-foreground mb-4 flex-shrink-0">Tap a question to expand the answer.</p>
+              <div className="space-y-2 pb-5">
+                {faqs.map((faq, i) => (
+                  <div key={i} className="rounded-lg border border-border overflow-hidden">
+                    <button
+                      className="w-full text-left px-3 py-3 flex items-center justify-between gap-2 hover:bg-muted/40 transition-colors"
+                      onClick={() => setFaqOpen(faqOpen === i ? null : i)}
+                    >
+                      <p className="text-sm font-medium leading-snug">{faq.q}</p>
+                      <ChevronDown className={`w-4 h-4 text-muted-foreground shrink-0 transition-transform duration-200 ${faqOpen === i ? "rotate-180" : ""}`} />
+                    </button>
+                    {faqOpen === i && (
+                      <div className="px-3 pb-3 border-t border-border">
+                        <p className="text-xs text-muted-foreground leading-relaxed pt-2">{faq.a}</p>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* ===== SENT CONFIRMATION VIEW ===== */}
         {view === "sent" && (
