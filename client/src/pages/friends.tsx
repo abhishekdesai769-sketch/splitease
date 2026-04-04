@@ -12,7 +12,7 @@ import { UserPlus, Plus, Users2, HandCoins, CheckCircle2, ChevronRight, Camera, 
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 import { useAuth } from "@/lib/auth";
-import { calculateGroupBalances, simplifyDebts } from "@/lib/simplify";
+import { calculateGroupBalances, calculatePairwiseBalances } from "@/lib/simplify";
 
 export default function Friends() {
   const { user } = useAuth();
@@ -129,8 +129,7 @@ export default function Friends() {
   };
 
   // Calculate balances across all direct (non-group) expenses
-  const balances = calculateGroupBalances(directExpenses);
-  const settlements = simplifyDebts(balances);
+  const settlements = calculatePairwiseBalances(directExpenses);
 
   // Per-friend balance
   const getFriendBalance = (friendId: string) => {
