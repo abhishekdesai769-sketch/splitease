@@ -435,10 +435,6 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
     setSplitAmong([]);
     setGroupSplitType("equal");
     setReceiptFile(null);
-    setReceiptPreview(null);
-    setReceiptConfirmStep(null);
-    setReceiptRawText("");
-    setEditItems([]);
   };
 
   const toggleSplit = (id: string) => {
