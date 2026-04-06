@@ -806,6 +806,15 @@ setInterval(loadAll,30000);
       return res.status(400).json({ error: "Invalid amount" });
     }
 
+    // Validate paidById must be the current user or their friend, and the split must be between actual friends
+    const friendId = splitAmongIds.find((id: string) => id !== userId);
+    if (!friendId || !(await storage.areFriends(userId, friendId))) {
+      return res.status(403).json({ error: "Unauthorized" });
+    }
+    if (paidById !== userId && paidById !== friendId) {
+      return res.status(403).json({ error: "Unauthorized" });
+    }
+
     const expense = await storage.createExpense({
       description: sanitize(description, 200),
       amount: parsedAmount,
