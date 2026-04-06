@@ -1499,11 +1499,18 @@ setInterval(loadAll,30000);
       return res.status(400).json({ error: "Invalid amount" });
     }
 
-    // If group expense, verify user is in the group
+    // If group expense, verify user is in the group and paidById/splitAmongIds are valid members
     if (groupId) {
       const group = await storage.getGroup(groupId);
       if (!group || !group.memberIds.includes(userId)) {
         return res.status(403).json({ error: "Not a member of this group" });
+      }
+      if (!group.memberIds.includes(paidById)) {
+        return res.status(403).json({ error: "Unauthorized" });
+      }
+      const invalidSplit = splitAmongIds.some((id: string) => !group.memberIds.includes(id));
+      if (invalidSplit) {
+        return res.status(403).json({ error: "Unauthorized" });
       }
     }
 
