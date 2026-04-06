@@ -885,6 +885,11 @@ setInterval(loadAll,30000);
       return res.status(400).json({ error: "Invalid amount" });
     }
 
+    // Validate friendId is actually a friend (skip for group settlements)
+    if (!groupId && !(await storage.areFriends(userId, friendId))) {
+      return res.status(403).json({ error: "Unauthorized" });
+    }
+
     // Determine who pays whom based on positive/negative amount
     // If amount > 0, current user pays friend (current user owed friend)
     // We create a payment record: paidById = userId (the one paying), splitAmongIds = [friendId]
