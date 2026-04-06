@@ -107,7 +107,24 @@ export default function Dashboard() {
       allSettlements.push(...calculatePairwiseBalances(directExpenses));
     }
 
-    return allSettlements.filter(s => s.from === user?.id || s.to === user?.id);
+    // Merge all settlements with the same person into one net balance per person
+    const netMap = new Map<string, number>();
+    for (const s of allSettlements) {
+      if (s.from === user?.id) {
+        const cur = netMap.get(s.to) ?? 0;
+        netMap.set(s.to, cur - s.amount);      // you owe them → negative
+      } else if (s.to === user?.id) {
+        const cur = netMap.get(s.from) ?? 0;
+        netMap.set(s.from, cur + s.amount);    // they owe you → positive
+      }
+    }
+    const merged: { from: string; to: string; amount: number }[] = [];
+    for (const [otherId, net] of netMap) {
+      if (Math.abs(net) < 0.01) continue;
+      if (net > 0) merged.push({ from: otherId, to: user!.id, amount: Math.round(net * 100) / 100 });
+      else merged.push({ from: user!.id, to: otherId, amount: Math.round(Math.abs(net) * 100) / 100 });
+    }
+    return merged;
   })();
 
   // Batch-fetch all group members in one request (avoids N+1)
