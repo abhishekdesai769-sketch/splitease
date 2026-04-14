@@ -216,7 +216,7 @@ jobs:
             -authenticationKeyPath $HOME/private_keys/AuthKey_${ASC_KEY_ID}.p8 \
             -authenticationKeyID $ASC_KEY_ID \
             -authenticationKeyIssuerID $ASC_ISSUER_ID \
-            OTHER_CODE_SIGN_FLAGS="--keychain ~/Library/Keychains/build.keychain-db" \
+            OTHER_CODE_SIGN_FLAGS="--keychain $HOME/Library/Keychains/build.keychain-db" \
             CURRENT_PROJECT_VERSION=$BUILD_NUMBER \
             MARKETING_VERSION=1.0.0 \
             CODE_SIGN_STYLE=Manual \
@@ -272,5 +272,5 @@ jobs:
           xcrun altool --upload-app \
             -f "$IPA_PATH" \
             -t ios \
-            --apiKey $ASC_KEY_ID \
-            --apiIssuer $ASC_ISSUER_ID
+            --apiKey "$ASC_KEY_ID" \
+            --apiIssuer "$ASC_ISSUER_ID"
