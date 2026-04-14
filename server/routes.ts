@@ -583,7 +583,7 @@ setInterval(loadAll,30000);
     await storage.createResetToken({ userId: user.id, token, expiresAt });
 
     // Build reset link â uses hash routing
-    const baseUrl = process.env.APP_URL || "https://splitease-81re.onrender.com";
+    const baseUrl = process.env.APP_URL || "https://spliiit.klarityit.ca";
     const resetLink = `${baseUrl}/#/reset-password?token=${token}`;
 
     sendResetPasswordEmail(cleanEmail, user.name, resetLink);

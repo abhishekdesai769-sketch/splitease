@@ -28,7 +28,7 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
   const [deleteStep, setDeleteStep] = useState<0 | 1 | 2>(0);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  const APP_URL = "https://splitease-81re.onrender.com";
+  const APP_URL = "https://spliiit.klarityit.ca";
   const inviteText = `Hey! I use Spliiit to split expenses with friends and groups. Check it out: ${APP_URL}`;
 
   const handleCopyLink = async () => {

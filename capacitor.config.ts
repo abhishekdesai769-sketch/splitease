@@ -6,7 +6,7 @@ const config: CapacitorConfig = {
   webDir: "dist/public",
   server: {
     // Load from the live Render backend so API calls work on device
-    url: "https://splitease-81re.onrender.com",
+    url: "https://spliiit.klarityit.ca",
     androidScheme: "https",
     iosScheme: "https",
   },

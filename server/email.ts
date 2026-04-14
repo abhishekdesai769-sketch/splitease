@@ -281,7 +281,7 @@ export async function notifyExpenseCreated(opts: {
       </td></tr>
       <!-- Link -->
       <tr><td style="padding-bottom:24px;">
-        <a href="https://splitease-81re.onrender.com" style="font-size:14px;color:#2dd4a8;text-decoration:none;font-weight:500;">View on Spliiit &rarr;</a>
+        <a href="https://spliiit.klarityit.ca" style="font-size:14px;color:#2dd4a8;text-decoration:none;font-weight:500;">View on Spliiit &rarr;</a>
       </td></tr>
       <!-- Footer -->
       <tr><td style="border-top:1px solid #f3f4f6;padding-top:16px;font-size:12px;color:#9ca3af;">
@@ -297,8 +297,8 @@ export async function notifyExpenseCreated(opts: {
 
     // Plain text version — helps avoid Gmail Promotions filter
     const text = isSettlement
-      ? `Hi ${person.name},\n\n${paidByName} has settled up $${amount.toFixed(2)} with you${groupName ? ` in ${groupName}` : ""}.\n\nView details at https://splitease-81re.onrender.com\n\n— Spliiit`
-      : `Hi ${person.name},\n\n${paidByName} paid $${amount.toFixed(2)} for ${description}${groupName ? ` in ${groupName}` : ""}.\nYour share: $${person.share.toFixed(2)}${hasReceipt ? "\n\nReceipt is attached to this email." : ""}\n\nView details at https://splitease-81re.onrender.com\n\n— Spliiit`;
+      ? `Hi ${person.name},\n\n${paidByName} has settled up $${amount.toFixed(2)} with you${groupName ? ` in ${groupName}` : ""}.\n\nView details at https://spliiit.klarityit.ca\n\n— Spliiit`
+      : `Hi ${person.name},\n\n${paidByName} paid $${amount.toFixed(2)} for ${description}${groupName ? ` in ${groupName}` : ""}.\nYour share: $${person.share.toFixed(2)}${hasReceipt ? "\n\nReceipt is attached to this email." : ""}\n\nView details at https://spliiit.klarityit.ca\n\n— Spliiit`;
 
     // Fire-and-forget — don't block the API response
     sendEmail(person.email, subject, html, text, attachments);
@@ -375,7 +375,7 @@ export async function sendInviteToInviteeEmail(opts: {
 }) {
   if (!resend) return;
   const { inviteeName, inviteeEmail, inviterName, groupName } = opts;
-  const APP_URL = "https://splitease-81re.onrender.com";
+  const APP_URL = "https://spliiit.klarityit.ca";
 
   const subject = `${inviterName} invited you to join ${groupName} on Spliiit`;
 
@@ -428,7 +428,7 @@ export async function sendInviteToAdminEmail(opts: {
 }) {
   if (!resend) return;
   const { adminName, adminEmail, inviterName, inviteeName, groupName } = opts;
-  const APP_URL = "https://splitease-81re.onrender.com";
+  const APP_URL = "https://spliiit.klarityit.ca";
 
   const subject = `${inviterName} wants to add ${inviteeName} to ${groupName}`;
 
@@ -480,7 +480,7 @@ export async function sendGhostInviteEmail(opts: {
 }) {
   if (!resend) return;
   const { to, inviterName, ghostName, groupName } = opts;
-  const APP_URL = "https://splitease-81re.onrender.com";
+  const APP_URL = "https://spliiit.klarityit.ca";
 
   const subject = `${inviterName} has been tracking expenses with you on Spliiit`;
 
