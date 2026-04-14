@@ -1,11 +1,13 @@
 import { Switch, Route, Router, Redirect } from "wouter";
 import { useHashLocation } from "wouter/use-hash-location";
+import { useEffect } from "react";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/lib/theme";
 import { AuthProvider, useAuth } from "@/lib/auth";
+import { trackPageView } from "@/lib/analytics";
 import { Layout } from "@/components/Layout";
 import Dashboard from "@/pages/dashboard";
 import Friends from "@/pages/friends";
@@ -70,6 +72,15 @@ function AppRouter() {
   );
 }
 
+// Tracks page views on every hash route change
+function PageViewTracker() {
+  const [location] = useHashLocation();
+  useEffect(() => {
+    trackPageView(location);
+  }, [location]);
+  return null;
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -78,6 +89,7 @@ function App() {
           <AuthProvider>
             <Toaster />
             <Router hook={useHashLocation}>
+              <PageViewTracker />
               <AppRouter />
             </Router>
           </AuthProvider>

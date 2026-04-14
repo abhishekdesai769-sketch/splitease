@@ -1,6 +1,7 @@
 import { createContext, useContext, useCallback, useState, useEffect } from "react";
 import type { SafeUser } from "@shared/schema";
 import { apiRequest, queryClient } from "./queryClient";
+import { identifyUser, resetIdentity, track } from "./analytics";
 
 interface AuthContextType {
   user: SafeUser | null;
@@ -49,6 +50,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const res = await apiRequest("POST", "/api/auth/login", { email, password });
     const data = await res.json();
     setUser(data);
+    identifyUser(data.id, { name: data.name, email: data.email });
+    track("user_logged_in");
     queryClient.clear();
     // Always navigate to dashboard after login to avoid stale hash routes (e.g. /#/admin)
     window.location.hash = "#/";
@@ -62,6 +65,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const res = await apiRequest("POST", "/api/auth/signup", { name, email, password, otpCode });
     const data = await res.json();
     setUser(data);
+    identifyUser(data.id, { name: data.name, email: data.email });
+    track("user_signed_up");
     queryClient.clear();
     // Always navigate to dashboard after signup
     window.location.hash = "#/";
@@ -82,6 +87,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = useCallback(async () => {
     await apiRequest("POST", "/api/auth/logout");
     setUser(null);
+    resetIdentity();
     queryClient.clear();
   }, []);
 

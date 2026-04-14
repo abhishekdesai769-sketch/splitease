@@ -12,6 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { calculateGroupBalances } from "@/lib/simplify";
+import { track } from "@/lib/analytics";
 
 export default function Groups() {
   const { user } = useAuth();
@@ -32,6 +33,7 @@ export default function Groups() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/groups"] });
+      track("group_created", { name: groupName.trim() });
       setGroupName("");
       setOpen(false);
       toast({ title: "Group created" });
