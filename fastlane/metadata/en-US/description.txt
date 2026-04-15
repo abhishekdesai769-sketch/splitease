@@ -17,7 +17,7 @@ Import from Splitwise
 Moving from Splitwise? Import your CSV export directly. All members, expenses, and balances transfer seamlessly.
 
 Receipt Scanner
-Snap a photo of your receipt to attach it to any expense. Premium users get AI-powered item extraction.
+Snap a photo of your receipt to attach it to any expense. Keep a visual record of what you spent.
 
 Export Your Data
 Export expenses as CSV via email. Works with Excel, Google Sheets, or any spreadsheet app.
