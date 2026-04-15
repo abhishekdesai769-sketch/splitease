@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { apiRequest } from "@/lib/queryClient";
-import { Headphones, Send, Loader2, CheckCircle2, ExternalLink, UserPlus, Copy, Check, MessageCircle, Mail, Trash2, AlertTriangle, Upload, HelpCircle, ChevronDown } from "lucide-react";
+import { Headphones, Send, Loader2, CheckCircle2, UserPlus, Copy, Check, MessageCircle, Mail, Trash2, AlertTriangle, Upload, HelpCircle, ChevronDown } from "lucide-react";
 import { useLocation } from "wouter";
 
 export function SupportDrawer({ children }: { children: React.ReactNode }) {
@@ -210,39 +210,8 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
               </div>
             </button>
 
-            {/* Spacer to push tip section to bottom */}
+            {/* Spacer */}
             <div className="flex-1" />
-
-            {/* Tip Section */}
-            <div className="mb-6 border-t border-border pt-5">
-              <div className="text-center space-y-3">
-                {/* Coin drop emoji/icon */}
-                <div className="flex items-center justify-center">
-                  <span className="text-3xl" role="img" aria-label="tip">🪙</span>
-                </div>
-                <div>
-                  <p className="text-sm font-medium">Enjoying Spliiit?</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    If you'd like to support our work, tips are always appreciated.
-                  </p>
-                </div>
-
-                {/* Buy Me a Coffee (supports Apple Pay) */}
-                <a
-                  href="https://buymeacoffee.com/spliiit"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline font-medium"
-                  data-testid="tip-bmc-link"
-                >
-                  Buy us a coffee
-                  <ExternalLink className="w-3 h-3" />
-                </a>
-                <p className="text-[11px] text-muted-foreground">
-                  Supports Apple Pay, Google Pay & cards
-                </p>
-              </div>
-            </div>
           </div>
         )}
 
