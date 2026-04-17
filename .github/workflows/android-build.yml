@@ -35,10 +35,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: npm
 
       - name: Install npm dependencies
-        run: npm ci
+        # npm install instead of npm ci — package-lock.json is out of sync
+        # because packages were added without a local Node.js environment
+        run: npm install --no-audit --no-fund
 
       # Install Capacitor packages (not in package.json, installed here only)
       - name: Install Capacitor packages
