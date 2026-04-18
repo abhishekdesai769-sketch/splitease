@@ -1,0 +1,49 @@
+name: 🔐 Export Upload Certificate (PEM)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Exports the upload certificate from the existing keystore as a PEM file.
+# Run this ONCE, copy the PEM from the Summary tab, save as upload_certificate.pem,
+# then upload it to Play Console → App signing → "Lost or compromised upload key?"
+# ─────────────────────────────────────────────────────────────────────────────
+
+on:
+  workflow_dispatch:
+
+jobs:
+  export-cert:
+    name: Export PEM certificate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Decode keystore
+        run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > spliiit-release.keystore
+
+      - name: Export certificate to PEM
+        run: |
+          keytool -export -rfc \
+            -keystore spliiit-release.keystore \
+            -alias "${{ secrets.ANDROID_KEY_ALIAS }}" \
+            -storepass "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" \
+            -file upload_certificate.pem
+
+      - name: Output PEM to Job Summary
+        run: |
+          echo "## ✅ Upload Certificate (PEM)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Copy everything below (including BEGIN/END lines) and save as \`upload_certificate.pem\`:" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat upload_certificate.pem >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Next steps:" >> $GITHUB_STEP_SUMMARY
+          echo "1. Copy the text above → paste into a text file → save as \`upload_certificate.pem\`" >> $GITHUB_STEP_SUMMARY
+          echo "2. Go to Play Console → your app → **Setup → App signing**" >> $GITHUB_STEP_SUMMARY
+          echo "3. Scroll to bottom → **'Lost or compromised upload key?'**" >> $GITHUB_STEP_SUMMARY
+          echo "4. Upload the \`upload_certificate.pem\` file" >> $GITHUB_STEP_SUMMARY
+          echo "5. Google will register your new key — uploads will work immediately" >> $GITHUB_STEP_SUMMARY
