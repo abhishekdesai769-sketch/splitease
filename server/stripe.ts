@@ -8,8 +8,8 @@ export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "sk_test_place
   apiVersion: "2026-03-31.basil" as any, // match Stripe account API version
 });
 
-// Price IDs from Stripe dashboard (CAD)
-export const STRIPE_PRICE_MONTHLY = "price_1TO38WIfVeN2sZv7qXvvIVNc";
-export const STRIPE_PRICE_YEARLY  = "price_1TO3ArIfVeN2sZv7wNDdFrsC";
+// Price IDs from Stripe dashboard — LIVE (CAD)
+export const STRIPE_PRICE_MONTHLY = "price_1TO41pIF43gxR1xo5wpRAeB7";
+export const STRIPE_PRICE_YEARLY  = "price_1TO41nIF43gxR1xoib3nLQgn";
 
 export const STRIPE_ENABLED = !!process.env.STRIPE_SECRET_KEY;
