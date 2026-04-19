@@ -4,9 +4,7 @@ if (!process.env.STRIPE_SECRET_KEY) {
   console.warn("[stripe] STRIPE_SECRET_KEY not set — subscription features disabled");
 }
 
-export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "sk_test_placeholder", {
-  apiVersion: "2026-03-31.basil" as any, // match Stripe account API version
-});
+export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "sk_test_placeholder");
 
 // Price IDs from Stripe dashboard — LIVE (CAD)
 export const STRIPE_PRICE_MONTHLY = "price_1TO41pIF43gxR1xo5wpRAeB7";
