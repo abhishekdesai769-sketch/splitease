@@ -147,6 +147,19 @@ export async function registerRoutes(
     ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_customer_id text;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_subscription_id text;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS premium_until text;
+    CREATE TABLE IF NOT EXISTS recurring_expenses (
+      id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id varchar NOT NULL,
+      description text NOT NULL,
+      amount real NOT NULL,
+      paid_by_id varchar NOT NULL,
+      split_among_ids text[] NOT NULL DEFAULT '{}',
+      group_id varchar,
+      frequency text NOT NULL,
+      next_run_date text NOT NULL,
+      created_at text NOT NULL,
+      is_active boolean NOT NULL DEFAULT true
+    );
   `);
 
   app.use(
@@ -2582,6 +2595,93 @@ setInterval(loadAll,30000);
     }
 
     res.json({ received: true });
+  });
+
+  // ========== Recurring Expenses (premium) ==========
+
+  // GET /api/recurring — list active recurring expenses for logged-in user
+  app.get("/api/recurring", requireAuth, async (req, res) => {
+    const userId = (req.session as any).userId as string;
+    const user = await storage.getUser(userId);
+    if (!user?.isPremium) return res.status(403).json({ error: "Premium required" });
+    const recs = await storage.getRecurringExpensesForUser(userId);
+    res.json(recs);
+  });
+
+  // POST /api/recurring — create a recurring expense template + first expense instance
+  app.post("/api/recurring", requireAuth, async (req, res) => {
+    const userId = (req.session as any).userId as string;
+    const user = await storage.getUser(userId);
+    if (!user?.isPremium) return res.status(403).json({ error: "Premium required" });
+
+    const { description, amount, paidById, splitAmongIds, groupId, frequency } = req.body;
+    if (!description || !amount || !paidById || !splitAmongIds || !frequency) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+    if (!["monthly", "weekly"].includes(frequency)) {
+      return res.status(400).json({ error: "Invalid frequency — must be monthly or weekly" });
+    }
+
+    const parsedSplitIds: string[] = Array.isArray(splitAmongIds)
+      ? splitAmongIds
+      : JSON.parse(splitAmongIds);
+    const parsedAmount = parseFloat(amount);
+    const now = new Date().toISOString();
+
+    // 1. Create the first expense immediately
+    await storage.createExpense({
+      description: description.trim(),
+      amount: parsedAmount,
+      paidById,
+      splitAmongIds: parsedSplitIds,
+      groupId: groupId || null,
+      date: now,
+      addedById: userId,
+      isSettlement: false,
+      receiptData: null,
+      splitAmounts: null,
+      deletedAt: null,
+    });
+
+    // 2. Calculate nextRunDate (1 period from now)
+    const next = new Date();
+    if (frequency === "weekly") {
+      next.setDate(next.getDate() + 7);
+    } else {
+      next.setMonth(next.getMonth() + 1);
+    }
+    const nextRunDate = next.toISOString().split("T")[0];
+
+    // 3. Create the recurring template
+    const rec = await storage.createRecurringExpense({
+      userId,
+      description: description.trim(),
+      amount: parsedAmount,
+      paidById,
+      splitAmongIds: parsedSplitIds,
+      groupId: groupId || null,
+      frequency,
+      nextRunDate,
+      createdAt: now,
+      isActive: true,
+    });
+
+    res.json(rec);
+  });
+
+  // DELETE /api/recurring/:id — cancel a recurring expense
+  app.delete("/api/recurring/:id", requireAuth, async (req, res) => {
+    const userId = (req.session as any).userId as string;
+    const user = await storage.getUser(userId);
+    if (!user?.isPremium) return res.status(403).json({ error: "Premium required" });
+
+    // Verify ownership
+    const userRecs = await storage.getRecurringExpensesForUser(userId);
+    const rec = userRecs.find(r => r.id === req.params.id);
+    if (!rec) return res.status(404).json({ error: "Recurring expense not found" });
+
+    await storage.deactivateRecurringExpense(req.params.id);
+    res.json({ ok: true });
   });
 
   return httpServer;

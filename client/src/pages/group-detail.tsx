@@ -10,7 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Plus, ArrowLeft, Trash2, Shuffle, Receipt, UserPlus, X, HandCoins, CheckCircle2, AlertTriangle, Camera, Mail, Loader2, Crown, Shield, LogOut, UserMinus, Clock, Check, Ghost, FileText, Pencil, MoreVertical, Upload, Download } from "lucide-react";
+import { Plus, ArrowLeft, Trash2, Shuffle, Receipt, UserPlus, X, HandCoins, CheckCircle2, AlertTriangle, Camera, Mail, Loader2, Crown, Shield, LogOut, UserMinus, Clock, Check, Ghost, FileText, Pencil, MoreVertical, Upload, Download, Repeat } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
@@ -28,6 +29,8 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
   const [splitAmong, setSplitAmong] = useState<string[]>([]);
   const [groupSplitType, setGroupSplitType] = useState<"equal" | "they_pay" | "you_pay">("equal");
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [recurringFrequency, setRecurringFrequency] = useState<"monthly" | "weekly">("monthly");
 
   const [inviteEmail, setInviteEmail] = useState("");
   const [settleUpOpen, setSettleUpOpen] = useState(false);
@@ -128,6 +131,45 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
       resetForm();
       setAddOpen(false);
       toast({ title: "Expense added" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const createRecurringMutation = useMutation({
+    mutationFn: async () => {
+      let actualPaidById = paidById;
+      let splitAmongIds: string[];
+
+      if (groupSplitType === "equal") {
+        splitAmongIds = splitAmong;
+      } else if (groupSplitType === "they_pay") {
+        splitAmongIds = splitAmong.filter(id => id !== paidById);
+      } else {
+        splitAmongIds = [paidById];
+        const lender = splitAmong.find(id => id !== paidById);
+        if (lender) actualPaidById = lender;
+      }
+      if (splitAmongIds.length === 0) splitAmongIds = splitAmong;
+
+      const res = await apiRequest("POST", "/api/recurring", {
+        description: description.trim(),
+        amount: parseFloat(amount),
+        paidById: actualPaidById,
+        splitAmongIds,
+        groupId,
+        frequency: recurringFrequency,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/expenses/group", groupId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/recurring"] });
+      resetForm();
+      setAddOpen(false);
+      toast({ title: "Recurring expense created", description: `First expense added. Repeats ${recurringFrequency}.` });
     },
     onError: (err: Error) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -435,6 +477,8 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
     setSplitAmong([]);
     setGroupSplitType("equal");
     setReceiptFile(null);
+    setIsRecurring(false);
+    setRecurringFrequency("monthly");
   };
 
   const toggleSplit = (id: string) => {
@@ -621,7 +665,11 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
               onSubmit={(e) => {
                 e.preventDefault();
                 if (description.trim() && amount && paidById && splitAmong.length > 0) {
-                  createExpenseMutation.mutate();
+                  if (isRecurring) {
+                    createRecurringMutation.mutate();
+                  } else {
+                    createExpenseMutation.mutate();
+                  }
                 }
               }}
             >
@@ -752,7 +800,46 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                 </div>
               )}
 
+              {/* Repeat toggle (Premium) */}
+              <div className="rounded-lg border border-border p-3 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Repeat className="w-4 h-4 text-muted-foreground" />
+                    <div>
+                      <p className="text-sm font-medium leading-tight">Repeat this expense</p>
+                      <p className="text-xs text-muted-foreground">Auto-creates on schedule</p>
+                    </div>
+                  </div>
+                  {user?.isPremium ? (
+                    <Switch checked={isRecurring} onCheckedChange={setIsRecurring} />
+                  ) : (
+                    <span className="text-xs text-primary font-medium flex items-center gap-1">
+                      <Crown className="w-3 h-3" /> Premium
+                    </span>
+                  )}
+                </div>
+                {isRecurring && user?.isPremium && (
+                  <div className="grid grid-cols-2 gap-1.5 pt-1">
+                    {(["monthly", "weekly"] as const).map((freq) => (
+                      <button
+                        key={freq}
+                        type="button"
+                        className={`py-2 rounded-lg border text-xs font-medium transition-colors ${
+                          recurringFrequency === freq
+                            ? "border-primary bg-primary/10 text-primary"
+                            : "border-border text-muted-foreground hover:bg-muted/50"
+                        }`}
+                        onClick={() => setRecurringFrequency(freq)}
+                      >
+                        {freq === "monthly" ? "Monthly" : "Weekly"}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {/* Receipt upload (simple attach — photo is emailed to all participants) */}
+              {!isRecurring && (
               <div className="space-y-2">
                 <Label>Receipt (optional)</Label>
                 {receiptFile ? (
@@ -782,6 +869,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                 )}
                 <p className="text-xs text-muted-foreground">Photo will be sent via email to everyone in the split.</p>
               </div>
+              )}
               <Button
                 type="submit"
                 className="w-full"
@@ -790,11 +878,16 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                   !amount ||
                   !paidById ||
                   splitAmong.length === 0 ||
-                  createExpenseMutation.isPending
+                  createExpenseMutation.isPending ||
+                  createRecurringMutation.isPending
                 }
                 data-testid="submit-expense"
               >
-                {createExpenseMutation.isPending ? "Adding..." : "Add Expense"}
+                {(createExpenseMutation.isPending || createRecurringMutation.isPending)
+                  ? "Adding..."
+                  : isRecurring && user?.isPremium
+                    ? `Set Up Recurring (${recurringFrequency})`
+                    : "Add Expense"}
               </Button>
             </form>
           </DialogContent>

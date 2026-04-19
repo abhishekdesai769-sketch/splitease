@@ -1,13 +1,110 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { Crown, Check, Loader2, Zap, RefreshCw, ExternalLink } from "lucide-react";
+import { Crown, Check, Loader2, ExternalLink, Repeat, Trash2 } from "lucide-react";
 import { useHashLocation } from "wouter/use-hash-location";
+import type { RecurringExpense } from "@shared/schema";
 
 type Plan = "monthly" | "yearly";
+
+function PremiumDashboard({ until, premiumFeatures, portalMutation }: {
+  until: string | null;
+  premiumFeatures: string[];
+  portalMutation: any;
+}) {
+  const { toast } = useToast();
+
+  const { data: recurringList = [], isLoading: recurringLoading } = useQuery<RecurringExpense[]>({
+    queryKey: ["/api/recurring"],
+  });
+
+  const cancelRecurringMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/recurring/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/recurring"] });
+      toast({ title: "Recurring expense cancelled" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Could not cancel recurring expense.", variant: "destructive" });
+    },
+  });
+
+  return (
+    <div className="space-y-5 max-w-md mx-auto">
+      <div>
+        <h1 className="text-xl font-semibold tracking-tight flex items-center gap-2">
+          <Crown className="w-5 h-5 text-amber-500" /> You're Premium
+        </h1>
+        {until && <p className="text-sm text-muted-foreground mt-0.5 font-mono">Active until {until}</p>}
+      </div>
+
+      <Card className="p-4 space-y-3">
+        <p className="text-sm font-medium">Your premium features</p>
+        <ul className="space-y-2">
+          {premiumFeatures.map((f) => (
+            <li key={f} className="flex items-start gap-2 text-sm text-muted-foreground">
+              <Check className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+              {f}
+            </li>
+          ))}
+        </ul>
+      </Card>
+
+      {/* Recurring Expenses Management */}
+      <Card className="p-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <Repeat className="w-4 h-4 text-primary" />
+          <p className="text-sm font-medium">Recurring Expenses</p>
+        </div>
+        {recurringLoading ? (
+          <div className="flex justify-center py-2">
+            <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+          </div>
+        ) : recurringList.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No recurring expenses set up yet. Toggle "Repeat this expense" when adding an expense.
+          </p>
+        ) : (
+          <ul className="space-y-2">
+            {recurringList.map((rec) => (
+              <li key={rec.id} className="flex items-center justify-between gap-2 py-1.5 border-b border-border last:border-0">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate">{rec.description}</p>
+                  <p className="text-xs text-muted-foreground font-mono">
+                    ${rec.amount.toFixed(2)} · {rec.frequency} · next {rec.nextRunDate}
+                  </p>
+                </div>
+                <button
+                  onClick={() => cancelRecurringMutation.mutate(rec.id)}
+                  disabled={cancelRecurringMutation.isPending}
+                  className="text-muted-foreground hover:text-destructive transition-colors shrink-0"
+                  title="Cancel recurring expense"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+
+      <Button
+        variant="outline"
+        className="w-full"
+        onClick={() => portalMutation.mutate()}
+        disabled={portalMutation.isPending}
+      >
+        {portalMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ExternalLink className="w-4 h-4 mr-2" />}
+        Manage Subscription
+      </Button>
+    </div>
+  );
+}
 
 export default function Upgrade() {
   const { toast } = useToast();
@@ -77,38 +174,7 @@ export default function Upgrade() {
   // Already premium — show management screen
   if (status?.isPremium) {
     const until = status.premiumUntil ? new Date(status.premiumUntil).toLocaleDateString("en-CA", { year: "numeric", month: "long", day: "numeric" }) : null;
-    return (
-      <div className="space-y-5 max-w-md mx-auto">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight flex items-center gap-2">
-            <Crown className="w-5 h-5 text-amber-500" /> You're Premium
-          </h1>
-          {until && <p className="text-sm text-muted-foreground mt-0.5 font-mono">Active until {until}</p>}
-        </div>
-
-        <Card className="p-4 space-y-3">
-          <p className="text-sm font-medium">Your premium features</p>
-          <ul className="space-y-2">
-            {premiumFeatures.map((f) => (
-              <li key={f} className="flex items-start gap-2 text-sm text-muted-foreground">
-                <Check className="w-4 h-4 text-primary shrink-0 mt-0.5" />
-                {f}
-              </li>
-            ))}
-          </ul>
-        </Card>
-
-        <Button
-          variant="outline"
-          className="w-full"
-          onClick={() => portalMutation.mutate()}
-          disabled={portalMutation.isPending}
-        >
-          {portalMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ExternalLink className="w-4 h-4 mr-2" />}
-          Manage Subscription
-        </Button>
-      </div>
-    );
+    return <PremiumDashboard until={until} premiumFeatures={premiumFeatures} portalMutation={portalMutation} />;
   }
 
   const monthlyCost = "CA$3.99";

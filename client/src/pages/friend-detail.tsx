@@ -9,7 +9,8 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Plus, Trash2, Receipt, CheckCircle2, HandCoins, AlertTriangle, UserMinus, Camera, X, Mail, Loader2, FileText, Upload, MoreVertical, Download } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Receipt, CheckCircle2, HandCoins, AlertTriangle, UserMinus, Camera, X, Mail, Loader2, FileText, Upload, MoreVertical, Download, Repeat, Crown } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
@@ -26,7 +27,8 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
   const [paidById, setPaidById] = useState("");
   const [splitType, setSplitType] = useState<"equal" | "they_pay" | "you_pay">("equal");
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
-
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [recurringFrequency, setRecurringFrequency] = useState<"monthly" | "weekly">("monthly");
 
   // Splitwise import state
   const [importOpen, setImportOpen] = useState(false);
@@ -120,6 +122,45 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
       resetExpenseForm();
       setAddExpenseOpen(false);
       toast({ title: "Expense added" });
+    },
+    onError: (err: Error) => {
+      let msg = err.message;
+      try { msg = JSON.parse(msg.split(": ").slice(1).join(": ")).error; } catch {}
+      toast({ title: "Error", description: msg, variant: "destructive" });
+    },
+  });
+
+  const addRecurringMutation = useMutation({
+    mutationFn: async () => {
+      let actualPaidById = paidById;
+      let splitAmongIds: string[];
+
+      if (splitType === "equal") {
+        splitAmongIds = [user?.id || "", friendId].filter((v, i, a) => a.indexOf(v) === i);
+      } else if (splitType === "they_pay") {
+        splitAmongIds = [friendId];
+      } else {
+        actualPaidById = friendId;
+        splitAmongIds = [user?.id || ""];
+      }
+
+      const res = await apiRequest("POST", "/api/recurring", {
+        description: description.trim(),
+        amount: parseFloat(amount),
+        paidById: actualPaidById,
+        splitAmongIds,
+        groupId: null,
+        frequency: recurringFrequency,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/friends/expenses"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/recurring"] });
+      resetExpenseForm();
+      setAddExpenseOpen(false);
+      toast({ title: "Recurring expense created", description: `First expense added. Repeats ${recurringFrequency}.` });
     },
     onError: (err: Error) => {
       let msg = err.message;
@@ -256,6 +297,8 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
     setPaidById("");
     setSplitType("equal");
     setReceiptFile(null);
+    setIsRecurring(false);
+    setRecurringFrequency("monthly");
   };
 
   // Can the current user delete this expense?
@@ -464,7 +507,11 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
               onSubmit={(e) => {
                 e.preventDefault();
                 if (description.trim() && amount && paidById) {
-                  addExpenseMutation.mutate();
+                  if (isRecurring) {
+                    addRecurringMutation.mutate();
+                  } else {
+                    addExpenseMutation.mutate();
+                  }
                 }
               }}
             >
@@ -556,7 +603,46 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
                   )}
                 </div>
               )}
+              {/* Repeat toggle (Premium) */}
+              <div className="rounded-lg border border-border p-3 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Repeat className="w-4 h-4 text-muted-foreground" />
+                    <div>
+                      <p className="text-sm font-medium leading-tight">Repeat this expense</p>
+                      <p className="text-xs text-muted-foreground">Auto-creates on schedule</p>
+                    </div>
+                  </div>
+                  {user?.isPremium ? (
+                    <Switch checked={isRecurring} onCheckedChange={setIsRecurring} />
+                  ) : (
+                    <span className="text-xs text-primary font-medium flex items-center gap-1">
+                      <Crown className="w-3 h-3" /> Premium
+                    </span>
+                  )}
+                </div>
+                {isRecurring && user?.isPremium && (
+                  <div className="grid grid-cols-2 gap-1.5 pt-1">
+                    {(["monthly", "weekly"] as const).map((freq) => (
+                      <button
+                        key={freq}
+                        type="button"
+                        className={`py-2 rounded-lg border text-xs font-medium transition-colors ${
+                          recurringFrequency === freq
+                            ? "border-primary bg-primary/10 text-primary"
+                            : "border-border text-muted-foreground hover:bg-muted/50"
+                        }`}
+                        onClick={() => setRecurringFrequency(freq)}
+                      >
+                        {freq === "monthly" ? "Monthly" : "Weekly"}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {/* Receipt upload (simple attach — photo is emailed to all participants) */}
+              {!isRecurring && (
               <div className="space-y-2">
                 <Label>Receipt (optional)</Label>
                 {receiptFile ? (
@@ -579,6 +665,7 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
                 )}
                 <p className="text-xs text-muted-foreground">Photo will be sent via email to everyone in the split.</p>
               </div>
+              )}
               <Button
                 type="submit"
                 className="w-full"
@@ -586,11 +673,16 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
                   !description.trim() ||
                   !amount ||
                   !paidById ||
-                  addExpenseMutation.isPending
+                  addExpenseMutation.isPending ||
+                  addRecurringMutation.isPending
                 }
                 data-testid="submit-friend-detail-expense"
               >
-                {addExpenseMutation.isPending ? "Adding..." : "Add Expense"}
+                {(addExpenseMutation.isPending || addRecurringMutation.isPending)
+                  ? "Adding..."
+                  : isRecurring && user?.isPremium
+                    ? `Set Up Recurring (${recurringFrequency})`
+                    : "Add Expense"}
               </Button>
             </form>
           </DialogContent>

@@ -1,12 +1,13 @@
 import { eq, and, or, ilike, inArray, ne, isNull, isNotNull, lt } from "drizzle-orm";
 import { db } from "./db";
 import {
-  users, friends, groups, expenses, otpCodes, resetTokens, groupInvites,
+  users, friends, groups, expenses, otpCodes, resetTokens, groupInvites, recurringExpenses,
   type User, type InsertUser, type SafeUser,
   type Friend, type InsertFriend,
   type Group, type InsertGroup,
   type Expense, type InsertExpense,
   type GroupInvite, type InsertGroupInvite,
+  type RecurringExpense, type InsertRecurringExpense,
 } from "@shared/schema";
 
 function toSafeUser(user: User): SafeUser {
@@ -83,6 +84,13 @@ export interface IStorage {
 
   // Purge
   purgeExpiredDeleted(daysOld: number): Promise<{ groups: number; expenses: number }>;
+
+  // Recurring expenses (premium)
+  createRecurringExpense(data: InsertRecurringExpense): Promise<RecurringExpense>;
+  getRecurringExpensesForUser(userId: string): Promise<RecurringExpense[]>;
+  getAllDueRecurringExpenses(asOfDate: string): Promise<RecurringExpense[]>;
+  updateRecurringExpenseNextRun(id: string, nextRunDate: string): Promise<void>;
+  deactivateRecurringExpense(id: string): Promise<boolean>;
 }
 
 export class PgStorage implements IStorage {
@@ -569,6 +577,36 @@ export class PgStorage implements IStorage {
     return db.select().from(users).where(
       and(eq(users.email, email.toLowerCase()), eq(users.isGhost, true))
     );
+  }
+
+  // Recurring expenses
+  async createRecurringExpense(data: InsertRecurringExpense): Promise<RecurringExpense> {
+    const [rec] = await db.insert(recurringExpenses).values(data).returning();
+    return rec;
+  }
+
+  async getRecurringExpensesForUser(userId: string): Promise<RecurringExpense[]> {
+    return db.select().from(recurringExpenses).where(
+      and(eq(recurringExpenses.userId, userId), eq(recurringExpenses.isActive, true))
+    );
+  }
+
+  async getAllDueRecurringExpenses(asOfDate: string): Promise<RecurringExpense[]> {
+    // Fetch all active; filter by nextRunDate <= asOfDate in memory (avoids complex SQL comparison)
+    const all = await db.select().from(recurringExpenses).where(eq(recurringExpenses.isActive, true));
+    return all.filter(r => r.nextRunDate <= asOfDate);
+  }
+
+  async updateRecurringExpenseNextRun(id: string, nextRunDate: string): Promise<void> {
+    await db.update(recurringExpenses).set({ nextRunDate }).where(eq(recurringExpenses.id, id));
+  }
+
+  async deactivateRecurringExpense(id: string): Promise<boolean> {
+    const result = await db.update(recurringExpenses)
+      .set({ isActive: false })
+      .where(eq(recurringExpenses.id, id))
+      .returning();
+    return result.length > 0;
   }
 }
 

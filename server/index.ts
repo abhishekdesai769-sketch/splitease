@@ -4,6 +4,7 @@ import cors from "cors";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
+import { startRecurringExpenseScheduler } from "./scheduler";
 
 const app = express();
 const httpServer = createServer(app);
@@ -84,6 +85,9 @@ app.use((req, res, next) => {
 
 (async () => {
   await registerRoutes(httpServer, app);
+
+  // Start recurring expense scheduler (premium feature — auto-creates expenses on schedule)
+  startRecurringExpenseScheduler();
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;

@@ -125,6 +125,24 @@ export const insertGroupInviteSchema = createInsertSchema(groupInvites).omit({ i
 export type InsertGroupInvite = z.infer<typeof insertGroupInviteSchema>;
 export type GroupInvite = typeof groupInvites.$inferSelect;
 
+// Recurring Expenses (premium feature — auto-create on a schedule)
+export const recurringExpenses = pgTable("recurring_expenses", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),       // who owns this template
+  description: text("description").notNull(),
+  amount: real("amount").notNull(),
+  paidById: varchar("paid_by_id").notNull(),
+  splitAmongIds: text("split_among_ids").array().notNull(),
+  groupId: varchar("group_id"),               // null = direct friend expense
+  frequency: text("frequency").notNull(),     // "monthly" | "weekly"
+  nextRunDate: text("next_run_date").notNull(), // YYYY-MM-DD — when to fire next
+  createdAt: text("created_at").notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+});
+
+export type RecurringExpense = typeof recurringExpenses.$inferSelect;
+export type InsertRecurringExpense = typeof recurringExpenses.$inferInsert;
+
 // Signup/Login schemas (for validation)
 export const signupSchema = z.object({
   name: z.string().min(1, "Name is required").max(100, "Name too long"),
