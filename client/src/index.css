@@ -10,10 +10,10 @@
   --elevate-1: rgba(0,0,0, .03);
   --elevate-2: rgba(0,0,0, .08);
   /* ===== surfaces ===== */
-  --background: 36 28% 83%;           /* canvas — warm beige, slightly deeper */
+  --background: 36 28% 87%;           /* canvas — warm gold-beige */
   --foreground: 30 6% 15%;            /* ink */
-  --border: 36 14% 74%;               /* rule — warm hairline */
-  --input: 36 20% 90%;                /* canvas-2 — slightly lighter beige */
+  --border: 36 14% 78%;               /* rule — warm hairline */
+  --input: 36 20% 92%;                /* canvas-2 — slightly lighter beige */
 
   /* ===== card ===== */
   --card: 38 18% 97%;                 /* paper — off-white, floats on beige */
@@ -30,11 +30,11 @@
   --primary-foreground: 40 18% 96%;  /* canvas */
 
   /* ===== secondary — subtle surface ===== */
-  --secondary: 36 20% 89%;            /* beige-tinted surface */
+  --secondary: 36 20% 92%;            /* beige-tinted surface */
   --secondary-foreground: 30 4% 36%; /* ink-2 */
 
   /* ===== muted ===== */
-  --muted: 36 16% 80%;                /* slightly deeper beige */
+  --muted: 36 16% 84%;                /* slightly deeper beige */
   --muted-foreground: 30 3% 54%;     /* ink-3 */
 
   /* ===== accent — terracotta (small emphasis only) ===== */
@@ -56,7 +56,7 @@
   --chart-5: 10 40% 48%;   /* rust */
 
   /* ===== sidebar ===== */
-  --sidebar: 36 22% 86%;               /* beige canvas */
+  --sidebar: 36 22% 89%;               /* beige canvas */
   --sidebar-foreground: 30 4% 36%;    /* ink-2 */
   --sidebar-border: 36 11% 82%;       /* rule */
   --sidebar-primary: 30 6% 15%;       /* ink */
