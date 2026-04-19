@@ -520,3 +520,63 @@ export async function sendGhostInviteEmail(opts: {
 
   sendEmail(to, subject, html, text);
 }
+
+/**
+ * Send a payment reminder with tone control (premium feature)
+ */
+export async function sendReminderEmail(opts: {
+  to: string;
+  senderName: string;
+  recipientName: string;
+  message: string;
+  tone: "friendly" | "firm" | "awkward";
+  amount: number;
+  appUrl: string;
+}) {
+  if (!resend) return;
+  const { to, senderName, recipientName, message, tone, amount, appUrl } = opts;
+
+  const subjects: Record<string, string> = {
+    friendly: `👋 A friendly reminder from ${senderName}`,
+    firm:     `Payment reminder from ${senderName}`,
+    awkward:  `${senderName} sent you a... reminder? 😬`,
+  };
+  const subject = subjects[tone] || `Payment reminder from ${senderName}`;
+
+  // Escape the message for HTML and convert newlines to <br>
+  const msgHtml = message
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\n/g, "<br>");
+
+  const html = `
+<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <tr><td align="center" style="padding:24px 16px;">
+    <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="max-width:520px;">
+      <tr><td>${EMAIL_LOGO}</td></tr>
+      <tr><td style="font-size:15px;color:#374151;padding-bottom:20px;line-height:1.6;">
+        ${msgHtml}
+      </td></tr>
+      <tr><td style="padding-bottom:20px;">
+        <table cellpadding="0" cellspacing="0" role="presentation">
+          <tr>
+            <td style="border-radius:8px;background-color:#0d9488;">
+              <a href="${appUrl}/#/friends" style="display:inline-block;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;">
+                Settle up on Spliiit
+              </a>
+            </td>
+          </tr>
+        </table>
+      </td></tr>
+      <tr><td style="border-top:1px solid #f3f4f6;padding-top:16px;font-size:12px;color:#9ca3af;">
+        ${EMAIL_FOOTER}
+      </td></tr>
+    </table>
+  </td></tr>
+</table>`;
+
+  const text = `${message}\n\nSettle up on Spliiit: ${appUrl}\n\n— Spliiit`;
+
+  sendEmail(to, subject, html, text);
+}

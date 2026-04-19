@@ -1,13 +1,15 @@
+import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import type { Group, Expense, SafeUser, RecurringExpense } from "@shared/schema";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { UsersRound, Receipt, Users2, TrendingDown, TrendingUp, MailPlus, Check, X, Repeat, Trash2 } from "lucide-react";
+import { UsersRound, Receipt, Users2, TrendingDown, TrendingUp, MailPlus, Check, X, Repeat, Trash2, Bell } from "lucide-react";
 import { Link } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { calculateGroupBalances, calculatePairwiseBalances, simplifyDebts } from "@/lib/simplify";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { ReminderSheet } from "@/components/ReminderSheet";
 
 function StatCard({ icon: Icon, label, value, href, color }: { icon: any; label: string; value: string; href?: string; color?: string }) {
   const inner = (
@@ -33,6 +35,9 @@ export default function Dashboard() {
   const { data: groups = [] } = useQuery<Group[]>({ queryKey: ["/api/groups"] });
   const { data: expenses = [] } = useQuery<Expense[]>({ queryKey: ["/api/expenses"] });
   const { data: friendsList = [] } = useQuery<SafeUser[]>({ queryKey: ["/api/friends"] });
+
+  // Reminder sheet state (shared across all settlement cards)
+  const [reminderTarget, setReminderTarget] = useState<{ id: string; name: string; amount: number } | null>(null);
 
   // Recurring expenses (premium only — skip fetch if not premium)
   const { data: recurringList = [] } = useQuery<RecurringExpense[]>({
@@ -253,27 +258,39 @@ export default function Dashboard() {
         <div>
           <h2 className="text-base font-semibold mb-3 font-serif">Your Balances</h2>
           <div className="space-y-2">
-            {mySettlements.map((s, i) => (
-              <Card key={i} className="p-3">
-                <p className="text-sm">
-                  {s.from === user?.id ? (
-                    <>
-                      <span className="text-destructive font-medium">You</span>
-                      {" pay "}
-                      <span className="text-primary font-medium">{getPersonName(s.to)}</span>
-                    </>
-                  ) : (
-                    <>
-                      <span className="font-medium text-muted-foreground">{getPersonName(s.from)}</span>
-                      {" pays "}
-                      <span className="text-primary font-medium">you</span>
-                    </>
+            {mySettlements.map((s, i) => {
+              const theyOweMe = s.to === user?.id;
+              return (
+                <Card key={i} className="p-3 flex items-center justify-between gap-2">
+                  <p className="text-sm">
+                    {s.from === user?.id ? (
+                      <>
+                        <span className="text-destructive font-medium">You</span>
+                        {" pay "}
+                        <span className="text-primary font-medium">{getPersonName(s.to)}</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="font-medium text-muted-foreground">{getPersonName(s.from)}</span>
+                        {" pays "}
+                        <span className="text-primary font-medium">you</span>
+                      </>
+                    )}
+                    {" "}
+                    <span className="font-semibold">${s.amount.toFixed(2)}</span>
+                  </p>
+                  {theyOweMe && user?.isPremium && (
+                    <button
+                      onClick={() => setReminderTarget({ id: s.from, name: getPersonName(s.from), amount: s.amount })}
+                      className="text-muted-foreground hover:text-primary transition-colors shrink-0"
+                      title={`Remind ${getPersonName(s.from)}`}
+                    >
+                      <Bell className="w-4 h-4" />
+                    </button>
                   )}
-                  {" "}
-                  <span className="font-semibold">${s.amount.toFixed(2)}</span>
-                </p>
-              </Card>
-            ))}
+                </Card>
+              );
+            })}
           </div>
         </div>
       )}
@@ -328,6 +345,17 @@ export default function Dashboard() {
             ))}
           </div>
         </div>
+      )}
+
+      {/* Payment reminder sheet (triggered from settlement cards) */}
+      {reminderTarget && (
+        <ReminderSheet
+          open={!!reminderTarget}
+          onClose={() => setReminderTarget(null)}
+          recipientId={reminderTarget.id}
+          recipientName={reminderTarget.name}
+          amount={reminderTarget.amount}
+        />
       )}
 
       {/* Empty state */}

@@ -2613,6 +2613,41 @@ setInterval(loadAll,30000);
     res.json({ received: true });
   });
 
+  // ========== Payment Reminders (premium) ==========
+
+  // POST /api/reminders/send — send a tone-aware payment reminder email
+  app.post("/api/reminders/send", requireAuth, async (req, res) => {
+    const userId = (req.session as any).userId as string;
+    const user = await storage.getUser(userId);
+    if (!user?.isPremium) return res.status(403).json({ error: "Premium required" });
+
+    const { recipientId, message, tone, amount } = req.body;
+    if (!recipientId || !message || !tone) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+    if (!["friendly", "firm", "awkward"].includes(tone)) {
+      return res.status(400).json({ error: "Invalid tone" });
+    }
+
+    const recipient = await storage.getUser(recipientId as string);
+    if (!recipient) return res.status(404).json({ error: "Recipient not found" });
+    if (recipient.isGhost) return res.status(400).json({ error: "Cannot send email to a ghost user" });
+
+    const APP_URL = process.env.APP_URL || "https://spliiit.klarityit.ca";
+    const { sendReminderEmail } = await import("./email");
+    await sendReminderEmail({
+      to: recipient.email,
+      senderName: user.name,
+      recipientName: recipient.name,
+      message: message as string,
+      tone: tone as "friendly" | "firm" | "awkward",
+      amount: parseFloat(amount) || 0,
+      appUrl: APP_URL,
+    });
+
+    res.json({ ok: true });
+  });
+
   // ========== Recurring Expenses (premium) ==========
 
   // GET /api/recurring — list active recurring expenses for logged-in user
