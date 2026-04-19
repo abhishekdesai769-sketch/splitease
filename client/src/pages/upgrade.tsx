@@ -16,11 +16,14 @@ export default function Upgrade() {
 
   // Show success/cancel toasts from Stripe redirect
   useEffect(() => {
-    const params = new URLSearchParams(window.location.hash.split("?")[1] || "");
-    if (params.get("success") === "true") {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("checkout") === "success") {
       toast({ title: "🎉 Welcome to Spliiit Premium!", description: "Your subscription is now active." });
-    } else if (params.get("cancelled") === "true") {
+      // Clean up URL
+      window.history.replaceState({}, "", window.location.pathname + "#/upgrade");
+    } else if (params.get("checkout") === "cancelled") {
       toast({ title: "Checkout cancelled", description: "You can upgrade any time.", variant: "destructive" });
+      window.history.replaceState({}, "", window.location.pathname + "#/upgrade");
     }
   }, []);
 

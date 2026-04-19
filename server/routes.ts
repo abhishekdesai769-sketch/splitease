@@ -2441,8 +2441,8 @@ setInterval(loadAll,30000);
         customer_email: user.stripeCustomerId ? undefined : user.email,
         customer: user.stripeCustomerId || undefined,
         line_items: [{ price: priceId, quantity: 1 }],
-        success_url: `${APP_URL}/#/upgrade?success=true`,
-        cancel_url: `${APP_URL}/#/upgrade?cancelled=true`,
+        success_url: `${APP_URL}/?checkout=success#/upgrade`,
+        cancel_url: `${APP_URL}/?checkout=cancelled#/upgrade`,
         metadata: { userId },
         subscription_data: { metadata: { userId } },
       });
