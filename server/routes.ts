@@ -2447,22 +2447,38 @@ setInterval(loadAll,30000);
 
     const APP_URL = process.env.APP_URL || "https://spliiit.klarityit.ca";
 
-    try {
-      const session = await stripe.checkout.sessions.create({
+    const buildSession = (withCustomer: boolean) =>
+      stripe.checkout.sessions.create({
         mode: "subscription",
         payment_method_types: ["card"],
-        customer_email: user.stripeCustomerId ? undefined : user.email,
-        customer: user.stripeCustomerId || undefined,
+        customer_email: withCustomer ? undefined : user.email,
+        customer: withCustomer ? user.stripeCustomerId! : undefined,
         line_items: [{ price: priceId, quantity: 1 }],
         success_url: `${APP_URL}/?checkout=success#/upgrade`,
         cancel_url: `${APP_URL}/?checkout=cancelled#/upgrade`,
         metadata: { userId },
         subscription_data: { metadata: { userId } },
       });
+
+    try {
+      // Try with the stored customer ID first (faster, pre-fills payment method)
+      const session = await buildSession(!!user.stripeCustomerId).catch(async (err) => {
+        // If the customer ID is stale/from test mode, wipe it and retry fresh
+        if (user.stripeCustomerId && err?.code === "resource_missing") {
+          console.warn("[stripe] Stale customer ID detected — clearing and retrying:", user.stripeCustomerId);
+          await storage.updateUserSubscription(userId, {
+            isPremium: user.isPremium,
+            stripeCustomerId: undefined,
+            stripeSubscriptionId: null,
+          });
+          return buildSession(false);
+        }
+        throw err;
+      });
       res.json({ url: session.url });
     } catch (err: any) {
-      console.error("[stripe] checkout error:", err.message);
-      res.status(500).json({ error: "Failed to create checkout session" });
+      console.error("[stripe] checkout error:", err?.message, err?.code, err?.type);
+      res.status(500).json({ error: err?.message || "Failed to create checkout session" });
     }
   });
 
