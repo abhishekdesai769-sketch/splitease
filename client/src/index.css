@@ -9,43 +9,66 @@
   --opaque-button-border-intensity: -8;
   --elevate-1: rgba(0,0,0, .03);
   --elevate-2: rgba(0,0,0, .08);
-  --background: 180 5% 96%;
-  --foreground: 180 10% 8%;
-  --border: 180 5% 88%;
-  --card: 180 5% 98%;
-  --card-foreground: 180 10% 8%;
-  --card-border: 180 5% 90%;
-  --sidebar: 180 5% 95%;
-  --sidebar-foreground: 180 10% 8%;
-  --sidebar-border: 180 5% 88%;
-  --sidebar-primary: 172 70% 36%;
-  --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 180 5% 89%;
-  --sidebar-accent-foreground: 180 10% 8%;
-  --sidebar-ring: 172 70% 36%;
-  --popover: 180 5% 97%;
-  --popover-foreground: 180 10% 8%;
-  --popover-border: 180 5% 88%;
-  --primary: 172 70% 36%;
-  --primary-foreground: 0 0% 100%;
-  --secondary: 180 4% 90%;
-  --secondary-foreground: 180 10% 8%;
-  --muted: 180 4% 92%;
-  --muted-foreground: 180 3% 42%;
-  --accent: 172 15% 90%;
-  --accent-foreground: 180 10% 8%;
-  --destructive: 0 72% 51%;
-  --destructive-foreground: 0 0% 100%;
-  --input: 180 5% 78%;
-  --ring: 172 70% 36%;
-  --chart-1: 172 70% 36%;
-  --chart-2: 142 58% 39%;
-  --chart-3: 0 72% 51%;
-  --chart-4: 43 74% 49%;
-  --chart-5: 262 83% 48%;
-  --font-sans: 'Satoshi', 'Inter', sans-serif;
-  --font-serif: Georgia, serif;
-  --font-mono: 'JetBrains Mono', Menlo, monospace;
+  /* ===== surfaces ===== */
+  --background: 40 18% 96%;           /* canvas — warm off-white */
+  --foreground: 30 6% 15%;            /* ink */
+  --border: 36 11% 82%;               /* rule — warm hairline */
+  --input: 38 14% 94%;                /* canvas-2 */
+
+  /* ===== card ===== */
+  --card: 40 12% 98%;                 /* paper — sits above canvas */
+  --card-foreground: 30 6% 15%;
+  --card-border: 36 10% 88%;          /* rule-2 — soft inside card */
+
+  /* ===== popover ===== */
+  --popover: 40 12% 98%;
+  --popover-foreground: 30 6% 15%;
+  --popover-border: 36 10% 88%;
+
+  /* ===== primary — deep ink pill, cream text ===== */
+  --primary: 30 6% 15%;               /* ink */
+  --primary-foreground: 40 18% 96%;  /* canvas */
+
+  /* ===== secondary — subtle surface ===== */
+  --secondary: 38 14% 94%;            /* canvas-2 */
+  --secondary-foreground: 30 4% 36%; /* ink-2 */
+
+  /* ===== muted ===== */
+  --muted: 36 10% 88%;                /* rule-2 */
+  --muted-foreground: 30 3% 54%;     /* ink-3 */
+
+  /* ===== accent — terracotta (small emphasis only) ===== */
+  --accent: 28 35% 86%;               /* accent-soft surface */
+  --accent-foreground: 18 42% 50%;   /* terracotta text */
+
+  /* ===== destructive ===== */
+  --destructive: 10 40% 48%;          /* rust */
+  --destructive-foreground: 40 18% 96%;
+
+  /* ===== ring — terracotta focus ===== */
+  --ring: 18 42% 50%;
+
+  /* ===== chart — warm palette ===== */
+  --chart-1: 18 42% 50%;   /* terracotta */
+  --chart-2: 145 22% 48%;  /* sage */
+  --chart-3: 220 25% 48%;  /* dusty blue */
+  --chart-4: 36 45% 54%;   /* amber */
+  --chart-5: 10 40% 48%;   /* rust */
+
+  /* ===== sidebar ===== */
+  --sidebar: 38 14% 94%;               /* canvas-2 */
+  --sidebar-foreground: 30 4% 36%;    /* ink-2 */
+  --sidebar-border: 36 11% 82%;       /* rule */
+  --sidebar-primary: 30 6% 15%;       /* ink */
+  --sidebar-primary-foreground: 40 18% 96%;
+  --sidebar-accent: 40 12% 98%;       /* paper */
+  --sidebar-accent-foreground: 30 6% 15%;
+  --sidebar-ring: 18 42% 50%;         /* terracotta */
+
+  /* ===== fonts ===== */
+  --font-sans: 'Inter Tight', 'Satoshi', 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-serif: 'Instrument Serif', 'Fraunces', Georgia, serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
   --radius: .625rem;
   --shadow-2xs: 0px 2px 0px 0px hsl(0 0% 0% / 0.00);
   --shadow-xs: 0px 2px 0px 0px hsl(0 0% 0% / 0.00);
@@ -218,5 +241,145 @@
   .border.active-elevate-2:not(.no-active-interaction-elevate)::after,
   .border.hover-elevate:not(.no-hover-interaction-elevate)::after {
     inset: -1px;
+  }
+}
+
+/* ─── Editorial light-theme utilities (§4c + §5 of LIGHT_THEME_SPEC.md) ─── */
+/* Active only in light mode — dark mode ignores these via token overrides.   */
+
+@layer components {
+  /* §4c — Typography scale */
+  .text-hero {
+    font-family: var(--font-serif);
+    font-weight: 400;
+    font-size: 88px;
+    line-height: 0.96;
+    letter-spacing: -0.025em;
+  }
+  .text-h2 {
+    font-family: var(--font-serif);
+    font-weight: 400;
+    font-size: 52px;
+    line-height: 1.02;
+    letter-spacing: -0.02em;
+  }
+  .text-h3 {
+    font-family: var(--font-serif);
+    font-weight: 400;
+    font-size: 30px;
+    line-height: 1.1;
+    letter-spacing: -0.01em;
+  }
+  .text-meta {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: hsl(var(--muted-foreground));
+  }
+
+  /* §5a — Buttons */
+  .btn-primary {
+    padding: 13px 22px;
+    border-radius: 999px;
+    background: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+    font-size: 13.5px;
+    font-weight: 500;
+    border: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .btn-ghost {
+    padding: 13px 20px;
+    border-radius: 999px;
+    background: transparent;
+    color: hsl(var(--foreground));
+    border: 1px solid hsl(var(--border));
+    font-size: 13.5px;
+    font-weight: 500;
+  }
+  .btn-sm {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
+    color: hsl(var(--muted-foreground));
+  }
+  .btn-sm--accent {
+    background: hsl(var(--accent));
+    color: hsl(var(--accent-foreground));
+    border-color: transparent;
+  }
+
+  /* §5b — Cards */
+  .card-editorial {
+    background: hsl(var(--card));
+    border: 1px solid hsl(var(--card-border));
+    border-radius: 14px;
+    padding: 24px;
+  }
+  .card-editorial--lg { border-radius: 18px; padding: 36px; }
+  .card-editorial--xl { border-radius: 20px; }
+
+  /* §5c — Chips */
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 12.5px;
+    color: hsl(var(--muted-foreground));
+    padding: 6px 12px;
+    border-radius: 999px;
+    border: 1px solid hsl(var(--border));
+    background: hsl(var(--card));
+  }
+  .chip.active {
+    background: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+    border-color: hsl(var(--primary));
+  }
+
+  /* §5d — Status dots */
+  .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: hsl(var(--muted-foreground));
+    display: inline-block;
+  }
+  .dot--new     { background: hsl(var(--ring)); }
+  .dot--ok      { background: hsl(145 22% 48%); }
+  .dot--warn    { background: hsl(36 45% 54%); }
+  .dot--blocked { background: hsl(10 40% 48%); }
+  .dot--info    { background: hsl(220 25% 48%); }
+
+  /* §5e — Missing / pending dashed tag */
+  .tag-missing {
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px dashed hsl(var(--border));
+    font-size: 11.5px;
+    color: hsl(var(--muted-foreground));
+    background: hsl(var(--background));
+    white-space: nowrap;
+  }
+
+  /* §5h — Floating toast */
+  .toast-editorial {
+    position: fixed;
+    right: 24px;
+    bottom: 24px;
+    background: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+    font-size: 13px;
+    padding: 10px 16px;
+    border-radius: 999px;
+    box-shadow: 0 10px 30px hsl(var(--foreground) / 0.14);
   }
 }
