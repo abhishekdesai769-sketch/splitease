@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { UserPlus, Plus, Users2, HandCoins, CheckCircle2, ChevronRight, Camera, X, Repeat, Crown } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
+import { UpgradePromptSheet } from "@/components/UpgradePromptSheet";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 import { useAuth } from "@/lib/auth";
@@ -31,6 +32,7 @@ export default function Friends() {
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurringFrequency, setRecurringFrequency] = useState<"monthly" | "weekly">("monthly");
+  const [upgradeSheetOpen, setUpgradeSheetOpen] = useState(false);
 
   const { data: friendsList = [], isLoading } = useQuery<SafeUser[]>({
     queryKey: ["/api/friends"],
@@ -364,9 +366,13 @@ export default function Friends() {
                       {user?.isPremium ? (
                         <Switch checked={isRecurring} onCheckedChange={setIsRecurring} />
                       ) : (
-                        <span className="text-xs text-primary font-medium flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setUpgradeSheetOpen(true)}
+                          className="text-xs text-primary font-medium flex items-center gap-1 hover:underline"
+                        >
                           <Crown className="w-3 h-3" /> Premium
-                        </span>
+                        </button>
                       )}
                     </div>
                     {isRecurring && user?.isPremium && (
@@ -388,6 +394,7 @@ export default function Friends() {
                       </div>
                     )}
                   </div>
+                  <UpgradePromptSheet open={upgradeSheetOpen} onClose={() => setUpgradeSheetOpen(false)} />
 
                   {/* Receipt upload */}
                   {!isRecurring && (

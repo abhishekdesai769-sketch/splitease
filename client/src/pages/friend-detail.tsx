@@ -11,6 +11,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArrowLeft, Plus, Trash2, Receipt, CheckCircle2, HandCoins, AlertTriangle, UserMinus, Camera, X, Mail, Loader2, FileText, Upload, MoreVertical, Download, Repeat, Crown } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
+import { UpgradePromptSheet } from "@/components/UpgradePromptSheet";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
@@ -29,6 +30,7 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurringFrequency, setRecurringFrequency] = useState<"monthly" | "weekly">("monthly");
+  const [upgradeSheetOpen, setUpgradeSheetOpen] = useState(false);
 
   // Splitwise import state
   const [importOpen, setImportOpen] = useState(false);
@@ -616,9 +618,13 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
                   {user?.isPremium ? (
                     <Switch checked={isRecurring} onCheckedChange={setIsRecurring} />
                   ) : (
-                    <span className="text-xs text-primary font-medium flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setUpgradeSheetOpen(true)}
+                      className="text-xs text-primary font-medium flex items-center gap-1 hover:underline"
+                    >
                       <Crown className="w-3 h-3" /> Premium
-                    </span>
+                    </button>
                   )}
                 </div>
                 {isRecurring && user?.isPremium && (
@@ -640,6 +646,7 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
                   </div>
                 )}
               </div>
+              <UpgradePromptSheet open={upgradeSheetOpen} onClose={() => setUpgradeSheetOpen(false)} />
 
               {/* Receipt upload (simple attach — photo is emailed to all participants) */}
               {!isRecurring && (

@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Plus, ArrowLeft, Trash2, Shuffle, Receipt, UserPlus, X, HandCoins, CheckCircle2, AlertTriangle, Camera, Mail, Loader2, Crown, Shield, LogOut, UserMinus, Clock, Check, Ghost, FileText, Pencil, MoreVertical, Upload, Download, Repeat } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
+import { UpgradePromptSheet } from "@/components/UpgradePromptSheet";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
@@ -31,6 +32,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurringFrequency, setRecurringFrequency] = useState<"monthly" | "weekly">("monthly");
+  const [upgradeSheetOpen, setUpgradeSheetOpen] = useState(false);
 
   const [inviteEmail, setInviteEmail] = useState("");
   const [settleUpOpen, setSettleUpOpen] = useState(false);
@@ -813,9 +815,13 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                   {user?.isPremium ? (
                     <Switch checked={isRecurring} onCheckedChange={setIsRecurring} />
                   ) : (
-                    <span className="text-xs text-primary font-medium flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setUpgradeSheetOpen(true)}
+                      className="text-xs text-primary font-medium flex items-center gap-1 hover:underline"
+                    >
                       <Crown className="w-3 h-3" /> Premium
-                    </span>
+                    </button>
                   )}
                 </div>
                 {isRecurring && user?.isPremium && (
@@ -837,6 +843,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                   </div>
                 )}
               </div>
+              <UpgradePromptSheet open={upgradeSheetOpen} onClose={() => setUpgradeSheetOpen(false)} />
 
               {/* Receipt upload (simple attach — photo is emailed to all participants) */}
               {!isRecurring && (
