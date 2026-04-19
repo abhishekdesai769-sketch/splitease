@@ -1,8 +1,8 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import type { Group, Expense, SafeUser } from "@shared/schema";
+import type { Group, Expense, SafeUser, RecurringExpense } from "@shared/schema";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { UsersRound, Receipt, Users2, TrendingDown, TrendingUp, MailPlus, Check, X } from "lucide-react";
+import { UsersRound, Receipt, Users2, TrendingDown, TrendingUp, MailPlus, Check, X, Repeat, Trash2 } from "lucide-react";
 import { Link } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { calculateGroupBalances, calculatePairwiseBalances, simplifyDebts } from "@/lib/simplify";
@@ -33,6 +33,25 @@ export default function Dashboard() {
   const { data: groups = [] } = useQuery<Group[]>({ queryKey: ["/api/groups"] });
   const { data: expenses = [] } = useQuery<Expense[]>({ queryKey: ["/api/expenses"] });
   const { data: friendsList = [] } = useQuery<SafeUser[]>({ queryKey: ["/api/friends"] });
+
+  // Recurring expenses (premium only — skip fetch if not premium)
+  const { data: recurringList = [] } = useQuery<RecurringExpense[]>({
+    queryKey: ["/api/recurring"],
+    enabled: !!user?.isPremium,
+  });
+
+  const cancelRecurringMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/recurring/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/recurring"] });
+      toast({ title: "Recurring expense cancelled" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Could not cancel.", variant: "destructive" });
+    },
+  });
 
   // Incoming group invites
   const { data: incomingInvites = [] } = useQuery<any[]>({
@@ -241,6 +260,36 @@ export default function Dashboard() {
                   {" "}
                   <span className="font-semibold">${s.amount.toFixed(2)}</span>
                 </p>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Recurring expenses (premium) */}
+      {user?.isPremium && recurringList.length > 0 && (
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <Repeat className="w-4 h-4 text-primary" />
+            <h2 className="text-base font-semibold font-serif">Recurring</h2>
+          </div>
+          <div className="space-y-2">
+            {recurringList.map((rec) => (
+              <Card key={rec.id} className="p-3 flex items-center justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium truncate">{rec.description}</p>
+                  <p className="text-xs text-muted-foreground font-mono">
+                    ${rec.amount.toFixed(2)} · {rec.frequency} · next {rec.nextRunDate}
+                  </p>
+                </div>
+                <button
+                  onClick={() => cancelRecurringMutation.mutate(rec.id)}
+                  disabled={cancelRecurringMutation.isPending}
+                  className="text-muted-foreground hover:text-destructive transition-colors shrink-0 p-1"
+                  title="Cancel recurring expense"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
               </Card>
             ))}
           </div>
