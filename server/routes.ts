@@ -2498,12 +2498,26 @@ setInterval(loadAll,30000);
           const session = event.data.object;
           const userId = session.metadata?.userId;
           if (!userId) break;
-          const subscription = await stripe.subscriptions.retrieve(session.subscription);
-          const periodEnd = new Date((subscription as any).current_period_end * 1000).toISOString();
+
+          // Get subscription period — resilient across Stripe API versions
+          let periodEnd: string;
+          try {
+            const sub = await stripe.subscriptions.retrieve(session.subscription as string);
+            const subAny = sub as any;
+            // current_period_end is a Unix timestamp in all known API versions
+            const ts = subAny.current_period_end ?? subAny.billing_cycle_anchor;
+            periodEnd = ts
+              ? new Date(ts * 1000).toISOString()
+              : new Date(Date.now() + 31 * 24 * 60 * 60 * 1000).toISOString();
+          } catch (subErr: any) {
+            console.error("[stripe] could not retrieve subscription, using 31-day fallback:", subErr.message);
+            periodEnd = new Date(Date.now() + 31 * 24 * 60 * 60 * 1000).toISOString();
+          }
+
           await storage.updateUserSubscription(userId, {
             isPremium: true,
-            stripeCustomerId: session.customer,
-            stripeSubscriptionId: session.subscription,
+            stripeCustomerId: session.customer as string,
+            stripeSubscriptionId: session.subscription as string,
             premiumUntil: periodEnd,
           });
           console.log(`[stripe] user ${userId} upgraded to premium until ${periodEnd}`);
