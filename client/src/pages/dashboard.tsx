@@ -169,6 +169,18 @@ export default function Dashboard() {
     return allMembers.find((m) => m.id === id)?.name || "Someone";
   };
 
+  const getRecurringSplitLabel = (rec: RecurringExpense): string => {
+    if (rec.groupId) {
+      const grp = groups.find(g => g.id === rec.groupId);
+      return grp ? `in ${grp.name}` : "in a group";
+    }
+    const others = rec.splitAmongIds.filter(id => id !== user?.id);
+    if (others.length === 0) return "";
+    if (others.length === 1) return `with ${getPersonName(others[0])}`;
+    if (others.length === 2) return `with ${getPersonName(others[0])} & ${getPersonName(others[1])}`;
+    return `with ${others.length} people`;
+  };
+
   return (
     <div className="space-y-6">
       {/* Incoming Group Invites — shown at top if any */}
@@ -279,8 +291,10 @@ export default function Dashboard() {
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium truncate">{rec.description}</p>
                   <p className="text-xs text-muted-foreground font-mono">
-                    ${rec.amount.toFixed(2)} · {rec.frequency} · next {rec.nextRunDate}
+                    ${rec.amount.toFixed(2)} · {rec.frequency}
+                    {getRecurringSplitLabel(rec) && ` · ${getRecurringSplitLabel(rec)}`}
                   </p>
+                  <p className="text-xs text-muted-foreground/60 font-mono">next {rec.nextRunDate}</p>
                 </div>
                 <button
                   onClick={() => cancelRecurringMutation.mutate(rec.id)}
