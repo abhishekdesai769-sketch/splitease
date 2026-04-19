@@ -164,7 +164,7 @@ export default function Friends() {
       {/* Header */}
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight font-serif">Friends</h1>
+          <h1 className="text-xl font-semibold tracking-tight font-serif"><em className="italic text-accent-foreground">Friends</em></h1>
           <p className="text-sm text-muted-foreground mt-0.5 font-mono">
             {friendsList.length} friend{friendsList.length !== 1 ? "s" : ""} · Direct splits
           </p>

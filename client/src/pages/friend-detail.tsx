@@ -288,7 +288,7 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
           {friend.name[0]?.toUpperCase()}
         </div>
         <div className="flex-1 min-w-0">
-          <h1 className="text-xl font-semibold tracking-tight truncate font-serif">{friend.name}</h1>
+          <h1 className="text-xl font-semibold tracking-tight truncate font-serif"><em className="italic text-accent-foreground">{friend.name}</em></h1>
           <p className="text-sm text-muted-foreground truncate">{friend.email}</p>
         </div>
         {/* ⋮ Three-dot menu: Import + Remove Friend */}

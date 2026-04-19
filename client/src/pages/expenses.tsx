@@ -78,7 +78,7 @@ export default function Expenses() {
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight font-serif">All Expenses</h1>
+          <h1 className="text-xl font-semibold tracking-tight font-serif">All <em className="italic text-accent-foreground">Expenses</em></h1>
           <p className="text-sm text-muted-foreground mt-0.5 font-mono">
             {expenses.length} expenses · ${totalExpenses.toFixed(2)} total
           </p>

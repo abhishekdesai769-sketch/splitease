@@ -205,7 +205,7 @@ export default function Dashboard() {
 
       <div>
         <h1 className="text-xl font-semibold tracking-tight font-serif">
-          Hey, {user?.name?.split(" ")[0] || "there"}
+          Hey, <em className="italic text-accent-foreground">{user?.name?.split(" ")[0] || "there"}</em>
         </h1>
         <p className="text-sm text-muted-foreground mt-1">Here's your expense overview</p>
       </div>

@@ -541,7 +541,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                 }
               }}
             >
-              {group.name}
+              <em className="italic text-accent-foreground not-italic-on-hover">{group.name}</em>
               {(isMeOwner || isMeAdmin || isMeGlobalAdmin) && (
                 <Pencil className="w-3 h-3 inline ml-1.5 text-muted-foreground" />
               )}

@@ -59,7 +59,7 @@ export default function Groups() {
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-2">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight font-serif">Groups</h1>
+          <h1 className="text-xl font-semibold tracking-tight font-serif"><em className="italic text-accent-foreground">Groups</em></h1>
           <p className="text-sm text-muted-foreground mt-0.5 font-mono">{groups.length} groups</p>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
