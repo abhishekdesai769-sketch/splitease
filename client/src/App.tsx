@@ -20,6 +20,7 @@ import AuthPage from "@/pages/auth";
 import ResetPassword from "@/pages/reset-password";
 import NotFound from "@/pages/not-found";
 import Import from "@/pages/import";
+import Upgrade from "@/pages/upgrade";
 function AppRouter() {
   const { user, isLoading } = useAuth();
 
@@ -60,7 +61,8 @@ function AppRouter() {
           {(params) => <GroupDetail groupId={params.id} />}
         </Route>
         <Route path="/expenses" component={Expenses} />
-          <Route path="/import" component={Import} />
+        <Route path="/import" component={Import} />
+        <Route path="/upgrade" component={Upgrade} />
         {user.isAdmin ? (
           <Route path="/admin" component={Admin} />
         ) : (

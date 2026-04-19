@@ -14,6 +14,10 @@ export const users = pgTable("users", {
   isApproved: boolean("is_approved").notNull().default(true), // auto-approved on signup
   isEmailVerified: boolean("is_email_verified").notNull().default(false),
   isGhost: boolean("is_ghost").notNull().default(false),
+  isPremium: boolean("is_premium").notNull().default(false),
+  stripeCustomerId: text("stripe_customer_id"),
+  stripeSubscriptionId: text("stripe_subscription_id"),
+  premiumUntil: text("premium_until"), // ISO date string, null = no active sub
 }, (table) => [
   uniqueIndex("users_email_idx").on(table.email),
 ]);
