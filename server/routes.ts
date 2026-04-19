@@ -126,7 +126,12 @@ export async function registerRoutes(
   // Session setup — PostgreSQL-backed so sessions survive deploys
   const PgStore = pgSession(session);
   const sessionPool = new Pool({ connectionString: process.env.DATABASE_URL });
-  const sessionSecret = process.env.SESSION_SECRET || "spliiit-secret-" + randomBytes(16).toString("hex");
+  const sessionSecret = process.env.SESSION_SECRET || (() => {
+    if (process.env.NODE_ENV === "production") {
+      console.error("[SECURITY] SESSION_SECRET env var is not set! All sessions will be invalidated on every server restart. Set SESSION_SECRET on Render immediately.");
+    }
+    return "spliiit-secret-" + randomBytes(16).toString("hex");
+  })();
 
   // Create session table if it doesn't exist (inline SQL — avoids missing table.sql file in prod build)
   await sessionPool.query(`
@@ -610,7 +615,8 @@ setInterval(loadAll,30000);
   });
 
   // ========== Users (search) â requires approved ==========
-  app.get("/api/users/search", requireAuth, async (req, res) => {
+  const userSearchLimiter = rateLimit(60 * 60 * 1000, 30); // 30 searches per hour per IP
+  app.get("/api/users/search", requireAuth, userSearchLimiter, async (req, res) => {
     const email = sanitize((req.query.email as string) || "", 255);
     const userId = (req.session as any).userId;
     if (email.length < 2) return res.json([]);
@@ -1600,8 +1606,15 @@ setInterval(loadAll,30000);
 
   // ========== Receipt data for an expense ==========
   app.get("/api/expenses/:id/receipt", requireAuth, async (req, res) => {
+    const userId = (req.session as any).userId;
     const expense = await storage.getExpense(req.params.id);
     if (!expense) return res.status(404).json({ error: "Expense not found" });
+    // Only allow access if the user paid, was split with, or added the expense
+    const isParticipant =
+      expense.paidById === userId ||
+      expense.splitAmongIds.includes(userId) ||
+      expense.addedById === userId;
+    if (!isParticipant) return res.status(403).json({ error: "Not authorized" });
     if (!expense.receiptData) return res.json(null);
     try {
       res.json(JSON.parse(expense.receiptData));

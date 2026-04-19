@@ -125,7 +125,7 @@ export type GroupInvite = typeof groupInvites.$inferSelect;
 export const signupSchema = z.object({
   name: z.string().min(1, "Name is required").max(100, "Name too long"),
   email: z.string().email("Invalid email").max(255, "Email too long"),
-  password: z.string().min(6, "Password must be at least 6 characters").max(128, "Password too long"),
+  password: z.string().min(10, "Password must be at least 10 characters").max(128, "Password too long"),
 });
 
 export const loginSchema = z.object({
@@ -144,5 +144,5 @@ export const forgotPasswordSchema = z.object({
 
 export const resetPasswordSchema = z.object({
   token: z.string().min(1),
-  password: z.string().min(6, "Password must be at least 6 characters").max(128, "Password too long"),
+  password: z.string().min(10, "Password must be at least 10 characters").max(128, "Password too long"),
 });
