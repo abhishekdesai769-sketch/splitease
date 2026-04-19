@@ -10,31 +10,31 @@
   --elevate-1: rgba(0,0,0, .03);
   --elevate-2: rgba(0,0,0, .08);
   /* ===== surfaces ===== */
-  --background: 28 30% 81%;           /* canvas — warm orangish-tan beige */
+  --background: 36 28% 83%;           /* canvas — warm beige, slightly deeper */
   --foreground: 30 6% 15%;            /* ink */
-  --border: 28 16% 70%;               /* rule — warm hairline */
-  --input: 28 22% 88%;                /* canvas-2 — slightly lighter */
+  --border: 36 14% 74%;               /* rule — warm hairline */
+  --input: 36 20% 90%;                /* canvas-2 — slightly lighter beige */
 
   /* ===== card ===== */
-  --card: 36 18% 97%;                 /* paper — off-white, floats on beige */
+  --card: 38 18% 97%;                 /* paper — off-white, floats on beige */
   --card-foreground: 30 6% 15%;
-  --card-border: 30 12% 88%;          /* rule-2 — soft inside card */
+  --card-border: 36 12% 88%;          /* rule-2 — soft inside card */
 
   /* ===== popover ===== */
-  --popover: 36 18% 97%;
+  --popover: 38 18% 97%;
   --popover-foreground: 30 6% 15%;
-  --popover-border: 30 12% 88%;
+  --popover-border: 36 12% 88%;
 
   /* ===== primary — deep ink pill, cream text ===== */
   --primary: 30 6% 15%;               /* ink */
   --primary-foreground: 40 18% 96%;  /* canvas */
 
   /* ===== secondary — subtle surface ===== */
-  --secondary: 28 22% 87%;            /* orangish-beige surface */
+  --secondary: 36 20% 89%;            /* beige-tinted surface */
   --secondary-foreground: 30 4% 36%; /* ink-2 */
 
   /* ===== muted ===== */
-  --muted: 28 18% 77%;                /* slightly deeper than canvas */
+  --muted: 36 16% 80%;                /* slightly deeper beige */
   --muted-foreground: 30 3% 54%;     /* ink-3 */
 
   /* ===== accent — terracotta (small emphasis only) ===== */
@@ -56,7 +56,7 @@
   --chart-5: 10 40% 48%;   /* rust */
 
   /* ===== sidebar ===== */
-  --sidebar: 28 26% 84%;               /* orangish-tan canvas */
+  --sidebar: 36 22% 86%;               /* beige canvas */
   --sidebar-foreground: 30 4% 36%;    /* ink-2 */
   --sidebar-border: 36 11% 82%;       /* rule */
   --sidebar-primary: 30 6% 15%;       /* ink */
