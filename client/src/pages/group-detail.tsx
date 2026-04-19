@@ -533,7 +533,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
             </form>
           ) : (
             <h1
-              className={`text-xl font-semibold tracking-tight truncate ${(isMeOwner || isMeAdmin || isMeGlobalAdmin) ? "cursor-pointer hover:text-primary transition-colors" : ""}`}
+              className={`text-xl font-semibold tracking-tight truncate font-serif ${(isMeOwner || isMeAdmin || isMeGlobalAdmin) ? "cursor-pointer hover:text-primary transition-colors" : ""}`}
               onClick={() => {
                 if (isMeOwner || isMeAdmin || isMeGlobalAdmin) {
                   setNewGroupName(group.name);
@@ -547,7 +547,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
               )}
             </h1>
           )}
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-muted-foreground font-mono">
             {members.length} members · ${totalGroupSpend.toFixed(2)} total
           </p>
         </div>
@@ -993,7 +993,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
             if (mySettlements.length === 0) return null;
             return (
               <div className="space-y-2 mb-3">
-                <h3 className="text-sm font-medium text-muted-foreground">
+                <h3 className="text-sm font-medium text-muted-foreground font-serif">
                   {group.simplifyDebts ? "Your simplified settlements:" : "Your balances:"}
                 </h3>
                 {mySettlements.map((s, i) => {
@@ -1022,7 +1022,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                           )}
                         </p>
                       </div>
-                      <span className={`text-sm font-semibold shrink-0 ${youOwe ? "text-destructive" : "text-primary"}`}>
+                      <span className={`text-sm font-semibold shrink-0 font-mono ${youOwe ? "text-destructive" : "text-primary"}`}>
                         ${s.amount.toFixed(2)}
                       </span>
                     </Card>
@@ -1048,7 +1048,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
       {/* Member Balances — right before expenses (excludes current user) */}
       {balances.filter(b => b.personId !== user?.id).length > 0 && (
         <div>
-          <h3 className="text-sm font-medium text-muted-foreground mb-2">Member Balances</h3>
+          <h3 className="text-sm font-medium text-muted-foreground mb-2 font-serif">Member Balances</h3>
           <div className="space-y-1.5">
             {balances.filter(b => b.personId !== user?.id).map((b) => (
               <div key={b.personId} className="flex items-center justify-between gap-2 px-1">
@@ -1197,7 +1197,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
       {/* Expense list */}
       {expenses.length > 0 ? (
         <div className="space-y-2">
-          <h3 className="text-sm font-medium text-muted-foreground">Expenses</h3>
+          <h3 className="text-sm font-medium text-muted-foreground font-serif">Expenses</h3>
           {[...expenses]
             .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
             .map((expense) => (
@@ -1222,14 +1222,14 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                         <FileText className="w-3 h-3 text-primary inline ml-1 -mt-0.5" />
                       )}
                     </p>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-xs text-muted-foreground font-mono">
                       {expense.isSettlement
                         ? `${getPersonName(expense.paidById)} paid ${getPersonName(expense.splitAmongIds[0])} · ${new Date(expense.date).toLocaleDateString()}`
                         : `${getPersonName(expense.paidById)} paid · split ${expense.splitAmongIds.length} ways`
                       }
                     </p>
                   </div>
-                  <span className="text-sm font-semibold text-foreground shrink-0">
+                  <span className="text-sm font-semibold text-foreground shrink-0 font-mono">
                     ${expense.amount.toFixed(2)}
                   </span>
                   {canDeleteExpense(expense) && (
@@ -1269,7 +1269,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
               {/* Amount + Date */}
               <div className="flex items-center justify-between">
                 <span className="text-2xl font-bold text-primary">${detailExpense.amount.toFixed(2)}</span>
-                <span className="text-sm text-muted-foreground">{new Date(detailExpense.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
+                <span className="text-sm text-muted-foreground font-mono">{new Date(detailExpense.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
               </div>
 
               {/* Paid by */}

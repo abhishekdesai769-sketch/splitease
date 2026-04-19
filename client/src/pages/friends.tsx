@@ -164,8 +164,8 @@ export default function Friends() {
       {/* Header */}
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">Friends</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
+          <h1 className="text-xl font-semibold tracking-tight font-serif">Friends</h1>
+          <p className="text-sm text-muted-foreground mt-0.5 font-mono">
             {friendsList.length} friend{friendsList.length !== 1 ? "s" : ""} · Direct splits
           </p>
         </div>
@@ -439,7 +439,7 @@ export default function Friends() {
       {/* Friends list with balances */}
       {friendsList.length > 0 ? (
         <div className="space-y-2">
-          <h2 className="text-sm font-medium text-muted-foreground">Your Friends</h2>
+          <h2 className="text-sm font-medium text-muted-foreground font-serif">Your Friends</h2>
           {friendsList.map((friend) => {
             const balance = getFriendBalance(friend.id);
             const hasExpenses = directExpenses.some(
@@ -465,7 +465,7 @@ export default function Friends() {
                   </div>
                   {balance !== 0 && (
                     <span
-                      className={`text-sm font-semibold shrink-0 ${
+                      className={`text-sm font-semibold shrink-0 font-mono ${
                         balance > 0 ? "text-primary" : "text-destructive"
                       }`}
                     >
@@ -510,7 +510,7 @@ export default function Friends() {
       {/* Settlements summary */}
       {settlements.length > 0 && (
         <div>
-          <h2 className="text-sm font-medium text-muted-foreground mb-2">Settlements</h2>
+          <h2 className="text-sm font-medium text-muted-foreground mb-2 font-serif">Settlements</h2>
           <div className="space-y-2">
             {settlements.map((s, i) => (
               <Card key={i} className="p-3 flex items-center gap-2">
@@ -531,7 +531,7 @@ export default function Friends() {
                     )}
                   </p>
                 </div>
-                <span className="text-sm font-semibold text-primary shrink-0">
+                <span className="text-sm font-semibold text-primary shrink-0 font-mono">
                   ${s.amount.toFixed(2)}
                 </span>
               </Card>

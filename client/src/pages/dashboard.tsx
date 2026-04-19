@@ -17,7 +17,7 @@ function StatCard({ icon: Icon, label, value, href, color }: { icon: any; label:
           <Icon className={`w-5 h-5 ${color || "text-primary"}`} />
         </div>
         <div>
-          <p className="text-xl font-semibold text-foreground" data-testid={`stat-${label.toLowerCase().replace(/\s/g, "-")}`}>{value}</p>
+          <p className="text-xl font-semibold text-foreground font-mono" data-testid={`stat-${label.toLowerCase().replace(/\s/g, "-")}`}>{value}</p>
           <p className="text-sm text-muted-foreground">{label}</p>
         </div>
       </div>
@@ -157,7 +157,7 @@ export default function Dashboard() {
         <div className="space-y-2">
           <div className="flex items-center gap-2">
             <MailPlus className="w-4 h-4 text-primary" />
-            <h2 className="text-base font-semibold">Group Invites</h2>
+            <h2 className="text-base font-semibold font-serif">Group Invites</h2>
           </div>
           {incomingInvites.map((invite: any) => (
             <Card
@@ -204,7 +204,7 @@ export default function Dashboard() {
       )}
 
       <div>
-        <h1 className="text-xl font-semibold tracking-tight">
+        <h1 className="text-xl font-semibold tracking-tight font-serif">
           Hey, {user?.name?.split(" ")[0] || "there"}
         </h1>
         <p className="text-sm text-muted-foreground mt-1">Here's your expense overview</p>
@@ -220,7 +220,7 @@ export default function Dashboard() {
       {/* Your settlements */}
       {mySettlements.length > 0 && (
         <div>
-          <h2 className="text-base font-semibold mb-3">Your Balances</h2>
+          <h2 className="text-base font-semibold mb-3 font-serif">Your Balances</h2>
           <div className="space-y-2">
             {mySettlements.map((s, i) => (
               <Card key={i} className="p-3">
@@ -250,17 +250,17 @@ export default function Dashboard() {
       {/* Recent expenses */}
       {recentExpenses.length > 0 && (
         <div>
-          <h2 className="text-base font-semibold mb-3">Recent Expenses</h2>
+          <h2 className="text-base font-semibold mb-3 font-serif">Recent Expenses</h2>
           <div className="space-y-2">
             {recentExpenses.map((expense) => (
               <Card key={expense.id} className="p-3 flex items-center justify-between gap-2">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate">{expense.description}</p>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-xs text-muted-foreground font-mono">
                     Paid by {getPersonName(expense.paidById)} · {new Date(expense.date).toLocaleDateString()}
                   </p>
                 </div>
-                <p className="text-sm font-semibold text-primary shrink-0">${expense.amount.toFixed(2)}</p>
+                <p className="text-sm font-semibold text-primary shrink-0 font-mono">${expense.amount.toFixed(2)}</p>
               </Card>
             ))}
           </div>

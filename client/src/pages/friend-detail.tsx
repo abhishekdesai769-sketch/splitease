@@ -288,7 +288,7 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
           {friend.name[0]?.toUpperCase()}
         </div>
         <div className="flex-1 min-w-0">
-          <h1 className="text-xl font-semibold tracking-tight truncate">{friend.name}</h1>
+          <h1 className="text-xl font-semibold tracking-tight truncate font-serif">{friend.name}</h1>
           <p className="text-sm text-muted-foreground truncate">{friend.email}</p>
         </div>
         {/* ⋮ Three-dot menu: Import + Remove Friend */}
@@ -605,11 +605,11 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
             {myBalance === 0 ? (
               <p className="text-lg font-semibold text-muted-foreground">All settled up</p>
             ) : myBalance > 0 ? (
-              <p className="text-lg font-semibold text-primary">
+              <p className="text-lg font-semibold text-primary font-mono">
                 {friend.name} pays you ${myBalance.toFixed(2)}
               </p>
             ) : (
-              <p className="text-lg font-semibold text-destructive">
+              <p className="text-lg font-semibold text-destructive font-mono">
                 You pay {friend.name} ${Math.abs(myBalance).toFixed(2)}
               </p>
             )}
@@ -835,7 +835,7 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
       {/* Expenses list */}
       {sortedExpenses.length > 0 ? (
         <div>
-          <h2 className="text-sm font-medium text-muted-foreground mb-2">
+          <h2 className="text-sm font-medium text-muted-foreground mb-2 font-serif">
             Expenses with {friend.name}
           </h2>
           <div className="space-y-2">
@@ -865,11 +865,11 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
                           <FileText className="w-3 h-3 text-primary inline ml-1 -mt-0.5" />
                         )}
                       </p>
-                      <p className="text-xs text-muted-foreground">
+                      <p className="text-xs text-muted-foreground font-mono">
                         {paidByName} paid · {new Date(expense.date).toLocaleDateString()}
                       </p>
                     </div>
-                    <span className="text-sm font-semibold text-foreground shrink-0">
+                    <span className="text-sm font-semibold text-foreground shrink-0 font-mono">
                       ${expense.amount.toFixed(2)}
                     </span>
                     {canDeleteExpense(expense) && (

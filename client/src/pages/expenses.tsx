@@ -78,8 +78,8 @@ export default function Expenses() {
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">All Expenses</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
+          <h1 className="text-xl font-semibold tracking-tight font-serif">All Expenses</h1>
+          <p className="text-sm text-muted-foreground mt-0.5 font-mono">
             {expenses.length} expenses · ${totalExpenses.toFixed(2)} total
           </p>
         </div>
@@ -127,11 +127,11 @@ export default function Expenses() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">{expense.description}</p>
-                      <p className="text-xs text-muted-foreground">
+                      <p className="text-xs text-muted-foreground font-mono">
                         {getPersonName(expense.paidById)} · {getGroupName(expense.groupId)} · {new Date(expense.date).toLocaleDateString()}
                       </p>
                     </div>
-                    <span className="text-sm font-semibold text-foreground shrink-0">
+                    <span className="text-sm font-semibold text-foreground shrink-0 font-mono">
                       ${expense.amount.toFixed(2)}
                     </span>
                   </div>

@@ -59,8 +59,8 @@ export default function Groups() {
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-2">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">Groups</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">{groups.length} groups</p>
+          <h1 className="text-xl font-semibold tracking-tight font-serif">Groups</h1>
+          <p className="text-sm text-muted-foreground mt-0.5 font-mono">{groups.length} groups</p>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
@@ -129,12 +129,12 @@ export default function Groups() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">{group.name}</p>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-xs text-muted-foreground font-mono">
                       {group.memberIds.length} members · {expenseCount} expenses
                     </p>
                   </div>
                   {netBalance !== 0 && (
-                    <span className={`text-sm font-semibold shrink-0 ${netBalance > 0 ? "text-primary" : "text-destructive"}`}>
+                    <span className={`text-sm font-semibold shrink-0 font-mono ${netBalance > 0 ? "text-primary" : "text-destructive"}`}>
                       {netBalance > 0 ? "+" : "-"}${Math.abs(netBalance).toFixed(2)}
                     </span>
                   )}
