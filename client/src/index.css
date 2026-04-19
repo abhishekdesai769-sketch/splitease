@@ -10,31 +10,31 @@
   --elevate-1: rgba(0,0,0, .03);
   --elevate-2: rgba(0,0,0, .08);
   /* ===== surfaces ===== */
-  --background: 40 18% 96%;           /* canvas — warm off-white */
+  --background: 36 28% 87%;           /* canvas — proper warm beige */
   --foreground: 30 6% 15%;            /* ink */
-  --border: 36 11% 82%;               /* rule — warm hairline */
-  --input: 38 14% 94%;                /* canvas-2 */
+  --border: 36 14% 78%;               /* rule — warm hairline */
+  --input: 36 20% 92%;                /* canvas-2 — slightly lighter beige */
 
   /* ===== card ===== */
-  --card: 40 12% 98%;                 /* paper — sits above canvas */
+  --card: 38 18% 97%;                 /* paper — off-white, floats on beige */
   --card-foreground: 30 6% 15%;
-  --card-border: 36 10% 88%;          /* rule-2 — soft inside card */
+  --card-border: 36 12% 88%;          /* rule-2 — soft inside card */
 
   /* ===== popover ===== */
-  --popover: 40 12% 98%;
+  --popover: 38 18% 97%;
   --popover-foreground: 30 6% 15%;
-  --popover-border: 36 10% 88%;
+  --popover-border: 36 12% 88%;
 
   /* ===== primary — deep ink pill, cream text ===== */
   --primary: 30 6% 15%;               /* ink */
   --primary-foreground: 40 18% 96%;  /* canvas */
 
   /* ===== secondary — subtle surface ===== */
-  --secondary: 38 14% 94%;            /* canvas-2 */
+  --secondary: 36 20% 91%;            /* beige-tinted surface */
   --secondary-foreground: 30 4% 36%; /* ink-2 */
 
   /* ===== muted ===== */
-  --muted: 36 10% 88%;                /* rule-2 */
+  --muted: 36 16% 84%;                /* slightly deeper beige */
   --muted-foreground: 30 3% 54%;     /* ink-3 */
 
   /* ===== accent — terracotta (small emphasis only) ===== */
@@ -56,7 +56,7 @@
   --chart-5: 10 40% 48%;   /* rust */
 
   /* ===== sidebar ===== */
-  --sidebar: 38 14% 94%;               /* canvas-2 */
+  --sidebar: 36 22% 89%;               /* beige canvas */
   --sidebar-foreground: 30 4% 36%;    /* ink-2 */
   --sidebar-border: 36 11% 82%;       /* rule */
   --sidebar-primary: 30 6% 15%;       /* ink */
