@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 
-// Feature flag — set to true when premium subscriptions are live
-export const RECEIPT_SCANNING_ENABLED = false;
+// Enabled whenever ANTHROPIC_API_KEY is present in the environment
+export const RECEIPT_SCANNING_ENABLED = !!process.env.ANTHROPIC_API_KEY;
 
 export interface ReceiptItem {
   name: string;
@@ -34,8 +34,6 @@ export async function parseReceipt(
   imageBuffer: Buffer,
   mimeType: string
 ): Promise<ReceiptData | null> {
-  if (!RECEIPT_SCANNING_ENABLED) return null;
-
   const anthropic = getClient();
   if (!anthropic) {
     console.error("Receipt parser: ANTHROPIC_API_KEY not set");

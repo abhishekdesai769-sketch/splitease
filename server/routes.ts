@@ -1632,6 +1632,29 @@ setInterval(loadAll,30000);
     res.status(204).send();
   });
 
+  // ========== Scan receipt image (Premium) ==========
+  app.post("/api/scan-receipt", requireAuth, async (req, res) => {
+    const userId = (req.session as any).userId;
+    const user = await storage.getUser(userId);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    if (!user.isPremium) return res.status(403).json({ error: "Premium required" });
+
+    const { imageBase64, mimeType } = req.body;
+    if (!imageBase64 || typeof imageBase64 !== "string") {
+      return res.status(400).json({ error: "imageBase64 is required" });
+    }
+
+    try {
+      const buffer = Buffer.from(imageBase64, "base64");
+      const data = await parseReceipt(buffer, mimeType || "image/jpeg");
+      if (!data) return res.status(422).json({ error: "Could not parse receipt — try a clearer photo" });
+      res.json(data);
+    } catch (err: any) {
+      console.error("scan-receipt error:", err);
+      res.status(500).json({ error: "Receipt scanning failed" });
+    }
+  });
+
   // ========== Receipt data for an expense ==========
   app.get("/api/expenses/:id/receipt", requireAuth, async (req, res) => {
     const userId = (req.session as any).userId;
