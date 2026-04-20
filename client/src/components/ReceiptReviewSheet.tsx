@@ -87,6 +87,11 @@ export function ReceiptReviewSheet({ open, data, members, onConfirm, onItemSplit
     ? `subtotal ($${Number(data.subtotal).toFixed(2)})`
     : `total ($${parsedTotal.toFixed(2)})`;
 
+  // Proportional tax: taxMultiplier = total / subtotal (e.g. 34.19 / 29.73 = 1.1500...)
+  // Each item expense will be multiplied by this so tax is distributed by purchase weight.
+  const hasTaxData = data.subtotal != null && data.tax != null && Number(data.subtotal) > 0;
+  const taxMultiplier = hasTaxData ? Number(data.total!) / Number(data.subtotal!) : 1;
+
   // ── Step navigation ──────────────────────────────────────────────────────
 
   const goBack = () => {
@@ -157,19 +162,21 @@ export function ReceiptReviewSheet({ open, data, members, onConfirm, onItemSplit
 
     const equalItems = editableItems.filter((_, i) => equalIndices.has(i));
     if (equalItems.length > 0) {
-      const equalTotal = equalItems.reduce((sum, it) => sum + Number(it.price), 0);
+      const preTax = equalItems.reduce((sum, it) => sum + Number(it.price), 0);
+      const withTax = Math.round(preTax * taxMultiplier * 100) / 100;
       const desc = equalItems.length === 1
         ? equalItems[0].name
         : `${equalItems[0].name} + ${equalItems.length - 1} more`;
-      splits.push({ description: desc, amount: Math.round(equalTotal * 100) / 100, splitAmongIds: allMemberIds });
+      splits.push({ description: desc, amount: withTax, splitAmongIds: allMemberIds });
     }
 
     for (const itemIdx of unequalIndices) {
       const item = editableItems[itemIdx];
       const memberIds = Array.from(assignments.get(itemIdx) ?? new Set(allMemberIds));
+      const withTax = Math.round(Number(item.price) * taxMultiplier * 100) / 100;
       splits.push({
         description: item.name,
-        amount: Number(item.price),
+        amount: withTax,
         splitAmongIds: memberIds.length > 0 ? memberIds : allMemberIds,
       });
     }
@@ -282,6 +289,15 @@ export function ReceiptReviewSheet({ open, data, members, onConfirm, onItemSplit
                 AI scanning can make mistakes — please verify each item and price before continuing.
               </p>
             </div>
+
+            {/* Tax distribution note */}
+            {hasTaxData && (
+              <div className="flex items-start gap-2 rounded-lg bg-muted/60 border border-border p-2.5 mb-3">
+                <p className="text-xs text-muted-foreground">
+                  Tax of <strong className="text-foreground">${Number(data.tax).toFixed(2)}</strong> will be split proportionally — each expense pays tax based on its share of the subtotal.
+                </p>
+              </div>
+            )}
 
             {/* Sum mismatch warning */}
             {hasMismatch && (
@@ -505,30 +521,48 @@ export function ReceiptReviewSheet({ open, data, members, onConfirm, onItemSplit
                 </SheetTitle>
               </SheetHeader>
               <div className="rounded-lg border border-border divide-y divide-border mb-5 text-sm">
-                {equalItems.length > 0 && (
-                  <div className="px-3 py-3">
-                    <div className="flex justify-between mb-1">
-                      <span className="font-medium truncate flex-1 pr-4">
-                        {equalItems.length === 1 ? equalItems[0].name : `${equalItems[0].name} + ${equalItems.length - 1} more`}
-                      </span>
-                      <span className="font-mono">${(Math.round(equalTotal * 100) / 100).toFixed(2)}</span>
+                {equalItems.length > 0 && (() => {
+                  const preTax = Math.round(equalTotal * 100) / 100;
+                  const taxAmt = hasTaxData ? Math.round(preTax * (taxMultiplier - 1) * 100) / 100 : 0;
+                  const withTax = Math.round(preTax * taxMultiplier * 100) / 100;
+                  return (
+                    <div className="px-3 py-3">
+                      <div className="flex justify-between mb-0.5">
+                        <span className="font-medium truncate flex-1 pr-4">
+                          {equalItems.length === 1 ? equalItems[0].name : `${equalItems[0].name} + ${equalItems.length - 1} more`}
+                        </span>
+                        <span className="font-mono font-semibold">${withTax.toFixed(2)}</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Split equally — {members?.length} people</p>
+                      {hasTaxData && (
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Pre-tax ${preTax.toFixed(2)} + Tax ${taxAmt.toFixed(2)}
+                        </p>
+                      )}
                     </div>
-                    <p className="text-xs text-muted-foreground">Split equally — {members?.length} people</p>
-                  </div>
-                )}
+                  );
+                })()}
                 {unequalIndices.map((itemIdx, j) => {
                   const item = editableItems[itemIdx];
                   const assignedIds = Array.from(assignments.get(itemIdx) ?? new Set(allMemberIds));
                   const assignedNames = assignedIds
                     .map((id) => members?.find((m) => m.id === id)?.name ?? id)
                     .join(", ");
+                  const preTax = Number(item.price);
+                  const taxAmt = hasTaxData ? Math.round(preTax * (taxMultiplier - 1) * 100) / 100 : 0;
+                  const withTax = Math.round(preTax * taxMultiplier * 100) / 100;
                   return (
                     <div key={j} className="px-3 py-3">
-                      <div className="flex justify-between mb-1">
+                      <div className="flex justify-between mb-0.5">
                         <span className="font-medium truncate flex-1 pr-4">{item.name}</span>
-                        <span className="font-mono">${Number(item.price).toFixed(2)}</span>
+                        <span className="font-mono font-semibold">${withTax.toFixed(2)}</span>
                       </div>
                       <p className="text-xs text-muted-foreground">{assignedNames}</p>
+                      {hasTaxData && (
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Pre-tax ${preTax.toFixed(2)} + Tax ${taxAmt.toFixed(2)}
+                        </p>
+                      )}
                     </div>
                   );
                 })}
