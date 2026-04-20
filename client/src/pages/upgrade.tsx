@@ -157,7 +157,7 @@ export default function Upgrade() {
   const premiumFeatures = [
     "Recurring expenses (auto-create monthly bills)",
     "Smart payment reminders with tone control",
-    "OCR receipt scanning from camera or gallery",
+    "AI-powered receipt scan with item-level splitting",
     "Cross-group balance view",
     "Priority support",
     "Early access to new features",
