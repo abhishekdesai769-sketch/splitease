@@ -608,7 +608,7 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
               </div>
 
               {/* Time frame */}
-              <div className={`mb-4 ${!isPremium ? "opacity-60 pointer-events-none" : ""}`}>
+              <div className={`mb-4 ${!isPremium ? "opacity-60" : ""}`}>
                 <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">Send reminder after</p>
                 <div className="grid grid-cols-3 gap-2">
                   {[7, 14, 30].map((d) => (
@@ -634,7 +634,6 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
                 <Select
                   value={reminderTone}
                   onValueChange={(v) => setReminderTone(v as ReminderTone)}
-                  disabled={!isPremium}
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue />
