@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { UserPlus, Plus, Users2, HandCoins, CheckCircle2, ChevronRight, Camera, X, Repeat, Crown } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { UpgradePromptSheet } from "@/components/UpgradePromptSheet";
+import { ScanReceiptButton } from "@/components/ScanReceiptButton";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 import { useAuth } from "@/lib/auth";
@@ -396,10 +397,19 @@ export default function Friends() {
                   </div>
                   <UpgradePromptSheet open={upgradeSheetOpen} onClose={() => setUpgradeSheetOpen(false)} />
 
-                  {/* Receipt upload */}
+                  {/* Receipt: scan with AI (Premium) or plain attach */}
                   {!isRecurring && (
                   <div className="space-y-2">
                     <Label>Receipt (optional)</Label>
+                    <ScanReceiptButton
+                      isPremium={!!user?.isPremium}
+                      onUpgrade={() => setUpgradeSheetOpen(true)}
+                      onResult={(data, file) => {
+                        if (data.merchant && !description.trim()) setDescription(data.merchant);
+                        if (data.total != null && !amount) setAmount(String(data.total));
+                        setReceiptFile(file);
+                      }}
+                    />
                     {receiptFile ? (
                       <div className="flex items-center gap-2 rounded-lg border border-border p-2.5">
                         <Camera className="w-4 h-4 text-primary shrink-0" />
