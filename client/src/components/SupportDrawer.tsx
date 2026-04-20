@@ -6,12 +6,47 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { apiRequest } from "@/lib/queryClient";
 import { Headphones, Send, Loader2, CheckCircle2, UserPlus, Copy, Check, MessageCircle, Mail, Trash2, AlertTriangle, Upload, HelpCircle, ChevronDown, Bell, Crown } from "lucide-react";
 import { useLocation } from "wouter";
 import { UpgradePromptSheet } from "@/components/UpgradePromptSheet";
+
+// ─── Email preview generator ─────────────────────────────────────────────────
+// Mirrors the exact wording in server/email.ts sendAutoReminderEmail()
+// Uses "Jamie" as placeholder debtor name so the owner sees a realistic preview.
+
+type ReminderTone = "friendly" | "funny" | "firm" | "passive-aggressive" | "awkward";
+
+function getEmailPreview(tone: ReminderTone, ownerName: string): { subject: string; body: string } {
+  const debtor = "Jamie";
+  const amt = "$42.00";
+
+  const subjects: Record<ReminderTone, string> = {
+    friendly:             `👋 Friendly nudge from Spliiit — you owe ${ownerName} money`,
+    funny:                `Fun fact: you owe ${ownerName} ${amt} 😄`,
+    firm:                 `Payment reminder: you have an outstanding balance with ${ownerName}`,
+    "passive-aggressive": `No worries at all! Just a tiny lil reminder 🙂`,
+    awkward:              `We really didn't want to send this, but... 😬`,
+  };
+
+  const bodies: Record<ReminderTone, string> = {
+    friendly:
+      `Hey ${debtor}! 👋\n\nSpliiit here — just a quick, friendly nudge that you have an outstanding balance of ${amt} with ${ownerName} on the app.\n\nNo stress at all, but whenever you get a chance to settle up it would mean a lot! Tap the button below to sort it out in seconds.\n\n— Spliiit`,
+    funny:
+      `Hi ${debtor} 😄\n\nFun fact: you owe ${ownerName} ${amt}. Less fun fact: it's been sitting there for a while. Even less fun fact: Spliiit just sent you this email about it.\n\nGood news though — settling up takes about 10 seconds flat. Then we can all move on with our lives. Deal?\n\n— Spliiit (comedy writer by night, balance tracker by day)`,
+    firm:
+      `Hi ${debtor},\n\nThis is an automated reminder from Spliiit that you have an outstanding balance of ${amt} owed to ${ownerName}.\n\nPlease settle this at your earliest convenience using the button below.\n\nThank you,\nSpliiit`,
+    "passive-aggressive":
+      `Hi ${debtor},\n\nNo worries at all! Totally fine! Just wanted to pop in and gently, warmly, completely-non-aggressively mention that you still owe ${ownerName} ${amt}. No rush whatsoever. We're sure you've just been super busy. Completely understandable. 😊\n\nThe "Settle Up" button is right there whenever you're ready. Take your time. We'll wait.\n\n— Spliiit 🙂`,
+    awkward:
+      `Hey ${debtor}... we genuinely debated whether to send this. Like, a lot.\n\nBut here's the thing — you still owe ${ownerName} ${amt} and it's gotten to the point where NOT saying something is somehow weirder than saying something. So. We said something.\n\nPlease click the button. For everyone's sake.\n\n— Spliiit (this was hard for us too) 🙈`,
+  };
+
+  return { subject: subjects[tone], body: bodies[tone] };
+}
 
 export function SupportDrawer({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
@@ -40,7 +75,7 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
   });
   const [reminderEnabled, setReminderEnabled] = useState(false);
   const [reminderDays, setReminderDays] = useState(7);
-  const [reminderTone, setReminderTone] = useState<"friendly" | "funny" | "firm" | "passive-aggressive" | "awkward">("friendly");
+  const [reminderTone, setReminderTone] = useState<ReminderTone>("friendly");
 
   // Sync local state when server data arrives
   useEffect(() => {
@@ -218,7 +253,7 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
 
             {/* Auto Reminders */}
             <button
-              onClick={() => user?.isPremium ? setView("reminders") : setUpgradeSheetOpen(true)}
+              onClick={() => setView("reminders")}
               className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-muted/50 transition-colors text-left group"
               data-testid="menu-auto-reminders"
             >
@@ -523,105 +558,141 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
         )}
 
         {/* ===== AUTO REMINDERS VIEW ===== */}
-        {view === "reminders" && (
-          <div className="flex-1 flex flex-col px-5 overflow-y-auto">
-            <button
-              onClick={() => setView("menu")}
-              className="text-xs text-muted-foreground hover:text-foreground mb-3 self-start flex-shrink-0"
-            >
-              ← Back
-            </button>
+        {view === "reminders" && (() => {
+          const preview = getEmailPreview(reminderTone, user?.name || "You");
+          const isPremium = !!user?.isPremium;
+          return (
+            <div className="flex-1 flex flex-col px-5 overflow-y-auto pb-6">
+              <button
+                onClick={() => setView("menu")}
+                className="text-xs text-muted-foreground hover:text-foreground mb-3 self-start flex-shrink-0"
+              >
+                ← Back
+              </button>
 
-            <h3 className="text-sm font-semibold mb-1 flex-shrink-0">Auto Reminders</h3>
-            <p className="text-xs text-muted-foreground mb-5 flex-shrink-0 leading-relaxed">
-              Spliiit will automatically email people who owe you — from Spliiit's account, not yours. No awkward texts needed.
-            </p>
-
-            {/* Enable toggle */}
-            <div className="flex items-center justify-between px-3 py-3 rounded-lg border border-border mb-3">
-              <div>
-                <p className="text-sm font-medium">Enable auto reminders</p>
-                <p className="text-xs text-muted-foreground">Spliiit emails debtors on your behalf</p>
-              </div>
-              <Switch
-                checked={reminderEnabled}
-                onCheckedChange={(v) => setReminderEnabled(v)}
-              />
-            </div>
-
-            {/* Time frame */}
-            <div className="mb-3">
-              <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">Send reminder after</p>
-              <div className="grid grid-cols-3 gap-2">
-                {[7, 14, 30].map((d) => (
-                  <button
-                    key={d}
-                    type="button"
-                    onClick={() => setReminderDays(d)}
-                    className={`py-2.5 rounded-lg border text-sm font-medium transition-colors ${
-                      reminderDays === d
-                        ? "border-primary bg-primary/10 text-primary"
-                        : "border-border text-muted-foreground hover:bg-muted/50"
-                    }`}
-                  >
-                    {d} days
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Tone */}
-            <div className="mb-5">
-              <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">Tone</p>
-              <div className="grid grid-cols-2 gap-2">
-                {([
-                  { id: "friendly",           emoji: "😊", label: "Friendly",          sub: "Warm & casual" },
-                  { id: "funny",              emoji: "😂", label: "Funny",              sub: "Light humour" },
-                  { id: "firm",               emoji: "💼", label: "Firm",               sub: "Professional" },
-                  { id: "passive-aggressive", emoji: "😏", label: "Passive-Aggressive", sub: "Polite but pointed" },
-                  { id: "awkward",            emoji: "😬", label: "Awkward",            sub: "Cringe energy" },
-                ] as const).map(({ id, emoji, label, sub }) => (
-                  <button
-                    key={id}
-                    type="button"
-                    onClick={() => setReminderTone(id)}
-                    className={`py-2.5 px-3 rounded-lg border text-sm font-medium transition-colors flex items-center gap-2 ${
-                      reminderTone === id
-                        ? "border-primary bg-primary/10 text-primary"
-                        : "border-border text-muted-foreground hover:bg-muted/50"
-                    }`}
-                  >
-                    <span className="text-base shrink-0">{emoji}</span>
-                    <div className="text-left">
-                      <p className="text-xs font-semibold leading-none mb-0.5">{label}</p>
-                      <p className="text-[10px] opacity-70 leading-none">{sub}</p>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Info box */}
-            <div className="rounded-lg bg-muted/40 border border-border p-3 mb-5">
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                Emails come from <strong className="text-foreground">Spliiit</strong>, not from you — so there's no awkwardness. Reminders are sent at most once per person per time frame.
+              <h3 className="text-sm font-semibold mb-1 flex-shrink-0">Auto Reminders</h3>
+              <p className="text-xs text-muted-foreground mb-4 flex-shrink-0 leading-relaxed">
+                Spliiit automatically emails people who owe you — from Spliiit's account, not yours.
               </p>
-            </div>
 
-            <Button
-              className="w-full mb-4"
-              size="lg"
-              onClick={() => saveReminderMutation.mutate({ reminderEnabled, reminderDays, reminderTone })}
-              disabled={saveReminderMutation.isPending}
-            >
-              {saveReminderMutation.isPending ? (
-                <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Saving...</>
-              ) : (
-                "Save Settings"
+              {/* Non-premium banner */}
+              {!isPremium && (
+                <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 mb-4 flex items-start gap-2 flex-shrink-0">
+                  <Crown className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-xs font-semibold text-amber-500 mb-0.5">Premium feature</p>
+                    <p className="text-xs text-muted-foreground mb-1">Upgrade to turn on auto reminders. Preview the emails below for free.</p>
+                    <button onClick={() => setUpgradeSheetOpen(true)} className="text-xs text-amber-500 font-semibold">
+                      Get Premium →
+                    </button>
+                  </div>
+                </div>
               )}
-            </Button>
-          </div>
-        )}
+
+              {/* Enable toggle */}
+              <div className={`flex items-center justify-between px-3 py-3 rounded-lg border border-border mb-4 ${!isPremium ? "opacity-60" : ""}`}>
+                <div>
+                  <p className="text-sm font-medium">Enable auto reminders</p>
+                  <p className="text-xs text-muted-foreground">Spliiit emails debtors on your behalf</p>
+                </div>
+                {isPremium ? (
+                  <Switch checked={reminderEnabled} onCheckedChange={setReminderEnabled} />
+                ) : (
+                  <button
+                    onClick={() => setUpgradeSheetOpen(true)}
+                    className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-500 bg-amber-500/10 px-2 py-1 rounded-full"
+                  >
+                    <Crown className="w-3 h-3" /> Premium
+                  </button>
+                )}
+              </div>
+
+              {/* Time frame */}
+              <div className={`mb-4 ${!isPremium ? "opacity-60 pointer-events-none" : ""}`}>
+                <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">Send reminder after</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {[7, 14, 30].map((d) => (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => setReminderDays(d)}
+                      className={`py-2.5 rounded-lg border text-sm font-medium transition-colors ${
+                        reminderDays === d
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "border-border text-muted-foreground hover:bg-muted/50"
+                      }`}
+                    >
+                      {d} days
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Tone dropdown */}
+              <div className="mb-3">
+                <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">Tone</p>
+                <Select
+                  value={reminderTone}
+                  onValueChange={(v) => setReminderTone(v as ReminderTone)}
+                  disabled={!isPremium}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="friendly">😊 Friendly — Warm &amp; casual</SelectItem>
+                    <SelectItem value="funny">😂 Funny — Light humour</SelectItem>
+                    <SelectItem value="firm">💼 Firm — Professional</SelectItem>
+                    <SelectItem value="passive-aggressive">😏 Passive-Aggressive — Polite but pointed</SelectItem>
+                    <SelectItem value="awkward">😬 Awkward — Cringe energy</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Email preview */}
+              <div className="mb-4">
+                <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">
+                  Email preview <span className="normal-case font-normal">(placeholder: Jamie owes you $42.00)</span>
+                </p>
+                <div className="rounded-lg border border-border bg-muted/20 overflow-hidden">
+                  {/* Subject row */}
+                  <div className="px-3 py-2.5 border-b border-border bg-muted/40">
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium mb-0.5">Subject</p>
+                    <p className="text-xs font-semibold text-foreground leading-snug">{preview.subject}</p>
+                  </div>
+                  {/* Body */}
+                  <div className="px-3 py-3">
+                    <p className="text-xs text-foreground whitespace-pre-wrap leading-relaxed">{preview.body}</p>
+                  </div>
+                  {/* Footer hint */}
+                  <div className="px-3 py-2.5 border-t border-border bg-muted/30">
+                    <p className="text-[10px] text-muted-foreground italic leading-relaxed">
+                      + A "Why did you receive this?" section is automatically added beneath — it explains Spliiit sent this, not you personally, and links them to Premium.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Save */}
+              <Button
+                className="w-full"
+                size="lg"
+                onClick={() => isPremium && saveReminderMutation.mutate({ reminderEnabled, reminderDays, reminderTone })}
+                disabled={!isPremium || saveReminderMutation.isPending}
+              >
+                {saveReminderMutation.isPending
+                  ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Saving...</>
+                  : "Save Settings"
+                }
+              </Button>
+              {!isPremium && (
+                <p className="text-xs text-center text-muted-foreground mt-2">
+                  <button onClick={() => setUpgradeSheetOpen(true)} className="text-amber-500 font-semibold">Get Premium</button> to save &amp; activate
+                </p>
+              )}
+            </div>
+          );
+        })()}
 
         {/* ===== FAQ VIEW ===== */}
         {view === "faq" && (() => {
