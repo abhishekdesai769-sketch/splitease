@@ -442,7 +442,7 @@ export function ReceiptReviewSheet({ open, data, members, onConfirm, onItemSplit
           const isLast = assigningIdx === unequalIndices.length - 1;
           const checkedCount = currentAssignment.size;
           const perPerson = checkedCount > 0
-            ? Math.round((Number(currentItem.price) / checkedCount) * 100) / 100
+            ? Math.floor((Number(currentItem.price) / checkedCount) * 100) / 100
             : 0;
           return (
             <>
