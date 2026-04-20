@@ -590,7 +590,7 @@ export async function sendAutoReminderEmail(opts: {
   recipientName: string;
   owedToName: string;    // the premium user whose setting triggered this
   amount: number;
-  tone: "friendly" | "firm" | "awkward";
+  tone: "friendly" | "funny" | "firm" | "passive-aggressive" | "awkward";
   appUrl: string;
 }) {
   if (!resend) return;
@@ -599,15 +599,28 @@ export async function sendAutoReminderEmail(opts: {
   const amt = `$${amount.toFixed(2)}`;
 
   const subjects: Record<string, string> = {
-    friendly: `👋 Friendly nudge from Spliiit — you owe ${owedToName} money`,
-    firm:     `Payment reminder: you have an outstanding balance with ${owedToName}`,
-    awkward:  `Spliiit made us do this 😬 — you owe ${owedToName} ${amt}`,
+    friendly:           `👋 Friendly nudge from Spliiit — you owe ${owedToName} money`,
+    funny:              `Fun fact: you owe ${owedToName} ${amt} 😄`,
+    firm:               `Payment reminder: you have an outstanding balance with ${owedToName}`,
+    "passive-aggressive": `No worries at all! Just a tiny lil reminder 🙂`,
+    awkward:            `We really didn't want to send this, but... 😬`,
   };
 
   const bodies: Record<string, string> = {
-    friendly: `Hey ${first}! 👋\n\nSpliiit here — just a quick, friendly nudge that you have an outstanding balance of ${amt} with ${owedToName} on the app.\n\nNo stress at all, but whenever you get a chance to settle up it would mean a lot! Tap the button below to sort it out in seconds.\n\n— Spliiit`,
-    firm:     `Hi ${first},\n\nThis is an automated reminder from Spliiit that you have an outstanding balance of ${amt} owed to ${owedToName}.\n\nPlease settle this at your earliest convenience using the button below.\n\nThank you,\nSpliiit`,
-    awkward:  `Hey ${first}... so this is a bit awkward for us too honestly 😅\n\nSpliiit is here to (gently) let you know that you still owe ${owedToName} ${amt}. It's been a little while and we promised we'd say something.\n\nWe believe in you — tap below and get it sorted!\n\n— Spliiit 🙈`,
+    friendly:
+      `Hey ${first}! 👋\n\nSpliiit here — just a quick, friendly nudge that you have an outstanding balance of ${amt} with ${owedToName} on the app.\n\nNo stress at all, but whenever you get a chance to settle up it would mean a lot! Tap the button below to sort it out in seconds.\n\n— Spliiit`,
+
+    funny:
+      `Hi ${first} 😄\n\nFun fact: you owe ${owedToName} ${amt}. Less fun fact: it's been sitting there for a while. Even less fun fact: Spliiit just sent you this email about it.\n\nGood news though — settling up takes about 10 seconds flat. Then we can all move on with our lives. Deal?\n\n— Spliiit (comedy writer by night, balance tracker by day)`,
+
+    firm:
+      `Hi ${first},\n\nThis is an automated reminder from Spliiit that you have an outstanding balance of ${amt} owed to ${owedToName}.\n\nPlease settle this at your earliest convenience using the button below.\n\nThank you,\nSpliiit`,
+
+    "passive-aggressive":
+      `Hi ${first},\n\nNo worries at all! Totally fine! Just wanted to pop in and gently, warmly, completely-non-aggressively mention that you still owe ${owedToName} ${amt}. No rush whatsoever. We're sure you've just been super busy. Completely understandable. 😊\n\nThe "Settle Up" button is right there whenever you're ready. Take your time. We'll wait.\n\n— Spliiit 🙂`,
+
+    awkward:
+      `Hey ${first}... we genuinely debated whether to send this. Like, a lot.\n\nBut here's the thing — you still owe ${owedToName} ${amt} and it's gotten to the point where NOT saying something is somehow weirder than saying something. So. We said something.\n\nPlease click the button. For everyone's sake.\n\n— Spliiit (this was hard for us too) 🙈`,
   };
 
   const subject = subjects[tone] || subjects.friendly;

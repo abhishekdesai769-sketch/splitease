@@ -2635,7 +2635,7 @@ setInterval(loadAll,30000);
     if (!recipientId || !message || !tone) {
       return res.status(400).json({ error: "Missing required fields" });
     }
-    if (!["friendly", "firm", "awkward"].includes(tone)) {
+    if (!["friendly", "funny", "firm", "passive-aggressive", "awkward"].includes(tone)) {
       return res.status(400).json({ error: "Invalid tone" });
     }
 
@@ -2650,7 +2650,7 @@ setInterval(loadAll,30000);
       senderName: user.name,
       recipientName: recipient.name,
       message: message as string,
-      tone: tone as "friendly" | "firm" | "awkward",
+      tone: tone as "friendly" | "funny" | "firm" | "passive-aggressive" | "awkward",
       amount: parseFloat(amount) || 0,
       appUrl: APP_URL,
     });
@@ -2771,7 +2771,7 @@ setInterval(loadAll,30000);
     const days = typeof reminderDays === "number" && reminderDays >= 7 && reminderDays <= 90
       ? reminderDays
       : (user.reminderDays ?? 7);
-    const tone = ["friendly", "firm", "awkward"].includes(reminderTone)
+    const tone = ["friendly", "funny", "firm", "passive-aggressive", "awkward"].includes(reminderTone)
       ? reminderTone
       : (user.reminderTone ?? "friendly");
 

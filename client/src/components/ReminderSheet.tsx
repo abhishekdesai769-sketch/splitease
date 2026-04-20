@@ -7,7 +7,7 @@ import { Loader2, Send } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 
-type Tone = "friendly" | "firm" | "awkward";
+type Tone = "friendly" | "funny" | "firm" | "passive-aggressive" | "awkward";
 
 // ─── Message templates ───────────────────────────────────────────────────────
 // 3 variants per tone; a random one is picked when the tone changes so
@@ -20,18 +20,28 @@ function buildMessage(tone: Tone, senderName: string, recipientName: string, amo
   const variants: Record<Tone, string[]> = {
     friendly: [
       `Hey ${first}! 👋 Just a quick nudge — you still owe me ${amt} from our shared expenses. No rush at all, just keeping things tidy! Settle up on Spliiit whenever works for you 😊\n\n— ${senderName}`,
-      `Hi ${first}! Hope everything's going great 🌟 Friendly reminder that I'm still owed ${amt} from us — totally fine whenever you get a chance!\n\n— ${senderName}`,
+      `Hi ${first}! Hope everything's going great 🌟 Friendly reminder that I'm still owed ${amt} — totally fine whenever you get a chance!\n\n— ${senderName}`,
       `Hey ${first}! Not trying to be that person, but you owe me ${amt} 😄 No pressure, just a lil reminder. Settle up on Spliiit when you can!\n\n— ${senderName}`,
+    ],
+    funny: [
+      `Hey ${first} 😄 Fun fact: you owe me ${amt}. Less fun fact: it's still sitting there. Even less fun fact: I'm writing you this message about it.\n\nGood news — settling up on Spliiit takes like 10 seconds. Then we never have to speak of this again lol\n\n— ${senderName}`,
+      `${first}! I have great news and mildly inconvenient news. Great news: I like you! Mildly inconvenient news: you owe me ${amt} 😂 No big deal, just tap Spliiit and we're all good!\n\n— ${senderName}`,
+      `Okay so imagine getting an email about money... that's this email 😄 You owe me ${amt} and I have officially run out of ways to organically bring it up in conversation. Spliiit button below. You're welcome.\n\n— ${senderName}`,
     ],
     firm: [
       `Hi ${first},\n\nThis is a reminder that you have an outstanding balance of ${amt} owed to me. Please settle this at your earliest convenience through Spliiit.\n\nThank you,\n${senderName}`,
       `Hello ${first},\n\nI'm following up on an outstanding balance of ${amt}. Please arrange payment when possible.\n\nRegards,\n${senderName}`,
       `Hi ${first},\n\nA balance of ${amt} remains outstanding. Please action this as soon as possible — you can settle directly through Spliiit.\n\nThanks,\n${senderName}`,
     ],
+    "passive-aggressive": [
+      `Hey ${first}! No worries at all! Totally fine! Just wanted to casually mention that you still owe me ${amt}. No rush whatsoever. I'm sure you've just been super busy. Completely understandable. 😊\n\nThe Spliiit button is right there whenever you're ready. Take your time. I'll wait.\n\n— ${senderName} 🙂`,
+      `Hi ${first}! Hope you're having a great day! Just popping in — completely unprompted and with zero passive aggression — to mention that ${amt} is still outstanding. But genuinely, no stress! It's fine. Everything is fine. 😊\n\n— ${senderName}`,
+      `Hey ${first} 🙂 So I was just thinking about shared expenses. You know, just casually. For no particular reason. And I happened to remember that you owe me ${amt}. Weird how the mind works! Anyway. Spliiit link below. No pressure. At all.\n\n— ${senderName}`,
+    ],
     awkward: [
-      `Hey so... um... this is super awkward and I low-key hate sending this, but you owe me ${amt} and my app keeps reminding ME about it so now I'm reminding YOU lol 😬 No rush... well actually maybe some rush. Okay this is painful. Bye.\n\n— ${senderName}`,
-      `Soooo haha this is a bit weird but my budgeting app literally sent ME a notification and now I feel obligated to tell you... you owe me ${amt}? 🙈 It's not my fault I have a financial tracking app! Settle up whenever haha\n\n— ${senderName}`,
-      `Ok so I've been meaning to bring this up but kept avoiding it because now it's been long enough that it's awkward to mention in person... you owe me ${amt} 😅 Let's just both pretend this message was normal to send. Spliiit makes it easy at least!\n\n— ${senderName}`,
+      `Hey ${first}... okay so I genuinely debated sending this for like three days.\n\nBut you owe me ${amt} and it's gotten to the point where NOT saying something is somehow weirder than saying something. So. Here we are.\n\nSpliiit makes it easy — please click the button so we can both move on 😬\n\n— ${senderName} (this was hard for me too)`,
+      `${first} I'm just gonna say it: you owe me ${amt} and I've been awkwardly waiting for you to bring it up first and you haven't and now it's been a while and I don't know how to bring it up in person anymore so I'm doing this instead 😅\n\nSpliiit button below. Let's never discuss this.\n\n— ${senderName}`,
+      `Hey so... this is the message where I tell you that you owe me ${amt}. I hate that I'm sending this. You probably hate receiving it. But here we are, united in discomfort. Settle up on Spliiit and we can both pretend this never happened 😬\n\n— ${senderName}`,
     ],
   };
 
@@ -41,10 +51,12 @@ function buildMessage(tone: Tone, senderName: string, recipientName: string, amo
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-const TONES: { id: Tone; emoji: string; label: string }[] = [
-  { id: "friendly", emoji: "😊", label: "Friendly" },
-  { id: "firm",     emoji: "💼", label: "Firm"     },
-  { id: "awkward",  emoji: "😬", label: "Awkward"  },
+const TONES: { id: Tone; emoji: string; label: string; sub: string }[] = [
+  { id: "friendly",           emoji: "😊", label: "Friendly",          sub: "Warm & casual"    },
+  { id: "funny",              emoji: "😂", label: "Funny",              sub: "Light humour"     },
+  { id: "firm",               emoji: "💼", label: "Firm",               sub: "Professional"     },
+  { id: "passive-aggressive", emoji: "😏", label: "Passive-Aggressive", sub: "Polite but ouch"  },
+  { id: "awkward",            emoji: "😬", label: "Awkward",            sub: "Cringe energy"    },
 ];
 
 export function ReminderSheet({
@@ -103,20 +115,23 @@ export function ReminderSheet({
         </SheetHeader>
 
         {/* Tone selector */}
-        <div className="grid grid-cols-3 gap-2 mb-4">
-          {TONES.map(({ id, emoji, label }) => (
+        <div className="grid grid-cols-2 gap-2 mb-4">
+          {TONES.map(({ id, emoji, label, sub }) => (
             <button
               key={id}
               type="button"
               onClick={() => setTone(id)}
-              className={`py-2.5 rounded-lg border text-sm font-medium transition-colors flex flex-col items-center gap-0.5 ${
+              className={`py-2.5 px-3 rounded-lg border text-sm font-medium transition-colors flex items-center gap-2 ${
                 tone === id
                   ? "border-primary bg-primary/10 text-primary"
                   : "border-border text-muted-foreground hover:bg-muted/50"
               }`}
             >
-              <span className="text-base">{emoji}</span>
-              {label}
+              <span className="text-base shrink-0">{emoji}</span>
+              <div className="text-left">
+                <p className="text-xs font-semibold leading-none mb-0.5">{label}</p>
+                <p className="text-[10px] opacity-70 leading-none">{sub}</p>
+              </div>
             </button>
           ))}
         </div>

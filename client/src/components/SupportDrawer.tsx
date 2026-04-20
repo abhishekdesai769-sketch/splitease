@@ -40,7 +40,7 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
   });
   const [reminderEnabled, setReminderEnabled] = useState(false);
   const [reminderDays, setReminderDays] = useState(7);
-  const [reminderTone, setReminderTone] = useState<"friendly" | "firm" | "awkward">("friendly");
+  const [reminderTone, setReminderTone] = useState<"friendly" | "funny" | "firm" | "passive-aggressive" | "awkward">("friendly");
 
   // Sync local state when server data arrives
   useEffect(() => {
@@ -573,24 +573,29 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
             {/* Tone */}
             <div className="mb-5">
               <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">Tone</p>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 {([
-                  { id: "friendly", emoji: "😊", label: "Friendly" },
-                  { id: "firm",     emoji: "💼", label: "Firm"     },
-                  { id: "awkward",  emoji: "😬", label: "Awkward"  },
-                ] as const).map(({ id, emoji, label }) => (
+                  { id: "friendly",           emoji: "😊", label: "Friendly",          sub: "Warm & casual" },
+                  { id: "funny",              emoji: "😂", label: "Funny",              sub: "Light humour" },
+                  { id: "firm",               emoji: "💼", label: "Firm",               sub: "Professional" },
+                  { id: "passive-aggressive", emoji: "😏", label: "Passive-Aggressive", sub: "Polite but pointed" },
+                  { id: "awkward",            emoji: "😬", label: "Awkward",            sub: "Cringe energy" },
+                ] as const).map(({ id, emoji, label, sub }) => (
                   <button
                     key={id}
                     type="button"
                     onClick={() => setReminderTone(id)}
-                    className={`py-2.5 rounded-lg border text-sm font-medium transition-colors flex flex-col items-center gap-0.5 ${
+                    className={`py-2.5 px-3 rounded-lg border text-sm font-medium transition-colors flex items-center gap-2 ${
                       reminderTone === id
                         ? "border-primary bg-primary/10 text-primary"
                         : "border-border text-muted-foreground hover:bg-muted/50"
                     }`}
                   >
-                    <span className="text-base">{emoji}</span>
-                    {label}
+                    <span className="text-base shrink-0">{emoji}</span>
+                    <div className="text-left">
+                      <p className="text-xs font-semibold leading-none mb-0.5">{label}</p>
+                      <p className="text-[10px] opacity-70 leading-none">{sub}</p>
+                    </div>
                   </button>
                 ))}
               </div>
