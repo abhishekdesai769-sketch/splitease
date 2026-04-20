@@ -38,6 +38,7 @@ declare module "http" {
 
 app.use(
   express.json({
+    limit: "15mb", // large enough for base64-encoded receipt images
     verify: (req, _res, buf) => {
       req.rawBody = buf;
     },
