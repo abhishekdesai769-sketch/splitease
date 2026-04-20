@@ -94,7 +94,6 @@ export function ScanReceiptButton({ isPremium, onUpgrade, onResult }: ScanReceip
         ref={fileRef}
         type="file"
         accept="image/*"
-        capture="environment"
         className="hidden"
         disabled={isScanning}
         onChange={(e) => {
