@@ -440,6 +440,10 @@ export function ReceiptReviewSheet({ open, data, members, onConfirm, onItemSplit
           const currentItem = editableItems[currentItemIdx];
           const currentAssignment = assignments.get(currentItemIdx) ?? new Set(members?.map((m) => m.id) ?? []);
           const isLast = assigningIdx === unequalIndices.length - 1;
+          const checkedCount = currentAssignment.size;
+          const perPerson = checkedCount > 0
+            ? Math.round((Number(currentItem.price) / checkedCount) * 100) / 100
+            : 0;
           return (
             <>
               <SheetHeader className="text-left pt-2 pb-4">
@@ -452,15 +456,21 @@ export function ReceiptReviewSheet({ open, data, members, onConfirm, onItemSplit
                 <p className="text-sm text-muted-foreground font-mono">${Number(currentItem.price).toFixed(2)}</p>
               </SheetHeader>
               <div className="space-y-2 mb-5">
-                {members?.map((member) => (
-                  <label key={member.id} className="flex items-center gap-3 p-3 rounded-lg border border-border cursor-pointer hover:bg-muted/40 transition-colors">
-                    <Checkbox
-                      checked={currentAssignment.has(member.id)}
-                      onCheckedChange={() => toggleMember(currentItemIdx, member.id)}
-                    />
-                    <span className="text-sm">{member.name}</span>
-                  </label>
-                ))}
+                {members?.map((member) => {
+                  const isChecked = currentAssignment.has(member.id);
+                  return (
+                    <label key={member.id} className="flex items-center gap-3 p-3 rounded-lg border border-border cursor-pointer hover:bg-muted/40 transition-colors">
+                      <Checkbox
+                        checked={isChecked}
+                        onCheckedChange={() => toggleMember(currentItemIdx, member.id)}
+                      />
+                      <span className="text-sm flex-1">{member.name}</span>
+                      <span className={`text-sm font-mono font-medium tabular-nums ${isChecked ? "text-foreground" : "text-muted-foreground/30"}`}>
+                        ${isChecked ? perPerson.toFixed(2) : "0.00"}
+                      </span>
+                    </label>
+                  );
+                })}
               </div>
               <div className="flex gap-3">
                 <Button variant="outline" className="flex-1" onClick={goBack}>
