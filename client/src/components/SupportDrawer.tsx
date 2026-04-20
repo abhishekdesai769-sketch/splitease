@@ -1,21 +1,24 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { apiRequest } from "@/lib/queryClient";
-import { Headphones, Send, Loader2, CheckCircle2, UserPlus, Copy, Check, MessageCircle, Mail, Trash2, AlertTriangle, Upload, HelpCircle, ChevronDown } from "lucide-react";
+import { Headphones, Send, Loader2, CheckCircle2, UserPlus, Copy, Check, MessageCircle, Mail, Trash2, AlertTriangle, Upload, HelpCircle, ChevronDown, Bell, Crown } from "lucide-react";
 import { useLocation } from "wouter";
+import { UpgradePromptSheet } from "@/components/UpgradePromptSheet";
 
 export function SupportDrawer({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const [open, setOpen] = useState(false);
-  const [view, setView] = useState<"menu" | "support" | "invite" | "delete" | "sent" | "faq">("menu");
+  const [view, setView] = useState<"menu" | "support" | "invite" | "delete" | "sent" | "faq" | "reminders">("menu");
   const [faqOpen, setFaqOpen] = useState<number | null>(null);
 
   // Support form state
@@ -27,6 +30,38 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
   const [copied, setCopied] = useState(false);
   const [deleteStep, setDeleteStep] = useState<0 | 1 | 2>(0);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [upgradeSheetOpen, setUpgradeSheetOpen] = useState(false);
+  const qc = useQueryClient();
+
+  // Auto-reminder settings (loaded when drawer opens)
+  const { data: reminderSettings } = useQuery({
+    queryKey: ["/api/reminder-settings"],
+    enabled: open && !!user?.isPremium,
+  });
+  const [reminderEnabled, setReminderEnabled] = useState(false);
+  const [reminderDays, setReminderDays] = useState(7);
+  const [reminderTone, setReminderTone] = useState<"friendly" | "firm" | "awkward">("friendly");
+
+  // Sync local state when server data arrives
+  useEffect(() => {
+    const rs = reminderSettings as any;
+    if (!rs) return;
+    setReminderEnabled(rs.reminderEnabled ?? false);
+    setReminderDays(rs.reminderDays ?? 7);
+    setReminderTone(rs.reminderTone ?? "friendly");
+  }, [reminderSettings]);
+
+  const saveReminderMutation = useMutation({
+    mutationFn: async (data: { reminderEnabled: boolean; reminderDays: number; reminderTone: string }) => {
+      const res = await apiRequest("PATCH", "/api/reminder-settings", data);
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/reminder-settings"] });
+      toast({ title: "Reminder settings saved ✓" });
+    },
+    onError: () => toast({ title: "Error", description: "Could not save settings", variant: "destructive" }),
+  });
 
   const APP_URL = "https://spliiit.klarityit.ca";
   const inviteText = `Hey! I use Spliiit to split expenses with friends and groups. Check it out: ${APP_URL}`;
@@ -105,6 +140,7 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
   };
 
   return (
+    <>
     <Sheet open={open} onOpenChange={handleOpenChange}>
       <SheetTrigger asChild>
         {children}
@@ -177,6 +213,28 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
               <div>
                 <p className="text-sm font-medium">Import from Splitwise</p>
                 <p className="text-xs text-muted-foreground">Import expenses from a CSV file</p>
+              </div>
+            </button>
+
+            {/* Auto Reminders */}
+            <button
+              onClick={() => user?.isPremium ? setView("reminders") : setUpgradeSheetOpen(true)}
+              className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-muted/50 transition-colors text-left group"
+              data-testid="menu-auto-reminders"
+            >
+              <div className="w-9 h-9 rounded-lg bg-amber-500/10 flex items-center justify-center flex-shrink-0">
+                <Bell className="w-4.5 h-4.5 text-amber-500" />
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-1.5">
+                  <p className="text-sm font-medium">Auto Reminders</p>
+                  {!user?.isPremium && (
+                    <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded-full">
+                      <Crown className="w-2.5 h-2.5" /> Premium
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">Auto-email people who owe you</p>
               </div>
             </button>
 
@@ -464,6 +522,102 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
           </div>
         )}
 
+        {/* ===== AUTO REMINDERS VIEW ===== */}
+        {view === "reminders" && (
+          <div className="flex-1 flex flex-col px-5 overflow-y-auto">
+            <button
+              onClick={() => setView("menu")}
+              className="text-xs text-muted-foreground hover:text-foreground mb-3 self-start flex-shrink-0"
+            >
+              ← Back
+            </button>
+
+            <h3 className="text-sm font-semibold mb-1 flex-shrink-0">Auto Reminders</h3>
+            <p className="text-xs text-muted-foreground mb-5 flex-shrink-0 leading-relaxed">
+              Spliiit will automatically email people who owe you — from Spliiit's account, not yours. No awkward texts needed.
+            </p>
+
+            {/* Enable toggle */}
+            <div className="flex items-center justify-between px-3 py-3 rounded-lg border border-border mb-3">
+              <div>
+                <p className="text-sm font-medium">Enable auto reminders</p>
+                <p className="text-xs text-muted-foreground">Spliiit emails debtors on your behalf</p>
+              </div>
+              <Switch
+                checked={reminderEnabled}
+                onCheckedChange={(v) => setReminderEnabled(v)}
+              />
+            </div>
+
+            {/* Time frame */}
+            <div className="mb-3">
+              <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">Send reminder after</p>
+              <div className="grid grid-cols-3 gap-2">
+                {[7, 14, 30].map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => setReminderDays(d)}
+                    className={`py-2.5 rounded-lg border text-sm font-medium transition-colors ${
+                      reminderDays === d
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border text-muted-foreground hover:bg-muted/50"
+                    }`}
+                  >
+                    {d} days
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Tone */}
+            <div className="mb-5">
+              <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">Tone</p>
+              <div className="grid grid-cols-3 gap-2">
+                {([
+                  { id: "friendly", emoji: "😊", label: "Friendly" },
+                  { id: "firm",     emoji: "💼", label: "Firm"     },
+                  { id: "awkward",  emoji: "😬", label: "Awkward"  },
+                ] as const).map(({ id, emoji, label }) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setReminderTone(id)}
+                    className={`py-2.5 rounded-lg border text-sm font-medium transition-colors flex flex-col items-center gap-0.5 ${
+                      reminderTone === id
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border text-muted-foreground hover:bg-muted/50"
+                    }`}
+                  >
+                    <span className="text-base">{emoji}</span>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Info box */}
+            <div className="rounded-lg bg-muted/40 border border-border p-3 mb-5">
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Emails come from <strong className="text-foreground">Spliiit</strong>, not from you — so there's no awkwardness. Reminders are sent at most once per person per time frame.
+              </p>
+            </div>
+
+            <Button
+              className="w-full mb-4"
+              size="lg"
+              onClick={() => saveReminderMutation.mutate({ reminderEnabled, reminderDays, reminderTone })}
+              disabled={saveReminderMutation.isPending}
+            >
+              {saveReminderMutation.isPending ? (
+                <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Saving...</>
+              ) : (
+                "Save Settings"
+              )}
+            </Button>
+          </div>
+        )}
+
         {/* ===== FAQ VIEW ===== */}
         {view === "faq" && (() => {
           const faqs = [
@@ -577,5 +731,9 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
         )}
       </SheetContent>
     </Sheet>
+
+    {/* Inline upgrade sheet for non-premium users clicking Auto Reminders */}
+    <UpgradePromptSheet open={upgradeSheetOpen} onClose={() => setUpgradeSheetOpen(false)} />
+  </>
   );
 }

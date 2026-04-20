@@ -1,13 +1,14 @@
 import { eq, and, or, ilike, inArray, ne, isNull, isNotNull, lt } from "drizzle-orm";
 import { db } from "./db";
 import {
-  users, friends, groups, expenses, otpCodes, resetTokens, groupInvites, recurringExpenses,
+  users, friends, groups, expenses, otpCodes, resetTokens, groupInvites, recurringExpenses, sentReminders,
   type User, type InsertUser, type SafeUser,
   type Friend, type InsertFriend,
   type Group, type InsertGroup,
   type Expense, type InsertExpense,
   type GroupInvite, type InsertGroupInvite,
   type RecurringExpense, type InsertRecurringExpense,
+  type SentReminder,
 } from "@shared/schema";
 
 function toSafeUser(user: User): SafeUser {
@@ -91,6 +92,12 @@ export interface IStorage {
   getAllDueRecurringExpenses(asOfDate: string): Promise<RecurringExpense[]>;
   updateRecurringExpenseNextRun(id: string, nextRunDate: string): Promise<void>;
   deactivateRecurringExpense(id: string): Promise<boolean>;
+
+  // Auto-reminder settings (premium)
+  updateReminderSettings(userId: string, data: { reminderEnabled: boolean; reminderDays: number; reminderTone: string }): Promise<void>;
+  getPremiumUsersWithRemindersEnabled(): Promise<User[]>;
+  getLastReminderSent(fromUserId: string, toUserId: string): Promise<SentReminder | undefined>;
+  upsertSentReminder(fromUserId: string, toUserId: string, sentAt: string): Promise<void>;
 }
 
 export class PgStorage implements IStorage {
@@ -607,6 +614,51 @@ export class PgStorage implements IStorage {
       .where(eq(recurringExpenses.id, id))
       .returning();
     return result.length > 0;
+  }
+
+  // ── Auto-reminder settings ──────────────────────────────────────────────────
+
+  async updateReminderSettings(
+    userId: string,
+    data: { reminderEnabled: boolean; reminderDays: number; reminderTone: string }
+  ): Promise<void> {
+    await db.update(users)
+      .set({
+        reminderEnabled: data.reminderEnabled,
+        reminderDays: data.reminderDays,
+        reminderTone: data.reminderTone,
+      })
+      .where(eq(users.id, userId));
+  }
+
+  async getPremiumUsersWithRemindersEnabled(): Promise<User[]> {
+    return db.select().from(users).where(
+      and(
+        eq(users.isPremium, true),
+        eq(users.reminderEnabled, true),
+        eq(users.isGhost, false)
+      )
+    );
+  }
+
+  async getLastReminderSent(fromUserId: string, toUserId: string): Promise<SentReminder | undefined> {
+    const [row] = await db.select().from(sentReminders).where(
+      and(
+        eq(sentReminders.fromUserId, fromUserId),
+        eq(sentReminders.toUserId, toUserId)
+      )
+    );
+    return row;
+  }
+
+  async upsertSentReminder(fromUserId: string, toUserId: string, sentAt: string): Promise<void> {
+    await db
+      .insert(sentReminders)
+      .values({ fromUserId, toUserId, sentAt })
+      .onConflictDoUpdate({
+        target: [sentReminders.fromUserId, sentReminders.toUserId],
+        set: { sentAt },
+      });
   }
 }
 

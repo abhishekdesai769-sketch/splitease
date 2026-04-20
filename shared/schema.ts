@@ -1,4 +1,4 @@
-import { pgTable, text, varchar, real, boolean, uniqueIndex, index } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, real, boolean, integer, uniqueIndex, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { sql } from "drizzle-orm";
@@ -18,6 +18,10 @@ export const users = pgTable("users", {
   stripeCustomerId: text("stripe_customer_id"),
   stripeSubscriptionId: text("stripe_subscription_id"),
   premiumUntil: text("premium_until"), // ISO date string, null = no active sub
+  // Auto-reminder settings (premium feature)
+  reminderEnabled: boolean("reminder_enabled").notNull().default(false),
+  reminderDays: integer("reminder_days").notNull().default(7), // send after N days of outstanding balance
+  reminderTone: text("reminder_tone").notNull().default("friendly"), // "friendly" | "firm" | "awkward"
 }, (table) => [
   uniqueIndex("users_email_idx").on(table.email),
 ]);
@@ -142,6 +146,19 @@ export const recurringExpenses = pgTable("recurring_expenses", {
 
 export type RecurringExpense = typeof recurringExpenses.$inferSelect;
 export type InsertRecurringExpense = typeof recurringExpenses.$inferInsert;
+
+// Sent Reminders — tracks the last auto-reminder sent between two users
+// One row per (fromUserId, toUserId) pair — upserted on each send
+export const sentReminders = pgTable("sent_reminders", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  fromUserId: varchar("from_user_id").notNull(),  // premium user who owns the reminder setting
+  toUserId: varchar("to_user_id").notNull(),       // person who owes money
+  sentAt: text("sent_at").notNull(),               // ISO timestamp of last send
+}, (table) => [
+  uniqueIndex("sent_reminders_pair_idx").on(table.fromUserId, table.toUserId),
+]);
+
+export type SentReminder = typeof sentReminders.$inferSelect;
 
 // Signup/Login schemas (for validation)
 export const signupSchema = z.object({

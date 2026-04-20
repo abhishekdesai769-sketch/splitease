@@ -147,6 +147,9 @@ export async function registerRoutes(
     ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_customer_id text;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_subscription_id text;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS premium_until text;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS reminder_enabled boolean NOT NULL DEFAULT false;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS reminder_days integer NOT NULL DEFAULT 7;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS reminder_tone text NOT NULL DEFAULT 'friendly';
     CREATE TABLE IF NOT EXISTS recurring_expenses (
       id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
       user_id varchar NOT NULL,
@@ -159,6 +162,13 @@ export async function registerRoutes(
       next_run_date text NOT NULL,
       created_at text NOT NULL,
       is_active boolean NOT NULL DEFAULT true
+    );
+    CREATE TABLE IF NOT EXISTS sent_reminders (
+      id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+      from_user_id varchar NOT NULL,
+      to_user_id varchar NOT NULL,
+      sent_at text NOT NULL,
+      CONSTRAINT sent_reminders_pair_unique UNIQUE (from_user_id, to_user_id)
     );
   `);
 
@@ -2733,6 +2743,45 @@ setInterval(loadAll,30000);
 
     await storage.deactivateRecurringExpense(req.params.id);
     res.json({ ok: true });
+  });
+
+  // ========== Auto Reminder Settings (premium) ==========
+
+  // GET /api/reminder-settings — return current user's reminder configuration
+  app.get("/api/reminder-settings", requireAuth, async (req, res) => {
+    const userId = (req.session as any).userId as string;
+    const user = await storage.getUser(userId);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    res.json({
+      reminderEnabled: user.reminderEnabled ?? false,
+      reminderDays: user.reminderDays ?? 7,
+      reminderTone: user.reminderTone ?? "friendly",
+    });
+  });
+
+  // PATCH /api/reminder-settings — update reminder configuration (premium only)
+  app.patch("/api/reminder-settings", requireAuth, async (req, res) => {
+    const userId = (req.session as any).userId as string;
+    const user = await storage.getUser(userId);
+    if (!user?.isPremium) return res.status(403).json({ error: "Premium required" });
+
+    const { reminderEnabled, reminderDays, reminderTone } = req.body;
+
+    const enabled = typeof reminderEnabled === "boolean" ? reminderEnabled : user.reminderEnabled;
+    const days = typeof reminderDays === "number" && reminderDays >= 7 && reminderDays <= 90
+      ? reminderDays
+      : (user.reminderDays ?? 7);
+    const tone = ["friendly", "firm", "awkward"].includes(reminderTone)
+      ? reminderTone
+      : (user.reminderTone ?? "friendly");
+
+    await storage.updateReminderSettings(userId, {
+      reminderEnabled: enabled,
+      reminderDays: days,
+      reminderTone: tone,
+    });
+
+    res.json({ ok: true, reminderEnabled: enabled, reminderDays: days, reminderTone: tone });
   });
 
   return httpServer;

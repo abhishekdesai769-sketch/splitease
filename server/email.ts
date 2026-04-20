@@ -580,3 +580,83 @@ export async function sendReminderEmail(opts: {
 
   sendEmail(to, subject, html, text);
 }
+
+/**
+ * Spliiit-voiced auto reminder (sent by the scheduler on behalf of a premium user)
+ * The FROM is Spliiit — not the premium user — so there's no social awkwardness.
+ */
+export async function sendAutoReminderEmail(opts: {
+  to: string;
+  recipientName: string;
+  owedToName: string;    // the premium user whose setting triggered this
+  amount: number;
+  tone: "friendly" | "firm" | "awkward";
+  appUrl: string;
+}) {
+  if (!resend) return;
+  const { to, recipientName, owedToName, amount, tone, appUrl } = opts;
+  const first = recipientName.split(" ")[0];
+  const amt = `$${amount.toFixed(2)}`;
+
+  const subjects: Record<string, string> = {
+    friendly: `👋 Friendly nudge from Spliiit — you owe ${owedToName} money`,
+    firm:     `Payment reminder: you have an outstanding balance with ${owedToName}`,
+    awkward:  `Spliiit made us do this 😬 — you owe ${owedToName} ${amt}`,
+  };
+
+  const bodies: Record<string, string> = {
+    friendly: `Hey ${first}! 👋\n\nSpliiit here — just a quick, friendly nudge that you have an outstanding balance of ${amt} with ${owedToName} on the app.\n\nNo stress at all, but whenever you get a chance to settle up it would mean a lot! Tap the button below to sort it out in seconds.\n\n— Spliiit`,
+    firm:     `Hi ${first},\n\nThis is an automated reminder from Spliiit that you have an outstanding balance of ${amt} owed to ${owedToName}.\n\nPlease settle this at your earliest convenience using the button below.\n\nThank you,\nSpliiit`,
+    awkward:  `Hey ${first}... so this is a bit awkward for us too honestly 😅\n\nSpliiit is here to (gently) let you know that you still owe ${owedToName} ${amt}. It's been a little while and we promised we'd say something.\n\nWe believe in you — tap below and get it sorted!\n\n— Spliiit 🙈`,
+  };
+
+  const subject = subjects[tone] || subjects.friendly;
+  const bodyText = bodies[tone] || bodies.friendly;
+
+  const bodyHtml = bodyText
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\n/g, "<br>");
+
+  const html = `
+<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <tr><td align="center" style="padding:24px 16px;">
+    <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="max-width:520px;">
+      <tr><td>${EMAIL_LOGO}</td></tr>
+      <tr><td style="padding-bottom:16px;">
+        <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="border:1px solid #e5e7eb;border-radius:10px;">
+          <tr><td style="padding:16px;">
+            <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+              <tr><td style="font-size:13px;color:#6b7280;padding-bottom:4px;">Outstanding balance</td></tr>
+              <tr><td style="font-size:28px;font-weight:700;color:#111827;padding-bottom:4px;">${amt}</td></tr>
+              <tr><td style="font-size:14px;color:#374151;">owed to <strong>${owedToName}</strong></td></tr>
+            </table>
+          </td></tr>
+        </table>
+      </td></tr>
+      <tr><td style="font-size:15px;color:#374151;padding-bottom:20px;line-height:1.6;white-space:pre-line;">
+        ${bodyHtml}
+      </td></tr>
+      <tr><td style="padding-bottom:20px;">
+        <table cellpadding="0" cellspacing="0" role="presentation">
+          <tr>
+            <td style="border-radius:8px;background-color:#0d9488;">
+              <a href="${appUrl}/#/friends" style="display:inline-block;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;">
+                Settle up on Spliiit
+              </a>
+            </td>
+          </tr>
+        </table>
+      </td></tr>
+      <tr><td style="border-top:1px solid #f3f4f6;padding-top:16px;font-size:12px;color:#9ca3af;">
+        ${EMAIL_FOOTER}
+      </td></tr>
+    </table>
+  </td></tr>
+</table>`;
+
+  const text = `${bodyText}\n\nSettle up on Spliiit: ${appUrl}\n\n— Spliiit`;
+
+  sendEmail(to, subject, html, text);
+}
