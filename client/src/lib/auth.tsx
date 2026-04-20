@@ -2,6 +2,7 @@ import { createContext, useContext, useCallback, useState, useEffect } from "rea
 import type { SafeUser } from "@shared/schema";
 import { apiRequest, queryClient } from "./queryClient";
 import { identifyUser, resetIdentity, track } from "./analytics";
+import { initRevenueCat } from "./iap";
 
 interface AuthContextType {
   user: SafeUser | null;
@@ -28,6 +29,12 @@ const AuthContext = createContext<AuthContextType>({
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<SafeUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Initialize RevenueCat whenever we have a logged-in user.
+  // initRevenueCat is a no-op on web/Android and idempotent (runs once per session).
+  useEffect(() => {
+    if (user?.id) initRevenueCat(user.id);
+  }, [user?.id]);
 
   // Check if user is logged in on mount
   useEffect(() => {

@@ -2623,6 +2623,108 @@ setInterval(loadAll,30000);
     res.json({ received: true });
   });
 
+  // ========== Apple In-App Purchase (RevenueCat) ==========
+
+  // POST /api/apple-iap/sync — called by the iOS client immediately after a
+  // successful StoreKit purchase to grant premium before the webhook fires.
+  // The client sends the entitlement expiration date from RevenueCat's
+  // CustomerInfo object so we can store the correct premiumUntil value.
+  app.post("/api/apple-iap/sync", requireAuth, async (req, res) => {
+    const userId = (req.session as any).userId as string;
+    const { isPremium, expirationDate } = req.body;
+
+    if (!isPremium) {
+      // Client reports not premium — don't touch the subscription (let webhook handle it)
+      return res.json({ ok: true, isPremium: false });
+    }
+
+    // expirationDate from RevenueCat is ISO8601 string or null (lifetime)
+    const premiumUntil: string | null = expirationDate
+      ? new Date(expirationDate).toISOString()
+      : new Date(Date.now() + 366 * 24 * 60 * 60 * 1000).toISOString(); // fallback +1 year
+
+    await storage.updateUserSubscription(userId, {
+      isPremium: true,
+      premiumUntil,
+    });
+
+    console.log(`[iap] sync: user ${userId} → premium until ${premiumUntil}`);
+    res.json({ ok: true, isPremium: true, premiumUntil });
+  });
+
+  // POST /api/apple-iap/webhook — RevenueCat S2S webhook
+  // RevenueCat sends Authorization: <secret> header (not Bearer, just the raw secret).
+  // Event types handled: INITIAL_PURCHASE, RENEWAL, UNCANCELLATION,
+  //                      CANCELLATION, EXPIRATION, BILLING_ISSUE
+  app.post("/api/apple-iap/webhook", async (req, res) => {
+    const auth = req.headers["authorization"];
+    const webhookSecret = process.env.REVENUECAT_WEBHOOK_SECRET;
+
+    if (webhookSecret && auth !== webhookSecret) {
+      console.warn("[iap] webhook: unauthorized request");
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const { event } = req.body || {};
+    if (!event || !event.app_user_id || !event.type) {
+      return res.status(400).json({ error: "Invalid webhook payload" });
+    }
+
+    const userId: string = event.app_user_id;
+    const eventType: string = event.type;
+    const expirationMs: number | undefined = event.expiration_at_ms;
+
+    try {
+      switch (eventType) {
+        case "INITIAL_PURCHASE":
+        case "RENEWAL":
+        case "UNCANCELLATION":
+        case "SUBSCRIBER_ALIAS": {
+          const premiumUntil = expirationMs
+            ? new Date(expirationMs).toISOString()
+            : new Date(Date.now() + 366 * 24 * 60 * 60 * 1000).toISOString();
+
+          await storage.updateUserSubscription(userId, {
+            isPremium: true,
+            premiumUntil,
+          });
+          console.log(`[iap] webhook ${eventType}: user ${userId} → premium until ${premiumUntil}`);
+          break;
+        }
+
+        case "CANCELLATION": {
+          // Subscription cancelled but user still has access until period end
+          const premiumUntil = expirationMs ? new Date(expirationMs).toISOString() : null;
+          const stillActive = premiumUntil ? new Date(premiumUntil) > new Date() : false;
+          await storage.updateUserSubscription(userId, {
+            isPremium: stillActive,
+            premiumUntil,
+          });
+          console.log(`[iap] webhook CANCELLATION: user ${userId} → access until ${premiumUntil}`);
+          break;
+        }
+
+        case "EXPIRATION":
+        case "BILLING_ISSUE": {
+          await storage.updateUserSubscription(userId, {
+            isPremium: false,
+            premiumUntil: null,
+          });
+          console.log(`[iap] webhook ${eventType}: user ${userId} → premium revoked`);
+          break;
+        }
+
+        default:
+          console.log(`[iap] webhook: unhandled event type "${eventType}" — ignoring`);
+      }
+
+      res.json({ ok: true });
+    } catch (err: any) {
+      console.error("[iap] webhook handler error:", err.message);
+      res.status(500).json({ error: "Internal error" });
+    }
+  });
+
   // ========== Payment Reminders (premium) ==========
 
   // POST /api/reminders/send — send a tone-aware payment reminder email

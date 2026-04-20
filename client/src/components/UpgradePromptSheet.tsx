@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { Crown, Check, Loader2 } from "lucide-react";
+import { Crown, Check, Loader2, RotateCcw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { isIosNative, purchasePremium, restorePurchases, type IAPPlan } from "@/lib/iap";
 
 type Plan = "monthly" | "yearly";
 
@@ -24,9 +25,12 @@ export function UpgradePromptSheet({
   onClose: () => void;
 }) {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [plan, setPlan] = useState<Plan>("yearly");
+  const [isRestoring, setIsRestoring] = useState(false);
 
-  const checkoutMutation = useMutation({
+  // ── Stripe checkout (web + Android) ────────────────────────────────────────
+  const stripeMutation = useMutation({
     mutationFn: async (selectedPlan: Plan) => {
       const res = await apiRequest("POST", "/api/subscription/checkout", { plan: selectedPlan });
       return res.json();
@@ -38,6 +42,72 @@ export function UpgradePromptSheet({
       toast({ title: "Error", description: err.message, variant: "destructive" });
     },
   });
+
+  // ── Apple IAP (iOS native only) ────────────────────────────────────────────
+  const iapMutation = useMutation({
+    mutationFn: async (selectedPlan: IAPPlan) => {
+      const result = await purchasePremium(selectedPlan);
+      if (result.cancelled) throw new Error("__cancelled__");
+      if (!result.success || !result.isPremium) {
+        throw new Error(result.error ?? "Purchase did not complete. Please try again.");
+      }
+      // Immediately sync premium status to our backend
+      const syncRes = await apiRequest("POST", "/api/apple-iap/sync", {
+        isPremium: true,
+        expirationDate: result.expirationDate ?? null,
+      });
+      return syncRes.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/subscription/status"] });
+      toast({
+        title: "Welcome to Premium! 🎉",
+        description: "All features are now unlocked.",
+      });
+      onClose();
+    },
+    onError: (err: Error) => {
+      if (err.message === "__cancelled__") return; // user tapped Cancel — no toast
+      toast({ title: "Purchase failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  // ── Restore purchases (iOS — required by App Store guidelines) ─────────────
+  const handleRestore = async () => {
+    setIsRestoring(true);
+    try {
+      const result = await restorePurchases();
+      if (result.isPremium) {
+        await apiRequest("POST", "/api/apple-iap/sync", {
+          isPremium: true,
+          expirationDate: result.expirationDate ?? null,
+        });
+        queryClient.invalidateQueries({ queryKey: ["/api/subscription/status"] });
+        toast({ title: "Purchases restored! 🎉", description: "Your Premium access is active." });
+        onClose();
+      } else {
+        toast({
+          title: "No active subscription found",
+          description: "Nothing to restore. If this is an error, contact support.",
+          variant: "destructive",
+        });
+      }
+    } catch (err: any) {
+      toast({ title: "Restore failed", description: err.message, variant: "destructive" });
+    } finally {
+      setIsRestoring(false);
+    }
+  };
+
+  const isPending = isIosNative ? iapMutation.isPending : stripeMutation.isPending;
+
+  const handleGetPremium = () => {
+    if (isIosNative) {
+      iapMutation.mutate(plan === "monthly" ? "monthly" : "yearly");
+    } else {
+      stripeMutation.mutate(plan);
+    }
+  };
 
   return (
     <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
@@ -92,24 +162,42 @@ export function UpgradePromptSheet({
           ))}
         </ul>
 
+        {/* CTA button */}
         <Button
           className="w-full"
           size="lg"
-          onClick={() => checkoutMutation.mutate(plan)}
-          disabled={checkoutMutation.isPending}
+          onClick={handleGetPremium}
+          disabled={isPending || isRestoring}
         >
-          {checkoutMutation.isPending ? (
+          {isPending ? (
             <Loader2 className="w-4 h-4 mr-2 animate-spin" />
           ) : (
             <Crown className="w-4 h-4 mr-2" />
           )}
-          {checkoutMutation.isPending
-            ? "Loading..."
+          {isPending
+            ? "Processing..."
             : `Get Premium — ${plan === "monthly" ? "CA$3.99/mo" : "CA$29.99/yr"}`}
         </Button>
 
+        {/* Restore Purchases — iOS only, required by App Store guidelines */}
+        {isIosNative && (
+          <button
+            onClick={handleRestore}
+            disabled={isPending || isRestoring}
+            className="w-full mt-3 py-1.5 text-xs text-muted-foreground flex items-center justify-center gap-1.5 hover:text-foreground transition-colors disabled:opacity-40"
+          >
+            {isRestoring ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : (
+              <RotateCcw className="w-3 h-3" />
+            )}
+            {isRestoring ? "Restoring…" : "Restore Purchases"}
+          </button>
+        )}
+
         <p className="text-xs text-center text-muted-foreground mt-3">
-          Cancel any time · Secure checkout via Stripe
+          Cancel any time ·{" "}
+          {isIosNative ? "Billed via Apple App Store" : "Secure checkout via Stripe"}
         </p>
       </SheetContent>
     </Sheet>
