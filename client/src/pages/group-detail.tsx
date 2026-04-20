@@ -854,8 +854,34 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                 <ScanReceiptButton
                   isPremium={!!user?.isPremium}
                   onUpgrade={() => setUpgradeSheetOpen(true)}
+                  members={members.map(m => ({ id: m.id, name: m.name }))}
+                  onItemSplit={async (splits) => {
+                    try {
+                      await Promise.all(splits.map(async (split) => {
+                        const fd = new FormData();
+                        fd.append("description", split.description.trim());
+                        fd.append("amount", String(split.amount));
+                        fd.append("paidById", user?.id || "");
+                        fd.append("splitAmongIds", JSON.stringify(split.splitAmongIds));
+                        fd.append("groupId", groupId);
+                        fd.append("date", new Date().toISOString());
+                        const res = await apiFormRequest("POST", "/api/expenses", fd);
+                        return res.json();
+                      }));
+                      queryClient.invalidateQueries({ queryKey: ["/api/expenses/group", groupId] });
+                      queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
+                      setAddOpen(false);
+                      toast({ title: `${splits.length} expense${splits.length !== 1 ? "s" : ""} added` });
+                    } catch (err: any) {
+                      let msg = err.message;
+                      try { msg = JSON.parse(msg.split(": ").slice(1).join(": ")).error; } catch {}
+                      toast({ title: "Error", description: msg, variant: "destructive" });
+                    }
+                  }}
                   onResult={(data, file) => {
-                    if (data.merchant && !description.trim()) setDescription(data.merchant);
+                    if (data.merchant && !description.trim()) {
+                      setDescription(data.date ? `${data.merchant} — ${data.date}` : data.merchant);
+                    }
                     if (data.total != null && !amount) setAmount(String(data.total));
                     setReceiptFile(file);
                   }}

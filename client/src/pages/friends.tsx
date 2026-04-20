@@ -405,7 +405,9 @@ export default function Friends() {
                       isPremium={!!user?.isPremium}
                       onUpgrade={() => setUpgradeSheetOpen(true)}
                       onResult={(data, file) => {
-                        if (data.merchant && !description.trim()) setDescription(data.merchant);
+                        if (data.merchant && !description.trim()) {
+                          setDescription(data.date ? `${data.merchant} — ${data.date}` : data.merchant);
+                        }
                         if (data.total != null && !amount) setAmount(String(data.total));
                         setReceiptFile(file);
                       }}

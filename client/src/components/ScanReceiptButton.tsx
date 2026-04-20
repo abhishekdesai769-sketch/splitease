@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { Camera, Crown, Loader2 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { ReceiptReviewSheet } from "@/components/ReceiptReviewSheet";
+import { ReceiptReviewSheet, type Member, type ItemSplit } from "@/components/ReceiptReviewSheet";
 
 interface ReceiptItem {
   name: string;
@@ -11,6 +11,7 @@ interface ReceiptItem {
 
 interface ReceiptData {
   merchant: string;
+  date: string | null;
   items: ReceiptItem[];
   subtotal: number | null;
   tax: number | null;
@@ -20,11 +21,16 @@ interface ReceiptData {
 interface ScanResult {
   merchant: string;
   total: number | null;
+  date?: string;
 }
 
 interface ScanReceiptButtonProps {
   isPremium: boolean;
   onUpgrade: () => void;
+  /** Group/friend members — enables "Split by items" in the review sheet */
+  members?: Member[];
+  /** Called when user completes per-item assignment in the review sheet */
+  onItemSplit?: (splits: ItemSplit[]) => void;
   /** Called with extracted data and the original File (for attaching to expense) */
   onResult: (data: ScanResult, file: File) => void;
 }
@@ -41,7 +47,7 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
-export function ScanReceiptButton({ isPremium, onUpgrade, onResult }: ScanReceiptButtonProps) {
+export function ScanReceiptButton({ isPremium, onUpgrade, members, onItemSplit, onResult }: ScanReceiptButtonProps) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [isScanning, setIsScanning] = useState(false);
   const [reviewData, setReviewData] = useState<ReceiptData | null>(null);
@@ -72,9 +78,9 @@ export function ScanReceiptButton({ isPremium, onUpgrade, onResult }: ScanReceip
     }
   };
 
-  const handleConfirm = (merchant: string, total: number) => {
+  const handleConfirm = (merchant: string, total: number, date?: string) => {
     if (!reviewFile) return;
-    onResult({ merchant, total }, reviewFile);
+    onResult({ merchant, total, date }, reviewFile);
     setReviewData(null);
     setReviewFile(null);
   };
@@ -131,7 +137,13 @@ export function ScanReceiptButton({ isPremium, onUpgrade, onResult }: ScanReceip
         <ReceiptReviewSheet
           open={true}
           data={reviewData}
+          members={members}
           onConfirm={handleConfirm}
+          onItemSplit={onItemSplit ? (splits) => {
+            onItemSplit(splits);
+            setReviewData(null);
+            setReviewFile(null);
+          } : undefined}
           onClose={handleClose}
         />
       )}

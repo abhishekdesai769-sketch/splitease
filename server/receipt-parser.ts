@@ -10,6 +10,7 @@ export interface ReceiptItem {
 
 export interface ReceiptData {
   merchant: string;
+  date: string | null;
   items: ReceiptItem[];
   subtotal: number | null;
   tax: number | null;
@@ -62,9 +63,10 @@ export async function parseReceipt(
             },
             {
               type: "text",
-              text: `Extract all line items from this receipt. Return ONLY valid JSON in this exact format, no other text:
+              text: `Extract all data from this receipt. Return ONLY valid JSON in this exact format, no other text:
 {
   "merchant": "Store Name",
+  "date": "Apr 20, 2026",
   "items": [
     { "name": "Item description", "price": 1.99 }
   ],
@@ -74,10 +76,12 @@ export async function parseReceipt(
 }
 
 Rules:
-- Extract every item with its price
-- Use null for subtotal, tax, or total if not visible
+- merchant: the store or restaurant name
+- date: the date printed on the receipt (e.g. "Apr 20, 2026"), or null if not visible
+- Extract every line item with its price
+- Use null for subtotal, tax, total, or date if not visible
 - Prices should be numbers, not strings
-- If this is not a receipt, return: { "merchant": "Unknown", "items": [], "subtotal": null, "tax": null, "total": null }`,
+- If this is not a receipt, return: { "merchant": "Unknown", "date": null, "items": [], "subtotal": null, "tax": null, "total": null }`,
             },
           ],
         },
