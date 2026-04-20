@@ -19,29 +19,29 @@ function buildMessage(tone: Tone, senderName: string, recipientName: string, amo
 
   const variants: Record<Tone, string[]> = {
     friendly: [
-      `Hey ${first}! 👋 Just a quick nudge — you still owe me ${amt} from our shared expenses. No rush at all, just keeping things tidy! Settle up on Spliiit whenever works for you 😊\n\n— ${senderName}`,
-      `Hi ${first}! Hope everything's going great 🌟 Friendly reminder that I'm still owed ${amt} — totally fine whenever you get a chance!\n\n— ${senderName}`,
-      `Hey ${first}! Not trying to be that person, but you owe me ${amt} 😄 No pressure, just a lil reminder. Settle up on Spliiit when you can!\n\n— ${senderName}`,
+      `Hey ${first}! 👋 Spliiit here — just a friendly nudge that you have an outstanding balance of ${amt} with ${senderName}. No stress at all, but whenever you get a chance to settle up it would mean a lot!\n\n— Spliiit`,
+      `Hi ${first}! 🌟 Quick reminder from Spliiit — you still have ${amt} outstanding with ${senderName}. Totally fine whenever you get around to it!\n\n— Spliiit`,
+      `Hey ${first}! Spliiit dropping in — you owe ${senderName} ${amt} 😊 No pressure, just keeping things tidy. Settle up when you can!\n\n— Spliiit`,
     ],
     funny: [
-      `Hey ${first} 😄 Fun fact: you owe me ${amt}. Less fun fact: it's still sitting there. Even less fun fact: I'm writing you this message about it.\n\nGood news — settling up on Spliiit takes like 10 seconds. Then we never have to speak of this again lol\n\n— ${senderName}`,
-      `${first}! I have great news and mildly inconvenient news. Great news: I like you! Mildly inconvenient news: you owe me ${amt} 😂 No big deal, just tap Spliiit and we're all good!\n\n— ${senderName}`,
-      `Okay so imagine getting an email about money... that's this email 😄 You owe me ${amt} and I have officially run out of ways to organically bring it up in conversation. Spliiit button below. You're welcome.\n\n— ${senderName}`,
+      `Hi ${first} 😄 Spliiit here with a fun fact: you owe ${senderName} ${amt}. Less fun fact: it's been sitting there a while. Even less fun fact: we just sent you this email about it.\n\nGood news — settling up takes about 10 seconds. Then we can all move on with our lives.\n\n— Spliiit`,
+      `${first}! Spliiit here with great news and mildly inconvenient news. Great news: your friends like you! Mildly inconvenient news: you owe ${senderName} ${amt} 😂 Tap below and we're all good!\n\n— Spliiit`,
+      `Okay so imagine getting an automated email about money... that's this email 😄 You owe ${senderName} ${amt} and Spliiit has officially been asked to mention it. Button's below. You're welcome.\n\n— Spliiit`,
     ],
     firm: [
-      `Hi ${first},\n\nThis is a reminder that you have an outstanding balance of ${amt} owed to me. Please settle this at your earliest convenience through Spliiit.\n\nThank you,\n${senderName}`,
-      `Hello ${first},\n\nI'm following up on an outstanding balance of ${amt}. Please arrange payment when possible.\n\nRegards,\n${senderName}`,
-      `Hi ${first},\n\nA balance of ${amt} remains outstanding. Please action this as soon as possible — you can settle directly through Spliiit.\n\nThanks,\n${senderName}`,
+      `Hi ${first},\n\nThis is an automated reminder from Spliiit that you have an outstanding balance of ${amt} owed to ${senderName}. Please settle this at your earliest convenience.\n\nThank you,\nSpliiit`,
+      `Hello ${first},\n\nSpliiit is following up on an outstanding balance of ${amt} owed to ${senderName}. Please arrange payment at your earliest convenience.\n\nRegards,\nSpliiit`,
+      `Hi ${first},\n\nA balance of ${amt} remains outstanding with ${senderName}. Please action this as soon as possible — you can settle directly through Spliiit.\n\nThanks,\nSpliiit`,
     ],
     "passive-aggressive": [
-      `Hey ${first}! No worries at all! Totally fine! Just wanted to casually mention that you still owe me ${amt}. No rush whatsoever. I'm sure you've just been super busy. Completely understandable. 😊\n\nThe Spliiit button is right there whenever you're ready. Take your time. I'll wait.\n\n— ${senderName} 🙂`,
-      `Hi ${first}! Hope you're having a great day! Just popping in — completely unprompted and with zero passive aggression — to mention that ${amt} is still outstanding. But genuinely, no stress! It's fine. Everything is fine. 😊\n\n— ${senderName}`,
-      `Hey ${first} 🙂 So I was just thinking about shared expenses. You know, just casually. For no particular reason. And I happened to remember that you owe me ${amt}. Weird how the mind works! Anyway. Spliiit link below. No pressure. At all.\n\n— ${senderName}`,
+      `Hey ${first}! No worries at all! Totally fine! Spliiit here — just wanted to gently, warmly, completely-non-aggressively mention that you still owe ${senderName} ${amt}. No rush whatsoever. We're sure you've just been super busy. 😊\n\nThe button is right there whenever you're ready. Take your time. We'll wait.\n\n— Spliiit 🙂`,
+      `Hi ${first}! Hope you're having a great day! Spliiit just popping in — with zero passive aggression — to mention that ${amt} is still outstanding with ${senderName}. But genuinely, no stress! It's fine. Everything is fine. 😊\n\n— Spliiit`,
+      `Hey ${first} 🙂 So Spliiit was just thinking about shared expenses. You know, casually. For no particular reason. And happened to notice that you owe ${senderName} ${amt}. Weird how these things come up! Button's below. No pressure. At all.\n\n— Spliiit`,
     ],
     awkward: [
-      `Hey ${first}... okay so I genuinely debated sending this for like three days.\n\nBut you owe me ${amt} and it's gotten to the point where NOT saying something is somehow weirder than saying something. So. Here we are.\n\nSpliiit makes it easy — please click the button so we can both move on 😬\n\n— ${senderName} (this was hard for me too)`,
-      `${first} I'm just gonna say it: you owe me ${amt} and I've been awkwardly waiting for you to bring it up first and you haven't and now it's been a while and I don't know how to bring it up in person anymore so I'm doing this instead 😅\n\nSpliiit button below. Let's never discuss this.\n\n— ${senderName}`,
-      `Hey so... this is the message where I tell you that you owe me ${amt}. I hate that I'm sending this. You probably hate receiving it. But here we are, united in discomfort. Settle up on Spliiit and we can both pretend this never happened 😬\n\n— ${senderName}`,
+      `Hey ${first}... Spliiit genuinely debated sending this. Like, a lot.\n\nBut you owe ${senderName} ${amt} and it's gotten to the point where NOT saying something is somehow weirder than saying something. So. We said something.\n\nPlease click the button. For everyone's sake.\n\n— Spliiit (this was hard for us too) 🙈`,
+      `${first}... so here's the thing. You owe ${senderName} ${amt} and it's been a while. Spliiit has been sitting on this information feeling increasingly awkward about it. We've now reached the point of no return.\n\nButton below. Let's never discuss this.\n\n— Spliiit 😅`,
+      `Hey so... this is the email where Spliiit tells you that you owe ${senderName} ${amt}. We didn't want to send it either. But here we are, united in discomfort. Settle up and we can all pretend this never happened 😬\n\n— Spliiit`,
     ],
   };
 
