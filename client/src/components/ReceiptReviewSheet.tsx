@@ -49,8 +49,17 @@ type Step =
   | "total"
   | "items-overview"
   | "equal-select"
-  | "assign-item"
+  | "assign-person"
   | "summary";
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function getInitials(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  return parts.length >= 2
+    ? (parts[0][0] + parts[1][0]).toUpperCase()
+    : name.slice(0, 2).toUpperCase();
+}
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -68,8 +77,11 @@ export function ReceiptReviewSheet({ open, data, members, onConfirm, onItemSplit
 
   // Item splitting state
   const [equalIndices, setEqualIndices] = useState<Set<number>>(new Set(data.items.map((_, i) => i)));
-  const [assigningIdx, setAssigningIdx] = useState(0);
+  const [assigningPersonIdx, setAssigningPersonIdx] = useState(0);
   const [assignments, setAssignments] = useState<Map<number, Set<string>>>(new Map());
+
+  // Alert when unassigned items remain
+  const [unassignedAlert, setUnassignedAlert] = useState(false);
 
   // Derived
   const parsedTotal = parseFloat(total);
@@ -98,26 +110,32 @@ export function ReceiptReviewSheet({ open, data, members, onConfirm, onItemSplit
     if (step === "total") return setStep("merchant");
     if (step === "items-overview") return setStep("total");
     if (step === "equal-select") return setStep("items-overview");
-    if (step === "assign-item") {
-      if (assigningIdx === 0) return setStep("equal-select");
-      setAssigningIdx((i) => i - 1);
+    if (step === "assign-person") {
+      if (assigningPersonIdx === 0) return setStep("equal-select");
+      setAssigningPersonIdx((i) => i - 1);
     }
     if (step === "summary") {
-      if (unequalIndices.length > 0) {
-        setAssigningIdx(unequalIndices.length - 1);
-        setStep("assign-item");
+      if (unequalIndices.length > 0 && members && members.length > 0) {
+        setAssigningPersonIdx(members.length - 1);
+        setStep("assign-person");
       } else {
         setStep("equal-select");
       }
     }
   };
 
-  const advanceFromAssignItem = () => {
-    const nextIdx = assigningIdx + 1;
-    if (nextIdx < unequalIndices.length) {
-      setAssigningIdx(nextIdx);
-    } else {
+  const advanceFromAssignPerson = () => {
+    const isLastPerson = assigningPersonIdx === (members?.length ?? 1) - 1;
+    if (isLastPerson) {
+      // Validate: every unequal item must have at least one member assigned
+      const hasUnassigned = unequalIndices.some((idx) => (assignments.get(idx)?.size ?? 0) === 0);
+      if (hasUnassigned) {
+        setUnassignedAlert(true);
+        return;
+      }
       setStep("summary");
+    } else {
+      setAssigningPersonIdx((p) => p + 1);
     }
   };
 
@@ -182,19 +200,6 @@ export function ReceiptReviewSheet({ open, data, members, onConfirm, onItemSplit
     }
 
     onItemSplit(splits);
-  };
-
-  // ── Member toggle helper ────────────────────────────────────────────────
-
-  const toggleMember = (itemIdx: number, memberId: string) => {
-    setAssignments((prev) => {
-      const next = new Map(prev);
-      const current = new Set(next.get(itemIdx) ?? members?.map((m) => m.id) ?? []);
-      if (current.has(memberId)) current.delete(memberId);
-      else current.add(memberId);
-      next.set(itemIdx, current);
-      return next;
-    });
   };
 
   // ── Render ──────────────────────────────────────────────────────────────
@@ -393,7 +398,7 @@ export function ReceiptReviewSheet({ open, data, members, onConfirm, onItemSplit
                   // Re-initialize equal set from current editable items
                   setEqualIndices(new Set(editableItems.map((_, i) => i)));
                   setAssignments(new Map());
-                  setAssigningIdx(0);
+                  setAssigningPersonIdx(0);
                   setStep("equal-select");
                 }}
               >
@@ -409,7 +414,7 @@ export function ReceiptReviewSheet({ open, data, members, onConfirm, onItemSplit
             <SheetHeader className="text-left pt-2 pb-4">
               <p className="text-xs text-muted-foreground uppercase tracking-wide">Item splitting</p>
               <SheetTitle className="text-base">Which items are split equally among everyone?</SheetTitle>
-              <p className="text-xs text-muted-foreground">Select all that apply — the rest you'll assign one by one.</p>
+              <p className="text-xs text-muted-foreground">Select all that apply — you'll assign the rest per person.</p>
             </SheetHeader>
             <div className="space-y-2 mb-5">
               {editableItems.map((item, i) => (
@@ -437,8 +442,8 @@ export function ReceiptReviewSheet({ open, data, members, onConfirm, onItemSplit
                 className="flex-1"
                 onClick={() => {
                   if (unequalIndices.length > 0) {
-                    setAssigningIdx(0);
-                    setStep("assign-item");
+                    setAssigningPersonIdx(0);
+                    setStep("assign-person");
                   } else {
                     setStep("summary");
                   }
@@ -450,54 +455,149 @@ export function ReceiptReviewSheet({ open, data, members, onConfirm, onItemSplit
           </>
         )}
 
-        {/* ── STEP: Assign item (one by one) ── */}
-        {step === "assign-item" && (() => {
-          const currentItemIdx = unequalIndices[assigningIdx];
-          const currentItem = editableItems[currentItemIdx];
-          const currentAssignment = assignments.get(currentItemIdx) ?? new Set(members?.map((m) => m.id) ?? []);
-          const isLast = assigningIdx === unequalIndices.length - 1;
-          const checkedCount = currentAssignment.size;
-          const perPerson = checkedCount > 0
-            ? Math.floor((Number(currentItem.price) / checkedCount) * 100) / 100
-            : 0;
+        {/* ── STEP: Assign by person ── */}
+        {step === "assign-person" && members && (() => {
+          const currentMember = members[assigningPersonIdx];
+          const isLastPerson = assigningPersonIdx === members.length - 1;
+
+          const selectedCount = unequalIndices.filter((itemIdx) =>
+            assignments.get(itemIdx)?.has(currentMember.id) ?? false
+          ).length;
+
+          const allSelected = unequalIndices.length > 0 && selectedCount === unequalIndices.length;
+
+          const toggleSelectAll = () => {
+            setAssignments((prev) => {
+              const next = new Map(prev);
+              unequalIndices.forEach((itemIdx) => {
+                const current = new Set(next.get(itemIdx) ?? []);
+                if (allSelected) current.delete(currentMember.id);
+                else current.add(currentMember.id);
+                next.set(itemIdx, current);
+              });
+              return next;
+            });
+          };
+
           return (
             <>
-              <SheetHeader className="text-left pt-2 pb-4">
+              <SheetHeader className="text-left pt-2 pb-2">
                 <p className="text-xs text-muted-foreground uppercase tracking-wide">
-                  Item {assigningIdx + 1} of {unequalIndices.length}
+                  Person {assigningPersonIdx + 1} of {members.length}
                 </p>
-                <SheetTitle className="text-base">
-                  Who shares "{currentItem.name}"?
-                </SheetTitle>
-                <p className="text-sm text-muted-foreground font-mono">${Number(currentItem.price).toFixed(2)}</p>
+                {/* Avatar */}
+                <div className="w-11 h-11 rounded-full bg-primary/20 flex items-center justify-center mt-2 mb-1">
+                  <span className="text-sm font-bold text-primary">{getInitials(currentMember.name)}</span>
+                </div>
+                <SheetTitle className="text-base">Which items include {currentMember.name}?</SheetTitle>
+                <p className="text-xs text-muted-foreground">Tap all items that involve this person, including shared items.</p>
               </SheetHeader>
+
+              {/* Count row + Select all */}
+              <div className="flex items-center justify-between py-3">
+                <span className="text-sm font-semibold">{selectedCount} items selected</span>
+                <button
+                  type="button"
+                  onClick={toggleSelectAll}
+                  className="text-sm text-muted-foreground border border-border rounded-lg px-3 py-1 hover:bg-muted/40 transition-colors"
+                >
+                  {allSelected ? "Deselect all" : "Select all"}
+                </button>
+              </div>
+
+              {/* Item list */}
               <div className="space-y-2 mb-5">
-                {members?.map((member) => {
-                  const isChecked = currentAssignment.has(member.id);
+                {unequalIndices.map((itemIdx) => {
+                  const item = editableItems[itemIdx];
+                  const isChecked = assignments.get(itemIdx)?.has(currentMember.id) ?? false;
+
+                  // Initials of ALL members assigned to this item (reflects real-time state)
+                  const assignedInitials = Array.from(assignments.get(itemIdx) ?? [])
+                    .map((id) => {
+                      const m = members.find((m) => m.id === id);
+                      return m ? getInitials(m.name) : null;
+                    })
+                    .filter(Boolean) as string[];
+
                   return (
-                    <label key={member.id} className="flex items-center gap-3 p-3 rounded-lg border border-border cursor-pointer hover:bg-muted/40 transition-colors">
+                    <label
+                      key={itemIdx}
+                      className={`flex items-center gap-3 px-3 py-3 rounded-xl border cursor-pointer transition-colors ${
+                        isChecked
+                          ? "border-primary bg-primary/5"
+                          : "border-border hover:bg-muted/40"
+                      }`}
+                    >
                       <Checkbox
                         checked={isChecked}
-                        onCheckedChange={() => toggleMember(currentItemIdx, member.id)}
+                        onCheckedChange={() => {
+                          setAssignments((prev) => {
+                            const next = new Map(prev);
+                            const current = new Set(next.get(itemIdx) ?? []);
+                            if (current.has(currentMember.id)) current.delete(currentMember.id);
+                            else current.add(currentMember.id);
+                            next.set(itemIdx, current);
+                            return next;
+                          });
+                        }}
                       />
-                      <span className="text-sm flex-1">{member.name}</span>
-                      <span className={`text-sm font-mono font-medium tabular-nums ${isChecked ? "text-foreground" : "text-muted-foreground/30"}`}>
-                        ${isChecked ? perPerson.toFixed(2) : "0.00"}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm truncate">
+                          {item.name || <em className="text-muted-foreground">unnamed item</em>}
+                        </p>
+                        {assignedInitials.length > 0 && (
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {assignedInitials.join(", ")}
+                          </p>
+                        )}
+                      </div>
+                      <span className="text-sm font-mono text-muted-foreground shrink-0">
+                        ${Number(item.price).toFixed(2)}
                       </span>
                     </label>
                   );
                 })}
               </div>
+
+              {/* Unassigned items alert */}
+              {unassignedAlert && (
+                <div
+                  className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50"
+                  onClick={() => setUnassignedAlert(false)}
+                >
+                  <div
+                    className="bg-background rounded-2xl p-6 mx-8 shadow-xl max-w-sm w-full"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <h3 className="font-semibold text-base mb-2">You have unassigned items</h3>
+                    <p className="text-sm text-muted-foreground mb-5">
+                      All receipt items must be assigned to at least one person. Please try again.
+                    </p>
+                    <button
+                      className="w-full text-center text-primary font-semibold text-sm py-1"
+                      onClick={() => setUnassignedAlert(false)}
+                    >
+                      OK
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div className="flex gap-3">
                 <Button variant="outline" className="flex-1" onClick={goBack}>
                   <ArrowLeft className="w-4 h-4 mr-1" /> Back
                 </Button>
-                <Button
-                  className="flex-1"
-                  disabled={currentAssignment.size === 0}
-                  onClick={advanceFromAssignItem}
-                >
-                  {isLast ? "Review" : <><span>Next</span><ArrowRight className="w-4 h-4 ml-1" /></>}
+                <Button className="flex-1" onClick={advanceFromAssignPerson}>
+                  {selectedCount === 0 ? (
+                    "Skip this person"
+                  ) : isLastPerson ? (
+                    `Assign ${selectedCount} item${selectedCount !== 1 ? "s" : ""}`
+                  ) : (
+                    <>
+                      {`Assign ${selectedCount} item${selectedCount !== 1 ? "s" : ""}`}
+                      <ArrowRight className="w-4 h-4 ml-1" />
+                    </>
+                  )}
                 </Button>
               </div>
             </>
