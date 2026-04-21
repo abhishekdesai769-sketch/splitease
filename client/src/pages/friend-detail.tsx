@@ -9,11 +9,10 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Plus, Trash2, Receipt, CheckCircle2, HandCoins, AlertTriangle, UserMinus, Camera, X, Mail, Loader2, FileText, Upload, MoreVertical, Download, Repeat, Crown, Bell } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Receipt, CheckCircle2, HandCoins, AlertTriangle, UserMinus, Camera, X, Mail, Loader2, FileText, Upload, MoreVertical, Download, Repeat, Crown } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { UpgradePromptSheet } from "@/components/UpgradePromptSheet";
 import { ScanReceiptButton } from "@/components/ScanReceiptButton";
-import { ReminderSheet } from "@/components/ReminderSheet";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
@@ -34,7 +33,6 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurringFrequency, setRecurringFrequency] = useState<"monthly" | "weekly">("monthly");
   const [upgradeSheetOpen, setUpgradeSheetOpen] = useState(false);
-  const [reminderOpen, setReminderOpen] = useState(false);
 
   // Splitwise import state
   const [importOpen, setImportOpen] = useState(false);
@@ -771,38 +769,15 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
             )}
           </div>
           {myBalance !== 0 && (
-            <div className="flex items-center gap-2">
-              {myBalance > 0 && user?.isPremium && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setReminderOpen(true)}
-                  title="Send payment reminder"
-                >
-                  <Bell className="w-4 h-4 mr-1.5" />
-                  Remind
-                </Button>
-              )}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setSettleUpOpen(true)}
-                data-testid="friend-detail-settle-up"
-              >
-                <HandCoins className="w-4 h-4 mr-1.5" />
-                Settle Up
-              </Button>
-            </div>
-          )}
-          {myBalance > 0 && !user?.isPremium && (
-            <button
-              className="text-xs text-muted-foreground flex items-center gap-1 hover:text-primary transition-colors"
-              onClick={() => setUpgradeSheetOpen(true)}
-              title="Premium feature"
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setSettleUpOpen(true)}
+              data-testid="friend-detail-settle-up"
             >
-              <Bell className="w-3.5 h-3.5" />
-              <span>Remind</span>
-            </button>
+              <HandCoins className="w-4 h-4 mr-1.5" />
+              Settle Up
+            </Button>
           )}
         </div>
       </Card>
@@ -1079,16 +1054,6 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
         </Card>
       )}
 
-      {/* Payment reminder sheet */}
-      {friend && (
-        <ReminderSheet
-          open={reminderOpen}
-          onClose={() => setReminderOpen(false)}
-          recipientId={friendId}
-          recipientName={friend.name}
-          amount={myBalance}
-        />
-      )}
 
     </div>
   );

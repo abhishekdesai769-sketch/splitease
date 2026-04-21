@@ -1601,46 +1601,8 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
         </Card>
       )}
 
-      {/* Activity Feed */}
-      {groupActivity.length > 0 && (
-        <div>
-          <h3 className="text-sm font-medium text-muted-foreground mb-2 font-serif">Activity</h3>
-          <div className="space-y-1">
-            {groupActivity.map((item) => {
-              const isAdded = item.action === "expense_added";
-              const isDeleted = item.action === "expense_deleted";
-              const isSettled = item.action === "settled_up";
-              const relTime = (() => {
-                const diff = Date.now() - new Date(item.createdAt).getTime();
-                const mins = Math.floor(diff / 60000);
-                if (mins < 1) return "just now";
-                if (mins < 60) return `${mins}m ago`;
-                const hrs = Math.floor(mins / 60);
-                if (hrs < 24) return `${hrs}h ago`;
-                return `${Math.floor(hrs / 24)}d ago`;
-              })();
-              return (
-                <div key={item.id} className="flex items-start gap-2.5 py-2 border-b border-border/40 last:border-0">
-                  <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 mt-0.5 text-xs font-semibold text-white`}
-                    style={{ backgroundColor: members.find(m => m.id === item.userId)?.avatarColor || "#888" }}>
-                    {item.userName[0]?.toUpperCase()}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm leading-snug">
-                      <span className="font-medium">{item.userId === user?.id ? "You" : item.userName}</span>
-                      {" "}
-                      <span className={isDeleted ? "text-destructive" : isSettled ? "text-primary" : "text-muted-foreground"}>
-                        {item.description}
-                      </span>
-                    </p>
-                    <p className="text-xs text-muted-foreground/60 font-mono mt-0.5">{relTime}</p>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
+      {/* Activity Feed — hidden for now, data collecting silently via groupActivity query */}
+      {/* Will be surfaced when we have a dedicated audit/history view */}
 
       {/* Expense Detail Dialog */}
       <Dialog open={!!detailExpense} onOpenChange={(open) => { if (!open) setDetailExpense(null); }}>
