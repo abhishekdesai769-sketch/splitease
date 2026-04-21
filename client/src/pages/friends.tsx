@@ -12,6 +12,7 @@ import { UserPlus, Plus, Users2, HandCoins, CheckCircle2, ChevronRight, Camera, 
 import { Switch } from "@/components/ui/switch";
 import { UpgradePromptSheet } from "@/components/UpgradePromptSheet";
 import { ScanReceiptButton } from "@/components/ScanReceiptButton";
+import { CurrencySelector } from "@/components/CurrencySelector";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 import { useAuth } from "@/lib/auth";
@@ -33,6 +34,7 @@ export default function Friends() {
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurringFrequency, setRecurringFrequency] = useState<"monthly" | "weekly">("monthly");
+  const [currency, setCurrency] = useState("CAD");
   const [upgradeSheetOpen, setUpgradeSheetOpen] = useState(false);
 
   const { data: friendsList = [], isLoading } = useQuery<SafeUser[]>({
@@ -42,6 +44,21 @@ export default function Friends() {
   const { data: directExpenses = [] } = useQuery<Expense[]>({
     queryKey: ["/api/friends/expenses"],
   });
+
+  // Exchange rates (premium)
+  const { data: ratesData } = useQuery<{ rates: Record<string, number> }>({
+    queryKey: ["/api/exchange-rates"],
+    enabled: !!user?.isPremium,
+    staleTime: 6 * 60 * 60 * 1000,
+  });
+  const fxRates = ratesData?.rates ?? {};
+  const cadPreview = (() => {
+    if (currency === "CAD" || !amount) return null;
+    const rate = fxRates[currency];
+    if (!rate) return null;
+    const cad = parseFloat(amount) / rate;
+    return isNaN(cad) ? null : cad.toFixed(2);
+  })();
 
   const addFriendMutation = useMutation({
     mutationFn: async () => {
@@ -83,6 +100,9 @@ export default function Friends() {
       formData.append("paidById", actualPaidById);
       formData.append("splitAmongIds", JSON.stringify(splitAmongIds));
       formData.append("date", new Date().toISOString());
+      if (currency !== "CAD") {
+        formData.append("currency", currency);
+      }
       if (receiptFile) {
         formData.append("receipt", receiptFile);
       }
@@ -173,6 +193,7 @@ export default function Friends() {
     setReceiptFile(null);
     setIsRecurring(false);
     setRecurringFrequency("monthly");
+    setCurrency("CAD");
   };
 
   // Calculate balances across all direct (non-group) expenses
@@ -252,7 +273,15 @@ export default function Friends() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>Amount ($)</Label>
+                    <div className="flex items-center justify-between">
+                      <Label>Amount</Label>
+                      <CurrencySelector
+                        value={currency}
+                        onChange={setCurrency}
+                        isPremium={!!user?.isPremium}
+                        onUpgrade={() => setUpgradeSheetOpen(true)}
+                      />
+                    </div>
                     <Input
                       type="number"
                       step="0.01"
@@ -262,6 +291,11 @@ export default function Friends() {
                       onChange={(e) => setAmount(e.target.value)}
                       data-testid="input-direct-amount"
                     />
+                    {cadPreview && (
+                      <p className="text-xs text-muted-foreground font-mono">
+                        ≈ CA${cadPreview} will be recorded
+                      </p>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <Label>Paid by</Label>

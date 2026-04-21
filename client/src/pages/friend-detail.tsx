@@ -13,6 +13,7 @@ import { ArrowLeft, Plus, Trash2, Receipt, CheckCircle2, HandCoins, AlertTriangl
 import { Switch } from "@/components/ui/switch";
 import { UpgradePromptSheet } from "@/components/UpgradePromptSheet";
 import { ScanReceiptButton } from "@/components/ScanReceiptButton";
+import { CurrencySelector, formatExpenseAmount } from "@/components/CurrencySelector";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
@@ -29,6 +30,7 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
   const [paidById, setPaidById] = useState("");
   const [splitType, setSplitType] = useState<"equal" | "they_pay" | "you_pay">("equal");
   const [expenseNotes, setExpenseNotes] = useState("");
+  const [currency, setCurrency] = useState("CAD");
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurringFrequency, setRecurringFrequency] = useState<"monthly" | "weekly">("monthly");
@@ -77,6 +79,21 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
     queryKey: ["/api/friends/expenses"],
   });
 
+  // Exchange rates for currency conversion (premium)
+  const { data: ratesData } = useQuery<{ rates: Record<string, number> }>({
+    queryKey: ["/api/exchange-rates"],
+    enabled: !!user?.isPremium,
+    staleTime: 6 * 60 * 60 * 1000,
+  });
+  const fxRates = ratesData?.rates ?? {};
+  const cadPreview = (() => {
+    if (currency === "CAD" || !amount) return null;
+    const rate = fxRates[currency];
+    if (!rate) return null;
+    const cad = parseFloat(amount) / rate;
+    return isNaN(cad) ? null : cad.toFixed(2);
+  })();
+
   const friend = friendsList.find((f) => f.id === friendId);
 
   // Filter expenses to only those between the current user and this friend
@@ -116,6 +133,9 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
       formData.append("date", new Date().toISOString());
       if (expenseNotes.trim()) {
         formData.append("notes", expenseNotes.trim());
+      }
+      if (currency !== "CAD") {
+        formData.append("currency", currency);
       }
       if (receiptFile) {
         formData.append("receipt", receiptFile);
@@ -307,6 +327,7 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
     setIsRecurring(false);
     setRecurringFrequency("monthly");
     setExpenseNotes("");
+    setCurrency("CAD");
   };
 
   // Can the current user delete this expense?
@@ -533,7 +554,15 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Amount ($)</Label>
+                <div className="flex items-center justify-between">
+                  <Label>Amount</Label>
+                  <CurrencySelector
+                    value={currency}
+                    onChange={setCurrency}
+                    isPremium={!!user?.isPremium}
+                    onUpgrade={() => setUpgradeSheetOpen(true)}
+                  />
+                </div>
                 <Input
                   type="number"
                   step="0.01"
@@ -543,6 +572,11 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
                   onChange={(e) => setAmount(e.target.value)}
                   data-testid="input-friend-detail-amount"
                 />
+                {cadPreview && (
+                  <p className="text-xs text-muted-foreground font-mono">
+                    ≈ CA${cadPreview} will be recorded
+                  </p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label>Paid by</Label>
@@ -1023,8 +1057,16 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
                         {paidByName} paid · {new Date(expense.date).toLocaleDateString()}
                       </p>
                     </div>
-                    <span className="text-base font-semibold text-foreground shrink-0 font-mono">
-                      ${expense.amount.toFixed(2)}
+                    <span className="text-right shrink-0 font-mono">
+                      {expense.currency && expense.currency !== "CAD" && expense.originalAmount ? (
+                        <span className="text-base font-semibold text-foreground block">
+                          {formatExpenseAmount(expense.amount, expense.currency, expense.originalAmount)}
+                        </span>
+                      ) : (
+                        <span className="text-base font-semibold text-foreground">
+                          ${expense.amount.toFixed(2)}
+                        </span>
+                      )}
                     </span>
                     {canDeleteExpense(expense) && (
                       <Button

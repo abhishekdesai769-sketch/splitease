@@ -98,6 +98,9 @@ export const expenses = pgTable("expenses", {
   receiptData: text("receipt_data"), // JSON string from AI receipt scanner, nullable
   splitAmounts: text("split_amounts"), // JSON: {"userId": amount, ...} for unequal splits. Null = equal division.
   notes: text("notes"), // optional note/comment added by the person creating the expense
+  // Currency support (premium) — amount is ALWAYS stored in CAD; these columns are metadata only
+  currency: text("currency"),         // null / "CAD" = no conversion; "USD" | "EUR" | etc. = original currency
+  originalAmount: real("original_amount"), // amount as entered by user in the foreign currency
 }, (table) => [
   index("expenses_group_id_idx").on(table.groupId),
   index("expenses_paid_by_idx").on(table.paidById),

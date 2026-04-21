@@ -17,6 +17,26 @@ import {
 } from "./middleware";
 
 
+// ─── Exchange rate cache (premium currency converter) ─────────────────────────
+const SUPPORTED_FX = ["USD", "EUR", "GBP", "AUD", "INR", "MXN", "JPY", "CHF", "NZD", "SGD", "HKD"];
+let _fxCache: { rates: Record<string, number>; fetchedAt: number } | null = null;
+
+async function getExchangeRates(): Promise<Record<string, number>> {
+  const SIX_HOURS = 6 * 60 * 60 * 1000;
+  if (_fxCache && Date.now() - _fxCache.fetchedAt < SIX_HOURS) return _fxCache.rates;
+  try {
+    const res = await fetch(`https://api.frankfurter.app/latest?from=CAD&to=${SUPPORTED_FX.join(",")}`);
+    if (!res.ok) throw new Error("Frankfurter API error");
+    const data = await res.json() as { rates: Record<string, number> };
+    const rates: Record<string, number> = { CAD: 1, ...data.rates };
+    _fxCache = { rates, fetchedAt: Date.now() };
+    return rates;
+  } catch {
+    if (_fxCache) return _fxCache.rates; // stale cache beats nothing
+    throw new Error("Exchange rates temporarily unavailable");
+  }
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -815,6 +835,16 @@ setInterval(loadAll,30000);
     res.json({ deleted: toDelete.length });
   });
 
+  // Exchange rates for premium currency converter (cached 6h, no API key needed)
+  app.get("/api/exchange-rates", requireAuth, async (req, res) => {
+    try {
+      const rates = await getExchangeRates();
+      res.json({ rates, base: "CAD", currencies: ["CAD", ...SUPPORTED_FX] });
+    } catch {
+      res.status(503).json({ error: "Exchange rates temporarily unavailable" });
+    }
+  });
+
   // Direct expenses between friends (no group)
   app.get("/api/friends/expenses", requireAuth, async (req, res) => {
     const userId = (req.session as any).userId;
@@ -854,9 +884,26 @@ setInterval(loadAll,30000);
       return res.status(403).json({ error: "Unauthorized" });
     }
 
+    // Currency conversion (premium) — store amount in CAD, keep original as metadata
+    const reqCurrency = req.body.currency as string | undefined;
+    let storedAmount = parsedAmount;
+    let storedCurrency: string | null = null;
+    let storedOriginalAmount: number | null = null;
+    if (reqCurrency && reqCurrency !== "CAD") {
+      try {
+        const rates = await getExchangeRates();
+        const rate = rates[reqCurrency];
+        if (rate && rate > 0) {
+          storedCurrency = reqCurrency;
+          storedOriginalAmount = parsedAmount;
+          storedAmount = Math.round((parsedAmount / rate) * 100) / 100;
+        }
+      } catch { /* fall back to treating as CAD */ }
+    }
+
     const expense = await storage.createExpense({
       description: sanitize(description, 200),
-      amount: parsedAmount,
+      amount: storedAmount,
       paidById,
       splitAmongIds,
       groupId: null,
@@ -865,6 +912,8 @@ setInterval(loadAll,30000);
       isSettlement: !!isSettlement,
       notes: notes ? sanitize(notes, 500) : null,
       splitAmounts,
+      currency: storedCurrency,
+      originalAmount: storedOriginalAmount,
     });
     res.status(201).json(expense);
 
@@ -1575,9 +1624,26 @@ setInterval(loadAll,30000);
       }
     }
 
+    // Currency conversion (premium) — store amount in CAD, keep original as metadata
+    const reqCurrency2 = req.body.currency as string | undefined;
+    let storedAmount2 = parsedAmount;
+    let storedCurrency2: string | null = null;
+    let storedOriginalAmount2: number | null = null;
+    if (reqCurrency2 && reqCurrency2 !== "CAD") {
+      try {
+        const rates = await getExchangeRates();
+        const rate = rates[reqCurrency2];
+        if (rate && rate > 0) {
+          storedCurrency2 = reqCurrency2;
+          storedOriginalAmount2 = parsedAmount;
+          storedAmount2 = Math.round((parsedAmount / rate) * 100) / 100;
+        }
+      } catch { /* fall back to treating as CAD */ }
+    }
+
     const expense = await storage.createExpense({
       description: sanitize(description, 200),
-      amount: parsedAmount,
+      amount: storedAmount2,
       paidById,
       splitAmongIds,
       groupId: groupId || null,
@@ -1586,6 +1652,8 @@ setInterval(loadAll,30000);
       isSettlement: !!isSettlement,
       notes: notes ? sanitize(notes, 500) : null,
       splitAmounts,
+      currency: storedCurrency2,
+      originalAmount: storedOriginalAmount2,
     });
     res.status(201).json(expense);
 

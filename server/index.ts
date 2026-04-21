@@ -89,6 +89,8 @@ app.use((req, res, next) => {
 async function runMigrations() {
   try {
     await pool.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS notes text`);
+    await pool.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS currency text`);
+    await pool.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS original_amount real`);
     await pool.query(`
       CREATE TABLE IF NOT EXISTS activity_log (
         id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
