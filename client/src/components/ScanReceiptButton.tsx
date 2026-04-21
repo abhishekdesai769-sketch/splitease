@@ -98,7 +98,7 @@ export function ScanReceiptButton({ isPremium, onUpgrade, members, onItemSplit, 
         className="flex items-center gap-2 w-full rounded-lg border border-dashed border-amber-400/60 p-3 text-sm text-amber-600 hover:bg-amber-50/10 transition-colors"
       >
         <Camera className="w-4 h-4 shrink-0" />
-        <span className="flex-1 text-left">AI scan · splits every item for you</span>
+        <span className="flex-1 text-left">AI scan · splits items for you</span>
         <span className="flex items-center gap-1 text-xs font-semibold text-amber-500">
           <Crown className="w-3 h-3" /> Premium
         </span>
@@ -118,7 +118,7 @@ export function ScanReceiptButton({ isPremium, onUpgrade, members, onItemSplit, 
         ) : (
           <Camera className="w-4 h-4 shrink-0" />
         )}
-        <span>{isScanning ? "Scanning receipt…" : "AI scan · splits every item for you"}</span>
+        <span>{isScanning ? "Scanning receipt…" : "AI scan · splits items for you"}</span>
         <input
           ref={fileRef}
           type="file"
