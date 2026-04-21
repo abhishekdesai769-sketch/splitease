@@ -217,7 +217,7 @@ export default function Upgrade() {
     "Recurring expenses (auto-create monthly bills)",
     "Smart payment reminders with tone control",
     "AI-powered receipt scan with item-level splitting",
-    "Cross-group balance view",
+    "Multi-currency expenses with live exchange rates",
     "Priority support",
     "Early access to new features",
   ];
