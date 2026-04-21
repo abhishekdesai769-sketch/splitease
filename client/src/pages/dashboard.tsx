@@ -333,14 +333,14 @@ export default function Dashboard() {
           <h2 className="text-base font-semibold mb-3 font-serif">Recent Expenses</h2>
           <div className="space-y-2">
             {recentExpenses.map((expense) => (
-              <Card key={expense.id} className="p-3 flex items-center justify-between gap-2">
+              <Card key={expense.id} className="p-4 flex items-center justify-between gap-2">
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{expense.description}</p>
-                  <p className="text-xs text-muted-foreground font-mono">
+                  <p className="text-base font-medium truncate">{expense.description}</p>
+                  <p className="text-sm text-muted-foreground font-mono mt-0.5">
                     Paid by {getPersonName(expense.paidById)} · {new Date(expense.date).toLocaleDateString()}
                   </p>
                 </div>
-                <p className="text-sm font-semibold text-primary shrink-0 font-mono">${expense.amount.toFixed(2)}</p>
+                <p className="text-base font-semibold text-primary shrink-0 font-mono">${expense.amount.toFixed(2)}</p>
               </Card>
             ))}
           </div>

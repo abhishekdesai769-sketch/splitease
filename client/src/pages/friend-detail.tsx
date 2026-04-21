@@ -1008,32 +1008,32 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
               return (
                 <Card
                   key={expense.id}
-                  className={`p-3 ${expense.isSettlement ? "border-primary/30 bg-primary/5" : ""}`}
+                  className={`p-4 ${expense.isSettlement ? "border-primary/30 bg-primary/5" : ""}`}
                   data-testid={`friend-expense-${expense.id}`}
                 >
                   <div className="flex items-center gap-3">
-                    <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${expense.isSettlement ? "bg-primary/20" : "bg-primary/10"}`}>
+                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${expense.isSettlement ? "bg-primary/20" : "bg-primary/10"}`}>
                       {expense.isSettlement ? (
-                        <CheckCircle2 className="w-4 h-4 text-primary" />
+                        <CheckCircle2 className="w-5 h-5 text-primary" />
                       ) : (
-                        <Receipt className="w-4 h-4 text-primary" />
+                        <Receipt className="w-5 h-5 text-primary" />
                       )}
                     </div>
                     <div
                       className={`flex-1 min-w-0 ${(expense as any).receiptData ? "cursor-pointer" : ""}`}
                       onClick={() => { if ((expense as any).receiptData) handleViewReceipt(expense.id); }}
                     >
-                      <p className="text-sm font-medium truncate">
+                      <p className="text-base font-medium truncate">
                         {expense.isSettlement ? "Settlement" : expense.description}
                         {(expense as any).receiptData && (
-                          <FileText className="w-3 h-3 text-primary inline ml-1 -mt-0.5" />
+                          <FileText className="w-3.5 h-3.5 text-primary inline ml-1.5 -mt-0.5" />
                         )}
                       </p>
-                      <p className="text-xs text-muted-foreground font-mono">
+                      <p className="text-sm text-muted-foreground font-mono mt-0.5">
                         {paidByName} paid · {new Date(expense.date).toLocaleDateString()}
                       </p>
                     </div>
-                    <span className="text-sm font-semibold text-foreground shrink-0 font-mono">
+                    <span className="text-base font-semibold text-foreground shrink-0 font-mono">
                       ${expense.amount.toFixed(2)}
                     </span>
                     {canDeleteExpense(expense) && (

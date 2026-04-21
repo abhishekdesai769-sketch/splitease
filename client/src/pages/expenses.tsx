@@ -120,18 +120,18 @@ export default function Expenses() {
             const href = expense.groupId ? `/groups/${expense.groupId}` : "/friends";
             return (
               <Link key={expense.id} href={href}>
-                <Card className="p-3 hover-elevate cursor-pointer" data-testid={`expense-item-${expense.id}`}>
+                <Card className="p-4 hover-elevate cursor-pointer" data-testid={`expense-item-${expense.id}`}>
                   <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                      <Receipt className="w-4 h-4 text-primary" />
+                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                      <Receipt className="w-5 h-5 text-primary" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{expense.description}</p>
-                      <p className="text-xs text-muted-foreground font-mono">
+                      <p className="text-base font-medium truncate">{expense.description}</p>
+                      <p className="text-sm text-muted-foreground font-mono mt-0.5">
                         {getPersonName(expense.paidById)} · {getGroupName(expense.groupId)} · {new Date(expense.date).toLocaleDateString()}
                       </p>
                     </div>
-                    <span className="text-sm font-semibold text-foreground shrink-0 font-mono">
+                    <span className="text-base font-semibold text-foreground shrink-0 font-mono">
                       ${expense.amount.toFixed(2)}
                     </span>
                   </div>

@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Plus, ArrowLeft, Trash2, Shuffle, Receipt, UserPlus, X, HandCoins, CheckCircle2, AlertTriangle, Camera, Mail, Loader2, Crown, Shield, LogOut, UserMinus, Clock, Check, Ghost, FileText, Pencil, MoreVertical, Upload, Download, Repeat } from "lucide-react";
+import { Plus, ArrowLeft, Trash2, Shuffle, Receipt, UserPlus, X, HandCoins, CheckCircle2, AlertTriangle, Camera, Mail, Loader2, Crown, Shield, LogOut, UserMinus, Clock, Check, Ghost, FileText, Pencil, MoreVertical, Upload, Download, Repeat, ChevronDown } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { UpgradePromptSheet } from "@/components/UpgradePromptSheet";
 import { ScanReceiptButton } from "@/components/ScanReceiptButton";
@@ -34,6 +34,11 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurringFrequency, setRecurringFrequency] = useState<"monthly" | "weekly">("monthly");
   const [upgradeSheetOpen, setUpgradeSheetOpen] = useState(false);
+
+  // Tax & tip adjustments
+  const [taxPercent, setTaxPercent] = useState("");
+  const [tipAmount, setTipAmount] = useState("");
+  const [showAdjustments, setShowAdjustments] = useState(false);
 
   const [inviteEmail, setInviteEmail] = useState("");
   const [settleUpOpen, setSettleUpOpen] = useState(false);
@@ -117,7 +122,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
 
       const formData = new FormData();
       formData.append("description", description.trim());
-      formData.append("amount", String(parseFloat(amount)));
+      formData.append("amount", String(finalAmount));
       formData.append("paidById", actualPaidById);
       formData.append("splitAmongIds", JSON.stringify(splitAmongIds));
       formData.append("groupId", groupId);
@@ -158,7 +163,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
 
       const res = await apiRequest("POST", "/api/recurring", {
         description: description.trim(),
-        amount: parseFloat(amount),
+        amount: finalAmount,
         paidById: actualPaidById,
         splitAmongIds,
         groupId,
@@ -473,6 +478,12 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
     },
   });
 
+  // Computed final amount: base + tax + tip (used for splitting and submission)
+  const _baseAmount = parseFloat(amount) || 0;
+  const _taxAmt = _baseAmount * (parseFloat(taxPercent) || 0) / 100;
+  const _tipAmt = parseFloat(tipAmount) || 0;
+  const finalAmount = _baseAmount + _taxAmt + _tipAmt;
+
   const resetForm = () => {
     setDescription("");
     setAmount("");
@@ -482,6 +493,9 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
     setReceiptFile(null);
     setIsRecurring(false);
     setRecurringFrequency("monthly");
+    setTaxPercent("");
+    setTipAmount("");
+    setShowAdjustments(false);
   };
 
   const toggleSplit = (id: string) => {
@@ -664,7 +678,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
               <DialogTitle>Add Expense</DialogTitle>
             </DialogHeader>
             <form
-              className="space-y-4 pt-2"
+              className="space-y-5 pt-2"
               onSubmit={(e) => {
                 e.preventDefault();
                 if (description.trim() && amount && paidById && splitAmong.length > 0) {
@@ -697,6 +711,74 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                   data-testid="input-expense-amount"
                 />
               </div>
+
+              {/* ── Tax & Tip Adjustments ── */}
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setShowAdjustments(!showAdjustments)}
+                  className="flex items-center gap-1.5 text-sm font-medium text-primary"
+                >
+                  <ChevronDown className={`w-4 h-4 transition-transform duration-150 ${showAdjustments ? "rotate-180" : ""}`} />
+                  {showAdjustments ? "Remove adjustments" : "Add tip & tax"}
+                </button>
+
+                {showAdjustments && (
+                  <div className="mt-3 rounded-lg border border-border p-3 space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <Label>Tax (%)</Label>
+                        <Input
+                          type="number"
+                          step="0.1"
+                          min="0"
+                          placeholder="e.g. 13"
+                          value={taxPercent}
+                          onChange={(e) => setTaxPercent(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Tip ($)</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          placeholder="0.00"
+                          value={tipAmount}
+                          onChange={(e) => setTipAmount(e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Live breakdown — only show when base amount + at least one adjustment is entered */}
+                    {_baseAmount > 0 && (_taxAmt > 0 || _tipAmt > 0) && (
+                      <div className="space-y-1.5 pt-2 border-t border-border/50 text-sm">
+                        <div className="flex justify-between text-muted-foreground">
+                          <span>Subtotal</span>
+                          <span>${_baseAmount.toFixed(2)}</span>
+                        </div>
+                        {_taxAmt > 0 && (
+                          <div className="flex justify-between text-muted-foreground">
+                            <span>Tax ({taxPercent}%)</span>
+                            <span>${_taxAmt.toFixed(2)}</span>
+                          </div>
+                        )}
+                        {_tipAmt > 0 && (
+                          <div className="flex justify-between text-muted-foreground">
+                            <span>Tip</span>
+                            <span>${_tipAmt.toFixed(2)}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between font-semibold border-t border-border/50 pt-1.5">
+                          <span>Total to split</span>
+                          <span className="text-primary">${finalAmount.toFixed(2)}</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
               <div className="space-y-2">
                 <Label>Paid by</Label>
                 <Select value={paidById} onValueChange={setPaidById}>
@@ -754,7 +836,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                     Select all
                   </button>
                 </div>
-                <div className="space-y-1.5">
+                <div className="space-y-2">
                   {members.map((m) => {
                     // Calculate per-person amount for preview
                     const effectiveSplit = groupSplitType === "they_pay"
@@ -762,25 +844,25 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                       : groupSplitType === "you_pay"
                         ? [paidById]
                         : splitAmong;
-                    const perPerson = effectiveSplit.length > 0 && amount
-                      ? parseFloat(amount) / effectiveSplit.length
+                    const perPerson = effectiveSplit.length > 0 && finalAmount > 0
+                      ? finalAmount / effectiveSplit.length
                       : 0;
-                    const showAmount = splitAmong.includes(m.id) && amount && splitAmong.length > 0;
+                    const showAmount = splitAmong.includes(m.id) && finalAmount > 0 && splitAmong.length > 0;
 
                     return (
                       <label
                         key={m.id}
-                        className="flex items-center gap-3 p-2 rounded-lg cursor-pointer hover:bg-muted/50 transition-colors"
+                        className="flex items-center gap-3 p-3 rounded-lg cursor-pointer hover:bg-muted/50 transition-colors"
                       >
                         <Checkbox
                           checked={splitAmong.includes(m.id)}
                           onCheckedChange={() => toggleSplit(m.id)}
                         />
-                        <span className="text-sm">
+                        <span className="text-base">
                           {m.id === user?.id ? `${m.name} (You)` : m.name}
                         </span>
                         {showAmount && effectiveSplit.includes(m.id) && (
-                          <span className="text-xs text-muted-foreground ml-auto">
+                          <span className="text-sm text-muted-foreground ml-auto font-mono">
                             ${perPerson.toFixed(2)}
                           </span>
                         )}
@@ -791,13 +873,13 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
               </div>
 
               {/* Preview summary */}
-              {amount && paidById && splitAmong.length > 0 && groupSplitType !== "equal" && (
+              {finalAmount > 0 && paidById && splitAmong.length > 0 && groupSplitType !== "equal" && (
                 <div className="rounded-lg bg-muted/50 p-3 text-center">
                   <p className="text-sm text-muted-foreground">
                     {groupSplitType === "they_pay" ? (
-                      <>Selected members pay {paidById === user?.id ? "you" : getPersonName(paidById)} the full <span className="font-semibold text-primary">${parseFloat(amount).toFixed(2)}</span></>
+                      <>Selected members pay {paidById === user?.id ? "you" : getPersonName(paidById)} the full <span className="font-semibold text-primary">${finalAmount.toFixed(2)}</span></>
                     ) : (
-                      <>{paidById === user?.id ? "You" : getPersonName(paidById)} pay{paidById === user?.id ? "" : "s"} selected member <span className="font-semibold text-destructive">${parseFloat(amount).toFixed(2)}</span></>
+                      <>{paidById === user?.id ? "You" : getPersonName(paidById)} pay{paidById === user?.id ? "" : "s"} selected member <span className="font-semibold text-destructive">${finalAmount.toFixed(2)}</span></>
                     )}
                   </p>
                 </div>
@@ -1138,15 +1220,15 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                   const youOwe = s.from === user?.id;
                   const otherPerson = youOwe ? s.to : s.from;
                   return (
-                    <Card key={i} className="p-3 flex items-center gap-2">
+                    <Card key={i} className="p-4 flex items-center gap-3">
                       <div
-                        className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-semibold shrink-0"
+                        className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-semibold shrink-0"
                         style={{ backgroundColor: getPersonColor(otherPerson) }}
                       >
                         {getPersonName(otherPerson)[0]?.toUpperCase()}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm">
+                        <p className="text-base">
                           {youOwe ? (
                             <>
                               <span className="text-destructive font-medium">You owe</span>
@@ -1160,7 +1242,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                           )}
                         </p>
                       </div>
-                      <span className={`text-sm font-semibold shrink-0 font-mono ${youOwe ? "text-destructive" : "text-primary"}`}>
+                      <span className={`text-base font-semibold shrink-0 font-mono ${youOwe ? "text-destructive" : "text-primary"}`}>
                         ${s.amount.toFixed(2)}
                       </span>
                     </Card>
@@ -1189,10 +1271,10 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
           <h3 className="text-sm font-medium text-muted-foreground mb-2 font-serif">Member Balances</h3>
           <div className="space-y-1.5">
             {balances.filter(b => b.personId !== user?.id).map((b) => (
-              <div key={b.personId} className="flex items-center justify-between gap-2 px-1">
-                <span className="text-sm">{getPersonName(b.personId)}</span>
+              <div key={b.personId} className="flex items-center justify-between gap-2 px-1 py-0.5">
+                <span className="text-base">{getPersonName(b.personId)}</span>
                 <span
-                  className={`text-sm font-semibold ${
+                  className={`text-base font-semibold ${
                     b.amount > 0 ? "text-primary" : b.amount < 0 ? "text-destructive" : "text-muted-foreground"
                   }`}
                 >
@@ -1341,33 +1423,33 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
             .map((expense) => (
               <Card
                 key={expense.id}
-                className={`p-3 cursor-pointer ${expense.isSettlement ? "border-primary/30 bg-primary/5" : ""}`}
+                className={`p-4 cursor-pointer ${expense.isSettlement ? "border-primary/30 bg-primary/5" : ""}`}
                 data-testid={`expense-card-${expense.id}`}
                 onClick={() => setDetailExpense(expense)}
               >
                 <div className="flex items-center gap-3">
-                  <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${expense.isSettlement ? "bg-primary/20" : "bg-primary/10"}`}>
+                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${expense.isSettlement ? "bg-primary/20" : "bg-primary/10"}`}>
                     {expense.isSettlement ? (
-                      <CheckCircle2 className="w-4 h-4 text-primary" />
+                      <CheckCircle2 className="w-5 h-5 text-primary" />
                     ) : (
-                      <Receipt className="w-4 h-4 text-primary" />
+                      <Receipt className="w-5 h-5 text-primary" />
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">
+                    <p className="text-base font-medium truncate">
                       {expense.isSettlement ? "Settlement" : expense.description}
                       {(expense as any).receiptData && (
-                        <FileText className="w-3 h-3 text-primary inline ml-1 -mt-0.5" />
+                        <FileText className="w-3.5 h-3.5 text-primary inline ml-1.5 -mt-0.5" />
                       )}
                     </p>
-                    <p className="text-xs text-muted-foreground font-mono">
+                    <p className="text-sm text-muted-foreground font-mono mt-0.5">
                       {expense.isSettlement
                         ? `${getPersonName(expense.paidById)} paid ${getPersonName(expense.splitAmongIds[0])} · ${new Date(expense.date).toLocaleDateString()}`
                         : `${getPersonName(expense.paidById)} paid · split ${expense.splitAmongIds.length} ways`
                       }
                     </p>
                   </div>
-                  <span className="text-sm font-semibold text-foreground shrink-0 font-mono">
+                  <span className="text-base font-semibold text-foreground shrink-0 font-mono">
                     ${expense.amount.toFixed(2)}
                   </span>
                   {canDeleteExpense(expense) && (

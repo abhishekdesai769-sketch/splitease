@@ -123,23 +123,23 @@ export default function Groups() {
             const netBalance = getMyNetBalance(group.id);
             return (
               <Link key={group.id} href={`/groups/${group.id}`}>
-                <Card className="p-3 flex items-center gap-3 hover-elevate cursor-pointer" data-testid={`group-card-${group.id}`}>
+                <Card className="p-4 flex items-center gap-3 hover-elevate cursor-pointer" data-testid={`group-card-${group.id}`}>
                   <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
                     <UsersRound className="w-5 h-5 text-primary" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{group.name}</p>
-                    <p className="text-xs text-muted-foreground font-mono">
+                    <p className="text-base font-medium truncate">{group.name}</p>
+                    <p className="text-sm text-muted-foreground font-mono mt-0.5">
                       {group.memberIds.length} members · {expenseCount} expenses
                     </p>
                   </div>
                   {netBalance !== 0 && (
-                    <span className={`text-sm font-semibold shrink-0 font-mono ${netBalance > 0 ? "text-primary" : "text-destructive"}`}>
+                    <span className={`text-base font-semibold shrink-0 font-mono ${netBalance > 0 ? "text-primary" : "text-destructive"}`}>
                       {netBalance > 0 ? "+" : "-"}${Math.abs(netBalance).toFixed(2)}
                     </span>
                   )}
                   {netBalance === 0 && expenseCount > 0 && (
-                    <span className="text-xs text-muted-foreground shrink-0">settled</span>
+                    <span className="text-sm text-muted-foreground shrink-0">settled</span>
                   )}
                   <div className="flex items-center gap-1">
                     <ChevronRight className="w-4 h-4 text-muted-foreground" />
