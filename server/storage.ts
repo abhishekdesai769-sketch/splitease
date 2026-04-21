@@ -1,7 +1,7 @@
 import { eq, and, or, ilike, inArray, ne, isNull, isNotNull, lt } from "drizzle-orm";
 import { db } from "./db";
 import {
-  users, friends, groups, expenses, otpCodes, resetTokens, groupInvites, recurringExpenses, sentReminders,
+  users, friends, groups, expenses, otpCodes, resetTokens, groupInvites, recurringExpenses, sentReminders, activityLog,
   type User, type InsertUser, type SafeUser,
   type Friend, type InsertFriend,
   type Group, type InsertGroup,
@@ -9,6 +9,7 @@ import {
   type GroupInvite, type InsertGroupInvite,
   type RecurringExpense, type InsertRecurringExpense,
   type SentReminder,
+  type ActivityLog,
 } from "@shared/schema";
 
 function toSafeUser(user: User): SafeUser {
@@ -68,6 +69,10 @@ export interface IStorage {
   getDeletedExpenses(): Promise<Expense[]>;
   restoreExpense(id: string): Promise<Expense | undefined>;
   updateExpenseReceiptData(id: string, receiptData: string): Promise<void>;
+
+  // Activity Log
+  createActivity(data: { groupId?: string | null; userId: string; userName: string; action: string; description: string }): Promise<void>;
+  getGroupActivity(groupId: string, limit?: number): Promise<ActivityLog[]>;
 
   // Group Invites
   createGroupInvite(invite: InsertGroupInvite): Promise<GroupInvite>;
@@ -392,6 +397,29 @@ export class PgStorage implements IStorage {
 
   async updateExpenseReceiptData(id: string, receiptData: string): Promise<void> {
     await db.update(expenses).set({ receiptData }).where(eq(expenses.id, id));
+  }
+
+  // Activity Log
+  async createActivity(data: { groupId?: string | null; userId: string; userName: string; action: string; description: string }): Promise<void> {
+    await db.insert(activityLog).values({
+      groupId: data.groupId || null,
+      userId: data.userId,
+      userName: data.userName,
+      action: data.action,
+      description: data.description,
+      createdAt: new Date().toISOString(),
+    });
+  }
+
+  async getGroupActivity(groupId: string, limit = 30): Promise<ActivityLog[]> {
+    const { desc } = await import("drizzle-orm");
+    const rows = await db
+      .select()
+      .from(activityLog)
+      .where(eq(activityLog.groupId, groupId))
+      .orderBy(desc(activityLog.createdAt))
+      .limit(limit);
+    return rows;
   }
 
   // Group Invites

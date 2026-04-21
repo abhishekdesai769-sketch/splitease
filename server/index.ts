@@ -5,6 +5,7 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { startRecurringExpenseScheduler } from "./scheduler";
+import { pool } from "./db";
 
 const app = express();
 const httpServer = createServer(app);
@@ -84,7 +85,31 @@ app.use((req, res, next) => {
   next();
 });
 
+// Idempotent startup migrations — safely add new columns/tables without drizzle-kit push
+async function runMigrations() {
+  try {
+    await pool.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS notes text`);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS activity_log (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        group_id varchar,
+        user_id varchar NOT NULL,
+        user_name text NOT NULL,
+        action text NOT NULL,
+        description text NOT NULL,
+        created_at text NOT NULL
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS activity_log_group_id_idx ON activity_log(group_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS activity_log_created_at_idx ON activity_log(created_at)`);
+    log("Startup migrations OK", "db");
+  } catch (e) {
+    log(`Startup migration error: ${e}`, "db");
+  }
+}
+
 (async () => {
+  await runMigrations();
   await registerRoutes(httpServer, app);
 
   // Start recurring expense scheduler (premium feature — auto-creates expenses on schedule)

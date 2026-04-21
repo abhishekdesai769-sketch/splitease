@@ -824,11 +824,16 @@ setInterval(loadAll,30000);
 
   app.post("/api/friends/expenses", requireAuth, upload.single("receipt"), async (req, res) => {
     const userId = (req.session as any).userId;
-    const { description, amount, paidById, date, isSettlement } = req.body;
+    const { description, amount, paidById, date, isSettlement, notes } = req.body;
     // splitAmongIds comes as JSON string from FormData
     let splitAmongIds = req.body.splitAmongIds;
     if (typeof splitAmongIds === "string") {
       try { splitAmongIds = JSON.parse(splitAmongIds); } catch { /* keep as-is */ }
+    }
+    // splitAmounts: optional JSON string for unequal splits
+    let splitAmounts: string | null = null;
+    if (req.body.splitAmounts && req.body.splitAmounts !== "null") {
+      try { JSON.parse(req.body.splitAmounts); splitAmounts = req.body.splitAmounts; } catch { /* invalid JSON — ignore */ }
     }
 
     if (!description || !amount || !paidById || !splitAmongIds || !date) {
@@ -858,6 +863,8 @@ setInterval(loadAll,30000);
       date,
       addedById: userId,
       isSettlement: !!isSettlement,
+      notes: notes ? sanitize(notes, 500) : null,
+      splitAmounts,
     });
     res.status(201).json(expense);
 
@@ -1520,13 +1527,28 @@ setInterval(loadAll,30000);
     res.json(expensesList);
   });
 
+  app.get("/api/groups/:groupId/activity", requireAuth, async (req, res) => {
+    const userId = (req.session as any).userId;
+    const group = await storage.getGroup(req.params.groupId);
+    if (!group || !group.memberIds.includes(userId)) {
+      return res.status(403).json({ error: "Not a member of this group" });
+    }
+    const activity = await storage.getGroupActivity(req.params.groupId, 30);
+    res.json(activity);
+  });
+
   app.post("/api/expenses", requireAuth, upload.single("receipt"), async (req, res) => {
     const userId = (req.session as any).userId;
-    const { description, amount, paidById, groupId, date, isSettlement } = req.body;
+    const { description, amount, paidById, groupId, date, isSettlement, notes } = req.body;
     // splitAmongIds comes as JSON string from FormData
     let splitAmongIds = req.body.splitAmongIds;
     if (typeof splitAmongIds === "string") {
       try { splitAmongIds = JSON.parse(splitAmongIds); } catch { /* keep as-is */ }
+    }
+    // splitAmounts: optional JSON string for unequal splits
+    let splitAmounts: string | null = null;
+    if (req.body.splitAmounts && req.body.splitAmounts !== "null") {
+      try { JSON.parse(req.body.splitAmounts); splitAmounts = req.body.splitAmounts; } catch { /* invalid JSON — ignore */ }
     }
 
     if (!description || !amount || !paidById || !splitAmongIds || !date) {
@@ -1562,8 +1584,25 @@ setInterval(loadAll,30000);
       date,
       addedById: userId,
       isSettlement: !!isSettlement,
+      notes: notes ? sanitize(notes, 500) : null,
+      splitAmounts,
     });
     res.status(201).json(expense);
+
+    // Log activity (fire-and-forget)
+    if (groupId && !isSettlement) {
+      storage.getUser(userId).then((adder) => {
+        if (adder) {
+          storage.createActivity({
+            groupId,
+            userId,
+            userName: adder.name,
+            action: "expense_added",
+            description: `added ${sanitize(description, 60)} · $${parsedAmount.toFixed(2)}`,
+          }).catch(() => { /* ignore */ });
+        }
+      }).catch(() => { /* ignore */ });
+    }
 
     // Receipt from upload (held in memory only â not saved)
     const receiptFile = req.file;
@@ -1630,6 +1669,17 @@ setInterval(loadAll,30000);
     const deleted = await storage.deleteExpense(req.params.id);
     if (!deleted) return res.status(404).json({ error: "Not found" });
     res.status(204).send();
+
+    // Log activity for group expenses (fire-and-forget)
+    if (expense.groupId && !expense.isSettlement) {
+      storage.createActivity({
+        groupId: expense.groupId,
+        userId,
+        userName: user.name,
+        action: "expense_deleted",
+        description: `removed ${sanitize(expense.description, 60)} · $${expense.amount.toFixed(2)}`,
+      }).catch(() => { /* ignore */ });
+    }
   });
 
   // ========== Scan receipt image (Premium) ==========

@@ -97,6 +97,7 @@ export const expenses = pgTable("expenses", {
   deletedAt: text("deleted_at").default(sql`NULL`),
   receiptData: text("receipt_data"), // JSON string from AI receipt scanner, nullable
   splitAmounts: text("split_amounts"), // JSON: {"userId": amount, ...} for unequal splits. Null = equal division.
+  notes: text("notes"), // optional note/comment added by the person creating the expense
 }, (table) => [
   index("expenses_group_id_idx").on(table.groupId),
   index("expenses_paid_by_idx").on(table.paidById),
@@ -107,6 +108,23 @@ export const expenses = pgTable("expenses", {
 export const insertExpenseSchema = createInsertSchema(expenses).omit({ id: true });
 export type InsertExpense = z.infer<typeof insertExpenseSchema>;
 export type Expense = typeof expenses.$inferSelect;
+
+// Activity Log — tracks who did what in a group (expense added/deleted, settled up, etc.)
+export const activityLog = pgTable("activity_log", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  groupId: varchar("group_id"), // null = direct friend expense
+  userId: varchar("user_id").notNull(),
+  userName: text("user_name").notNull(), // cached — avoids a join on every read
+  action: text("action").notNull(), // 'expense_added' | 'expense_deleted' | 'settled_up' | 'member_joined'
+  description: text("description").notNull(), // human-readable: "added Grocery run · $45.00"
+  createdAt: text("created_at").notNull(),
+}, (table) => [
+  index("activity_log_group_id_idx").on(table.groupId),
+  index("activity_log_created_at_idx").on(table.createdAt),
+]);
+
+export type ActivityLog = typeof activityLog.$inferSelect;
+export type InsertActivityLog = typeof activityLog.$inferInsert;
 
 // Group Invites
 export const groupInvites = pgTable("group_invites", {

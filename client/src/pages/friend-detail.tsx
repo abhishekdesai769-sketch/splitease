@@ -29,6 +29,7 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
   const [amount, setAmount] = useState("");
   const [paidById, setPaidById] = useState("");
   const [splitType, setSplitType] = useState<"equal" | "they_pay" | "you_pay">("equal");
+  const [expenseNotes, setExpenseNotes] = useState("");
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurringFrequency, setRecurringFrequency] = useState<"monthly" | "weekly">("monthly");
@@ -115,6 +116,9 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
       formData.append("paidById", actualPaidById);
       formData.append("splitAmongIds", JSON.stringify(splitAmongIds));
       formData.append("date", new Date().toISOString());
+      if (expenseNotes.trim()) {
+        formData.append("notes", expenseNotes.trim());
+      }
       if (receiptFile) {
         formData.append("receipt", receiptFile);
       }
@@ -304,6 +308,7 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
     setReceiptFile(null);
     setIsRecurring(false);
     setRecurringFrequency("monthly");
+    setExpenseNotes("");
   };
 
   // Can the current user delete this expense?
@@ -608,6 +613,16 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
                   )}
                 </div>
               )}
+              {/* Notes */}
+              <div className="space-y-2">
+                <Label>Note (optional)</Label>
+                <Input
+                  placeholder="e.g. for last weekend's dinner"
+                  value={expenseNotes}
+                  onChange={(e) => setExpenseNotes(e.target.value)}
+                />
+              </div>
+
               {/* Repeat toggle (Premium) */}
               <div className="rounded-lg border border-border p-3 space-y-2.5">
                 <div className="flex items-center justify-between">

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, apiFormRequest, queryClient } from "@/lib/queryClient";
-import type { Group, Expense, SafeUser } from "@shared/schema";
+import type { Group, Expense, SafeUser, ActivityLog } from "@shared/schema";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,7 +29,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
   const [amount, setAmount] = useState("");
   const [paidById, setPaidById] = useState("");
   const [splitAmong, setSplitAmong] = useState<string[]>([]);
-  const [groupSplitType, setGroupSplitType] = useState<"equal" | "they_pay" | "you_pay">("equal");
+  const [groupSplitType, setGroupSplitType] = useState<"equal" | "they_pay" | "you_pay" | "custom">("equal");
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurringFrequency, setRecurringFrequency] = useState<"monthly" | "weekly">("monthly");
@@ -39,6 +39,13 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
   const [taxPercent, setTaxPercent] = useState("");
   const [tipAmount, setTipAmount] = useState("");
   const [showAdjustments, setShowAdjustments] = useState(false);
+
+  // Unequal / custom splits
+  const [customSplitMode, setCustomSplitMode] = useState<"amount" | "percent">("amount");
+  const [customSplitValues, setCustomSplitValues] = useState<Record<string, string>>({}); // userId → input string
+
+  // Expense notes
+  const [expenseNotes, setExpenseNotes] = useState("");
 
   const [inviteEmail, setInviteEmail] = useState("");
   const [settleUpOpen, setSettleUpOpen] = useState(false);
@@ -95,6 +102,10 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
   const { data: expenses = [] } = useQuery<Expense[]>({
     queryKey: ["/api/expenses/group", groupId],
   });
+  const { data: groupActivity = [] } = useQuery<ActivityLog[]>({
+    queryKey: ["/api/groups", groupId, "activity"],
+    enabled: !!group,
+  });
 
   const createExpenseMutation = useMutation({
     mutationFn: async () => {
@@ -102,18 +113,16 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
       let splitAmongIds: string[];
 
       if (groupSplitType === "equal") {
-        // Split equally among all selected (payer can be included if checked)
         splitAmongIds = splitAmong;
       } else if (groupSplitType === "they_pay") {
-        // Selected people each owe their share of full amount back to the payer
-        // Payer is NOT in the split — only the selected people
         splitAmongIds = splitAmong.filter(id => id !== paidById);
+      } else if (groupSplitType === "custom") {
+        // Custom: use only members with non-zero amounts
+        splitAmongIds = Object.keys(customSplitAmounts);
+        if (splitAmongIds.length === 0) splitAmongIds = splitAmong;
       } else {
-        // "You pay them" — the payer needs to pay the selected people
-        // Flip: one of the selected people is treated as the lender
-        // Only the payer is in the split (they owe the full amount)
+        // "You pay them"
         splitAmongIds = [paidById];
-        // The "paid by" becomes the first selected non-payer member
         const lender = splitAmong.find(id => id !== paidById);
         if (lender) actualPaidById = lender;
       }
@@ -127,6 +136,12 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
       formData.append("splitAmongIds", JSON.stringify(splitAmongIds));
       formData.append("groupId", groupId);
       formData.append("date", new Date().toISOString());
+      if (groupSplitType === "custom" && Object.keys(customSplitAmounts).length > 0) {
+        formData.append("splitAmounts", JSON.stringify(customSplitAmounts));
+      }
+      if (expenseNotes.trim()) {
+        formData.append("notes", expenseNotes.trim());
+      }
       if (receiptFile) {
         formData.append("receipt", receiptFile);
       }
@@ -484,6 +499,27 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
   const _tipAmt = parseFloat(tipAmount) || 0;
   const finalAmount = _baseAmount + _taxAmt + _tipAmt;
 
+  // Custom split computed values
+  const customSplitTotal = Object.values(customSplitValues).reduce((sum, v) => sum + (parseFloat(v) || 0), 0);
+  const customSplitError = groupSplitType === "custom" && finalAmount > 0
+    ? (customSplitMode === "percent"
+        ? (Math.abs(customSplitTotal - 100) > 0.1 ? `Total: ${customSplitTotal.toFixed(1)}% — needs to be 100%` : null)
+        : (Math.abs(customSplitTotal - finalAmount) > 0.01 ? `$${customSplitTotal.toFixed(2)} allocated of $${finalAmount.toFixed(2)} total` : null))
+    : null;
+  const customSplitAmounts: Record<string, number> = groupSplitType === "custom"
+    ? Object.fromEntries(
+        Object.entries(customSplitValues)
+          .map(([id, v]) => {
+            const val = parseFloat(v) || 0;
+            const amt = customSplitMode === "percent"
+              ? Math.round((finalAmount * val / 100) * 100) / 100
+              : Math.round(val * 100) / 100;
+            return [id, amt];
+          })
+          .filter(([, amt]) => (amt as number) > 0)
+      )
+    : {};
+
   const resetForm = () => {
     setDescription("");
     setAmount("");
@@ -496,6 +532,9 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
     setTaxPercent("");
     setTipAmount("");
     setShowAdjustments(false);
+    setCustomSplitMode("amount");
+    setCustomSplitValues({});
+    setExpenseNotes("");
   };
 
   const toggleSplit = (id: string) => {
@@ -797,12 +836,13 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
               {/* How to split */}
               <div className="space-y-2">
                 <Label>How to split</Label>
-                <div className="grid grid-cols-3 gap-1.5">
-                  {(["equal", "they_pay", "you_pay"] as const).map((type) => {
+                <div className="grid grid-cols-2 gap-1.5">
+                  {(["equal", "they_pay", "you_pay", "custom"] as const).map((type) => {
                     const labels = {
                       equal: "Split equally",
                       they_pay: "They pay you",
                       you_pay: "You pay them",
+                      custom: "Unequal split",
                     };
                     return (
                       <button
@@ -813,7 +853,16 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                             ? "border-primary bg-primary/10 text-primary"
                             : "border-border text-muted-foreground hover:bg-muted/50"
                         }`}
-                        onClick={() => setGroupSplitType(type)}
+                        onClick={() => {
+                          setGroupSplitType(type);
+                          // Pre-fill custom inputs with equal amounts when switching to custom
+                          if (type === "custom" && members.length > 0) {
+                            const equalAmt = finalAmount > 0 ? (finalAmount / members.length).toFixed(2) : "";
+                            const init: Record<string, string> = {};
+                            members.forEach(m => { init[m.id] = equalAmt; });
+                            setCustomSplitValues(init);
+                          }
+                        }}
                         data-testid={`group-split-type-${type}`}
                       >
                         {labels[type]}
@@ -823,57 +872,120 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label>
-                    {groupSplitType === "equal" ? "Split among" : groupSplitType === "they_pay" ? "Who pays you" : "You pay who"}
-                  </Label>
-                  <button
-                    type="button"
-                    className="text-xs text-primary font-medium"
-                    onClick={selectAllMembers}
-                  >
-                    Select all
-                  </button>
-                </div>
+              {/* Equal / They pay / You pay — member checkboxes */}
+              {groupSplitType !== "custom" && (
                 <div className="space-y-2">
-                  {members.map((m) => {
-                    // Calculate per-person amount for preview
-                    const effectiveSplit = groupSplitType === "they_pay"
-                      ? splitAmong.filter(id => id !== paidById)
-                      : groupSplitType === "you_pay"
-                        ? [paidById]
-                        : splitAmong;
-                    const perPerson = effectiveSplit.length > 0 && finalAmount > 0
-                      ? finalAmount / effectiveSplit.length
-                      : 0;
-                    const showAmount = splitAmong.includes(m.id) && finalAmount > 0 && splitAmong.length > 0;
+                  <div className="flex items-center justify-between">
+                    <Label>
+                      {groupSplitType === "equal" ? "Split among" : groupSplitType === "they_pay" ? "Who pays you" : "You pay who"}
+                    </Label>
+                    <button
+                      type="button"
+                      className="text-xs text-primary font-medium"
+                      onClick={selectAllMembers}
+                    >
+                      Select all
+                    </button>
+                  </div>
+                  <div className="space-y-2">
+                    {members.map((m) => {
+                      const effectiveSplit = groupSplitType === "they_pay"
+                        ? splitAmong.filter(id => id !== paidById)
+                        : groupSplitType === "you_pay"
+                          ? [paidById]
+                          : splitAmong;
+                      const perPerson = effectiveSplit.length > 0 && finalAmount > 0
+                        ? finalAmount / effectiveSplit.length
+                        : 0;
+                      const showAmount = splitAmong.includes(m.id) && finalAmount > 0 && splitAmong.length > 0;
 
-                    return (
-                      <label
-                        key={m.id}
-                        className="flex items-center gap-3 p-3 rounded-lg cursor-pointer hover:bg-muted/50 transition-colors"
-                      >
-                        <Checkbox
-                          checked={splitAmong.includes(m.id)}
-                          onCheckedChange={() => toggleSplit(m.id)}
-                        />
-                        <span className="text-base">
+                      return (
+                        <label
+                          key={m.id}
+                          className="flex items-center gap-3 p-3 rounded-lg cursor-pointer hover:bg-muted/50 transition-colors"
+                        >
+                          <Checkbox
+                            checked={splitAmong.includes(m.id)}
+                            onCheckedChange={() => toggleSplit(m.id)}
+                          />
+                          <span className="text-base">
+                            {m.id === user?.id ? `${m.name} (You)` : m.name}
+                          </span>
+                          {showAmount && effectiveSplit.includes(m.id) && (
+                            <span className="text-sm text-muted-foreground ml-auto font-mono">
+                              ${perPerson.toFixed(2)}
+                            </span>
+                          )}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Custom / Unequal split inputs */}
+              {groupSplitType === "custom" && (
+                <div className="space-y-3">
+                  {/* By amount / By % toggle */}
+                  <div className="flex items-center gap-2">
+                    <Label>Split amounts</Label>
+                    <div className="ml-auto flex rounded-lg border border-border overflow-hidden text-xs font-medium">
+                      <button
+                        type="button"
+                        className={`px-3 py-1.5 transition-colors ${customSplitMode === "amount" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted/50"}`}
+                        onClick={() => setCustomSplitMode("amount")}
+                      >By $</button>
+                      <button
+                        type="button"
+                        className={`px-3 py-1.5 transition-colors ${customSplitMode === "percent" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted/50"}`}
+                        onClick={() => setCustomSplitMode("percent")}
+                      >By %</button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    {members.map((m) => (
+                      <div key={m.id} className="flex items-center gap-3 p-3 rounded-lg bg-muted/30">
+                        <span className="text-base flex-1">
                           {m.id === user?.id ? `${m.name} (You)` : m.name}
                         </span>
-                        {showAmount && effectiveSplit.includes(m.id) && (
-                          <span className="text-sm text-muted-foreground ml-auto font-mono">
-                            ${perPerson.toFixed(2)}
-                          </span>
-                        )}
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {customSplitMode === "amount" && <span className="text-sm text-muted-foreground">$</span>}
+                          <Input
+                            type="number"
+                            step={customSplitMode === "percent" ? "0.1" : "0.01"}
+                            min="0"
+                            placeholder={customSplitMode === "percent" ? "0.0" : "0.00"}
+                            value={customSplitValues[m.id] || ""}
+                            onChange={(e) => setCustomSplitValues(prev => ({ ...prev, [m.id]: e.target.value }))}
+                            className="w-24 h-9 text-sm"
+                          />
+                          {customSplitMode === "percent" && <span className="text-sm text-muted-foreground">%</span>}
+                          {customSplitMode === "percent" && customSplitValues[m.id] && finalAmount > 0 && (
+                            <span className="text-xs text-muted-foreground font-mono w-16 text-right">
+                              ${(finalAmount * (parseFloat(customSplitValues[m.id]) || 0) / 100).toFixed(2)}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
 
-              {/* Preview summary */}
-              {finalAmount > 0 && paidById && splitAmong.length > 0 && groupSplitType !== "equal" && (
+                  {/* Validation feedback */}
+                  {finalAmount > 0 && (
+                    <div className={`rounded-lg p-3 text-sm text-center ${customSplitError ? "bg-destructive/10 text-destructive" : "bg-primary/5 text-primary"}`}>
+                      {customSplitError
+                        ? customSplitError
+                        : customSplitMode === "percent"
+                          ? `✓ ${customSplitTotal.toFixed(1)}% allocated`
+                          : `✓ $${customSplitTotal.toFixed(2)} — matches total`}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Preview summary for non-equal named types */}
+              {finalAmount > 0 && paidById && splitAmong.length > 0 && (groupSplitType === "they_pay" || groupSplitType === "you_pay") && (
                 <div className="rounded-lg bg-muted/50 p-3 text-center">
                   <p className="text-sm text-muted-foreground">
                     {groupSplitType === "they_pay" ? (
@@ -884,6 +996,16 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                   </p>
                 </div>
               )}
+
+              {/* Notes / Comment */}
+              <div className="space-y-2">
+                <Label>Note (optional)</Label>
+                <Input
+                  placeholder="e.g. split includes delivery fee"
+                  value={expenseNotes}
+                  onChange={(e) => setExpenseNotes(e.target.value)}
+                />
+              </div>
 
               {/* Repeat toggle (Premium) */}
               <div className="rounded-lg border border-border p-3 space-y-2.5">
@@ -1004,7 +1126,8 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                   !description.trim() ||
                   !amount ||
                   !paidById ||
-                  splitAmong.length === 0 ||
+                  (groupSplitType !== "custom" && splitAmong.length === 0) ||
+                  (groupSplitType === "custom" && (!!customSplitError || Object.keys(customSplitAmounts).length === 0)) ||
                   createExpenseMutation.isPending ||
                   createRecurringMutation.isPending
                 }
@@ -1478,6 +1601,47 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
         </Card>
       )}
 
+      {/* Activity Feed */}
+      {groupActivity.length > 0 && (
+        <div>
+          <h3 className="text-sm font-medium text-muted-foreground mb-2 font-serif">Activity</h3>
+          <div className="space-y-1">
+            {groupActivity.map((item) => {
+              const isAdded = item.action === "expense_added";
+              const isDeleted = item.action === "expense_deleted";
+              const isSettled = item.action === "settled_up";
+              const relTime = (() => {
+                const diff = Date.now() - new Date(item.createdAt).getTime();
+                const mins = Math.floor(diff / 60000);
+                if (mins < 1) return "just now";
+                if (mins < 60) return `${mins}m ago`;
+                const hrs = Math.floor(mins / 60);
+                if (hrs < 24) return `${hrs}h ago`;
+                return `${Math.floor(hrs / 24)}d ago`;
+              })();
+              return (
+                <div key={item.id} className="flex items-start gap-2.5 py-2 border-b border-border/40 last:border-0">
+                  <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 mt-0.5 text-xs font-semibold text-white`}
+                    style={{ backgroundColor: members.find(m => m.id === item.userId)?.avatarColor || "#888" }}>
+                    {item.userName[0]?.toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm leading-snug">
+                      <span className="font-medium">{item.userId === user?.id ? "You" : item.userName}</span>
+                      {" "}
+                      <span className={isDeleted ? "text-destructive" : isSettled ? "text-primary" : "text-muted-foreground"}>
+                        {item.description}
+                      </span>
+                    </p>
+                    <p className="text-xs text-muted-foreground/60 font-mono mt-0.5">{relTime}</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Expense Detail Dialog */}
       <Dialog open={!!detailExpense} onOpenChange={(open) => { if (!open) setDetailExpense(null); }}>
         <DialogContent>
@@ -1539,6 +1703,14 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                   })()}
                 </div>
               </div>
+
+              {/* Notes */}
+              {(detailExpense as any).notes && (
+                <div className="rounded-lg bg-muted/50 p-3">
+                  <p className="text-xs text-muted-foreground mb-1">Note</p>
+                  <p className="text-sm">{(detailExpense as any).notes}</p>
+                </div>
+              )}
 
               {/* Added by */}
               <p className="text-xs text-muted-foreground">
