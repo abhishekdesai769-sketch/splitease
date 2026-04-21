@@ -62,7 +62,7 @@ def patch():
     # Capacitor generates one of these two indentation styles:
     patched = False
 
-    # Style A — 12 spaces (most common in Capacitor 6)
+    # Style A — 12 spaces (Capacitor 6 and 7)
     if "release {\n            minifyEnabled" in content:
         content = content.replace(
             "release {\n            minifyEnabled",
@@ -78,8 +78,21 @@ def patch():
         )
         patched = True
 
+    # Style C — regex fallback for any indentation (Capacitor 7+)
+    else:
+        import re
+        new_content, n = re.subn(
+            r'(release\s*\{)',
+            r'\1\n            signingConfig signingConfigs.release',
+            content,
+            count=1
+        )
+        if n:
+            content = new_content
+            patched = True
+
     if not patched:
-        print("WARNING: Could not find 'release { minifyEnabled' pattern.")
+        print("WARNING: Could not find release buildType pattern.")
         print("Signing config block was inserted but release buildType may not")
         print("reference it. Build may produce unsigned AAB.")
         print("Check android/app/build.gradle manually.")

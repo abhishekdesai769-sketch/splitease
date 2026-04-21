@@ -41,15 +41,17 @@ jobs:
         # because packages were added without a local Node.js environment
         run: npm install --no-audit --no-fund
 
-      # Install Capacitor packages (not in package.json, installed here only)
+      # Install Android-specific Capacitor packages (not in package.json)
+      # cli/core are already in package.json at v7 — listed here with matching
+      # major so npm resolves a single consistent version across all packages.
       - name: Install Capacitor packages
         run: |
           npm install --no-save \
-            @capacitor/cli@^6.0.0 \
-            @capacitor/core@^6.0.0 \
-            @capacitor/android@^6.0.0 \
-            @capacitor/splash-screen@^6.0.0 \
-            @capacitor/status-bar@^6.0.0
+            @capacitor/cli@7 \
+            @capacitor/core@7 \
+            @capacitor/android@7 \
+            @capacitor/splash-screen@7 \
+            @capacitor/status-bar@7
 
       # ── 3. Build web app (client only — Capacitor just needs dist/public/) ──
       - name: Build web app
