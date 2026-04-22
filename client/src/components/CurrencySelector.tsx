@@ -51,7 +51,7 @@ export function CurrencySelector({ value, onChange, isPremium, onUpgrade }: Prop
         title={isPremium ? "Change currency" : "Upgrade to Premium for currency conversion"}
       >
         {!isPremium && <Crown className="w-3 h-3 text-amber-500 shrink-0" />}
-        <span>{value}</span>
+        <span>{value === "CAD" ? "Currency" : value}</span>
         <ChevronDown className="w-3 h-3 text-muted-foreground shrink-0" />
       </button>
 

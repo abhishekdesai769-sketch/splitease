@@ -28,7 +28,8 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
   const [paidById, setPaidById] = useState("");
-  const [splitType, setSplitType] = useState<"equal" | "they_pay" | "you_pay">("equal");
+  const [splitType, setSplitType] = useState<"equal" | "they_pay" | "you_pay" | "unequal">("equal");
+  const [myShare, setMyShare] = useState("");
   const [expenseNotes, setExpenseNotes] = useState("");
   const [currency, setCurrency] = useState("CAD");
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
@@ -120,15 +121,23 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
         splitAmongIds = [user?.id || "", friendId].filter((v, i, a) => a.indexOf(v) === i);
       } else if (splitType === "they_pay") {
         splitAmongIds = [friendId];
-      } else {
+      } else if (splitType === "you_pay") {
         actualPaidById = friendId;
         splitAmongIds = [user?.id || ""];
+      } else {
+        // unequal
+        splitAmongIds = [user?.id || "", friendId];
       }
 
       const formData = new FormData();
       formData.append("description", description.trim());
       formData.append("amount", String(parseFloat(amount)));
       formData.append("paidById", actualPaidById);
+      if (splitType === "unequal" && myShare) {
+        const myAmt = Math.round(parseFloat(myShare) * 100) / 100;
+        const friendAmt = Math.round((parseFloat(amount) - myAmt) * 100) / 100;
+        formData.append("splitAmounts", JSON.stringify({ [user?.id || ""]: myAmt, [friendId]: friendAmt }));
+      }
       formData.append("splitAmongIds", JSON.stringify(splitAmongIds));
       formData.append("date", new Date().toISOString());
       if (expenseNotes.trim()) {
@@ -162,7 +171,7 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
       let actualPaidById = paidById;
       let splitAmongIds: string[];
 
-      if (splitType === "equal") {
+      if (splitType === "equal" || splitType === "unequal") {
         splitAmongIds = [user?.id || "", friendId].filter((v, i, a) => a.indexOf(v) === i);
       } else if (splitType === "they_pay") {
         splitAmongIds = [friendId];
@@ -323,6 +332,7 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
     setAmount("");
     setPaidById("");
     setSplitType("equal");
+    setMyShare("");
     setReceiptFile(null);
     setIsRecurring(false);
     setRecurringFrequency("monthly");
@@ -597,10 +607,11 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
               {/* Split type toggle */}
               <div className="space-y-2">
                 <Label>How to split</Label>
-                <div className="grid grid-cols-3 gap-1.5">
-                  {(["equal", "they_pay", "you_pay"] as const).map((type) => {
+                <div className="grid grid-cols-2 gap-1.5">
+                  {(["equal", "unequal", "they_pay", "you_pay"] as const).map((type) => {
                     const labels = {
                       equal: "Split equally",
+                      unequal: "Split unequally",
                       they_pay: "They pay you",
                       you_pay: "You pay them",
                     };
@@ -622,7 +633,47 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
                   })}
                 </div>
               </div>
-              {amount && paidById && (
+              {/* Unequal split inputs */}
+              {splitType === "unequal" && amount && (
+                <div className="space-y-2 p-3 rounded-lg border border-border bg-muted/20">
+                  <p className="text-xs text-muted-foreground font-medium">Enter each person's share</p>
+                  <div className="flex gap-3">
+                    <div className="flex-1 space-y-1">
+                      <label className="text-xs text-muted-foreground">Your share</label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          max={parseFloat(amount)}
+                          value={myShare}
+                          onChange={(e) => setMyShare(e.target.value)}
+                          className="pl-7"
+                          placeholder="0.00"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex-1 space-y-1">
+                      <label className="text-xs text-muted-foreground">{friend?.name}'s share</label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
+                        <Input
+                          type="number"
+                          readOnly
+                          value={myShare !== "" ? Math.max(0, parseFloat(amount) - parseFloat(myShare || "0")).toFixed(2) : ""}
+                          className="pl-7 bg-muted/40 text-muted-foreground"
+                          placeholder="0.00"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  {myShare !== "" && parseFloat(myShare) > parseFloat(amount) && (
+                    <p className="text-xs text-destructive">Your share can't exceed the total (${parseFloat(amount).toFixed(2)})</p>
+                  )}
+                </div>
+              )}
+              {amount && paidById && splitType !== "unequal" && (
                 <div className="rounded-lg bg-muted/50 p-3 text-center">
                   {splitType === "equal" ? (
                     <p className="text-sm text-muted-foreground">
@@ -769,6 +820,7 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
                   !description.trim() ||
                   !amount ||
                   !paidById ||
+                  (splitType === "unequal" && (!myShare || parseFloat(myShare) > parseFloat(amount))) ||
                   addExpenseMutation.isPending ||
                   addRecurringMutation.isPending
                 }
