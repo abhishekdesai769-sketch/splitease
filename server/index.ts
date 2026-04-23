@@ -91,6 +91,10 @@ async function runMigrations() {
     await pool.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS notes text`);
     await pool.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS currency text`);
     await pool.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS original_amount real`);
+    // Google OAuth support
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id text`);
+    await pool.query(`ALTER TABLE users ALTER COLUMN password DROP NOT NULL`);
+    await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS users_google_id_idx ON users(google_id) WHERE google_id IS NOT NULL`);
     await pool.query(`
       CREATE TABLE IF NOT EXISTS activity_log (
         id varchar PRIMARY KEY DEFAULT gen_random_uuid(),

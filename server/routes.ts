@@ -4,6 +4,7 @@ import session from "express-session";
 import pgSession from "connect-pg-simple";
 import { Pool } from "pg";
 import { randomBytes } from "crypto";
+import { OAuth2Client } from "google-auth-library";
 import { storage } from "./storage";
 import { signupSchema, loginSchema, forgotPasswordSchema, resetPasswordSchema } from "@shared/schema";
 import { notifyExpenseCreated, sendOtpEmail, sendResetPasswordEmail, sendExportEmail, sendSupportEmail, sendInviteToInviteeEmail, sendInviteToAdminEmail } from "./email";
@@ -570,6 +571,11 @@ setInterval(loadAll,30000);
         return res.status(401).json({ error: "Invalid email or password" });
       }
 
+      // Google-only account — no password set
+      if (!user.password) {
+        return res.status(401).json({ error: "This account was created with Google. Please use \"Continue with Google\" to sign in." });
+      }
+
       if (!verifyPassword(password, user.password)) {
         console.log(`[login] password mismatch for ${cleanEmail} (hash starts: ${user.password.substring(0, 10)}...)`);
         return res.status(401).json({ error: "Invalid email or password" });
@@ -613,6 +619,83 @@ setInterval(loadAll,30000);
     }
     const { password: _, ...safeUser } = user;
     res.json(safeUser);
+  });
+
+  // ========== Google OAuth ==========
+  const googleClient = new OAuth2Client(
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_SECRET,
+    `${process.env.APP_URL || "https://spliiit.klarityit.ca"}/api/auth/google/callback`
+  );
+
+  app.get("/api/auth/google", (req, res) => {
+    const url = googleClient.generateAuthUrl({
+      scope: ["openid", "profile", "email"],
+      prompt: "select_account",
+    });
+    res.redirect(url);
+  });
+
+  app.get("/api/auth/google/callback", async (req, res) => {
+    try {
+      const code = req.query.code as string;
+      if (!code) return res.redirect("/#/?error=google_failed");
+
+      const { tokens } = await googleClient.getToken(code);
+      if (!tokens.id_token) return res.redirect("/#/?error=google_failed");
+
+      const ticket = await googleClient.verifyIdToken({
+        idToken: tokens.id_token,
+        audience: process.env.GOOGLE_CLIENT_ID,
+      });
+      const payload = ticket.getPayload();
+      if (!payload?.sub || !payload.email) return res.redirect("/#/?error=google_failed");
+
+      const googleId = payload.sub;
+      const email = payload.email.toLowerCase().trim();
+      const name = payload.name || email.split("@")[0];
+
+      // 1. Find by Google ID (returning user who previously signed in with Google)
+      let user = await storage.getUserByGoogleId(googleId);
+
+      if (!user) {
+        // 2. Find by email (existing email/password user — link their Google account)
+        const existing = await storage.getUserByEmail(email);
+        if (existing && !existing.isGhost) {
+          await storage.linkGoogleId(existing.id, googleId);
+          user = await storage.getUser(existing.id) ?? null as any;
+        } else {
+          // 3. Brand new user — create account
+          const avatarColor = AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
+          const isAdmin = email === ADMIN_EMAIL;
+          user = await storage.createUser({
+            name: sanitize(name, 100),
+            email,
+            password: null as any, // Google-only, no password
+            googleId,
+            avatarColor,
+            isAdmin,
+            isApproved: true,
+            isEmailVerified: true,
+          });
+          // Auto-merge ghost users
+          try {
+            const ghosts = await storage.getGhostsByEmail(email);
+            for (const ghost of ghosts) {
+              await storage.mergeGhostUser(ghost.id, user.id);
+            }
+          } catch { /* non-blocking */ }
+        }
+      }
+
+      if (!user) return res.redirect("/#/?error=google_failed");
+
+      (req.session as any).userId = user.id;
+      res.redirect("/#/");
+    } catch (err) {
+      console.error("[google-oauth] callback error:", err);
+      res.redirect("/#/?error=google_failed");
+    }
   });
 
   // ========== Forgot / Reset Password ==========

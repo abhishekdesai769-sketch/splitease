@@ -8,7 +8,8 @@ export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
   email: text("email").notNull(), // mandatory, unique identity
-  password: text("password").notNull(), // hashed
+  password: text("password"), // hashed; null for Google-OAuth-only accounts
+  googleId: text("google_id"), // Google OAuth sub — null for email/password accounts
   avatarColor: text("avatar_color").notNull(),
   isAdmin: boolean("is_admin").notNull().default(false),
   isApproved: boolean("is_approved").notNull().default(true), // auto-approved on signup
