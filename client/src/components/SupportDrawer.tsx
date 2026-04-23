@@ -828,18 +828,18 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
               {/* Currency (locked) */}
               <div className="mb-5">
                 <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">Default Currency</p>
-                <div className="flex items-center justify-between px-3 py-3 rounded-lg border border-border bg-muted/20">
-                  <div>
+                <div className="px-3 py-3 rounded-lg border border-border bg-muted/20">
+                  <div className="flex items-center gap-1.5">
                     <p className="text-sm font-medium text-foreground">
                       {currencyInfo ? `${currencyInfo.name} (${currencyInfo.code})` : user?.defaultCurrency ?? "Not set"}
                     </p>
-                    <p className="text-xs text-muted-foreground mt-0.5">Set at account setup · cannot be changed</p>
+                    <Lock className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                   </div>
-                  <Lock className="w-4 h-4 text-muted-foreground shrink-0" />
+                  <p className="text-xs text-muted-foreground mt-0.5">Set at account setup · cannot be changed</p>
                 </div>
                 <p className="text-[11px] text-muted-foreground mt-1.5 leading-relaxed">
-                  To change your home currency, contact{" "}
-                  <a href="mailto:support@spliiit.com" className="text-primary underline">support@spliiit.com</a>.
+                  Need to change it?{" "}
+                  <button onClick={() => setView("support")} className="text-primary underline">Contact support</button>.
                 </p>
               </div>
 
