@@ -8,6 +8,6 @@ export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "sk_test_place
 
 // Price IDs from Stripe dashboard — LIVE (CAD)
 export const STRIPE_PRICE_MONTHLY = "price_1TO41pIF43gxR1xo5wpRAeB7";
-export const STRIPE_PRICE_YEARLY  = "price_1TO41nIF43gxR1xoib3nLQgn";
+export const STRIPE_PRICE_YEARLY  = "price_1TPTXtIF43gxR1xop86gqtGZ";
 
 export const STRIPE_ENABLED = !!process.env.STRIPE_SECRET_KEY;

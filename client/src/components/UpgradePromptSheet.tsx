@@ -139,7 +139,7 @@ export function UpgradePromptSheet({
             }`}
             onClick={() => setPlan("yearly")}
           >
-            Yearly · CA$29.99
+            Yearly · CA$35.99
             <span
               className={`text-xs px-1.5 py-0.5 rounded-full font-semibold ${
                 plan === "yearly"
@@ -147,7 +147,7 @@ export function UpgradePromptSheet({
                   : "bg-amber-100 text-amber-700"
               }`}
             >
-              Save 37%
+              Save 25%
             </span>
           </button>
         </div>

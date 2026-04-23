@@ -237,9 +237,9 @@ export default function Upgrade() {
   }
 
   const monthlyCost = "CA$3.99";
-  const yearlyCost = "CA$29.99";
-  const yearlyMonthly = "CA$2.50";
-  const saving = "37%";
+  const yearlyCost = "CA$35.99";
+  const yearlyMonthly = "CA$3.00";
+  const saving = "25%";
 
   return (
     <div className="space-y-5 max-w-md mx-auto">
