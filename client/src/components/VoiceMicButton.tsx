@@ -30,6 +30,12 @@ import type { SafeUser, Group } from "@shared/schema";
 import { UpgradePromptSheet } from "./UpgradePromptSheet";
 import { track } from "@/lib/analytics";
 import { recordExpenseAndCheck, triggerReview } from "@/lib/reviewPrompt";
+import { isIosNative } from "@/lib/iap";
+
+// iOS detection — covers both the Capacitor native app AND Safari on iPhone
+const isIOS = isIosNative || /iPhone|iPad|iPod/i.test(
+  typeof navigator !== "undefined" ? navigator.userAgent : ""
+);
 
 // ─── Waveform animation ────────────────────────────────────────────────────────
 
@@ -111,8 +117,9 @@ export function VoiceMicButton() {
       setUpgradeOpen(true);
       return;
     }
-    setShowExamples(false);
     setSheetOpen(true);
+    if (isIOS) return; // Show "coming soon" UI — don't attempt speech recognition on iOS
+    setShowExamples(false);
     startListening();
   }, [user?.isPremium, startListening]);
 
@@ -220,7 +227,7 @@ export function VoiceMicButton() {
             : "w-14 h-14 bg-muted border border-border text-muted-foreground hover:bg-muted/80"
           }`}
         style={{ bottom: "76px" }} // clears the 64px nav bar
-        onPointerDown={(e) => { e.preventDefault(); handleMicPress(); }}
+        onPointerDown={(e) => { e.preventDefault(); e.currentTarget.setPointerCapture(e.pointerId); handleMicPress(); }}
         onPointerUp={handleMicRelease}
         onPointerLeave={handleMicRelease}
         onPointerCancel={handleMicRelease}
@@ -241,8 +248,8 @@ export function VoiceMicButton() {
       <Sheet open={sheetOpen} onOpenChange={(open) => { if (!open) handleClose(); }}>
         <SheetContent
           side="bottom"
-          className="rounded-t-2xl pb-safe"
-          style={{ maxHeight: "70vh" }}
+          className="rounded-t-2xl pb-safe select-none"
+          style={{ maxHeight: "70vh", touchAction: "none" }}
         >
           <div className="pt-1 pb-6 px-1">
             {/* Close button */}
@@ -257,6 +264,30 @@ export function VoiceMicButton() {
                 <X className="w-4 h-4" />
               </button>
             </div>
+
+            {/* ── iOS: Voice Mode not yet supported ────────────────────── */}
+            {isIOS ? (
+              <div className="space-y-4 py-2">
+                <div className="rounded-2xl border border-border bg-muted/20 px-4 py-5 flex flex-col items-center gap-3 text-center">
+                  <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center">
+                    <Mic className="w-6 h-6 text-primary" />
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-sm font-semibold text-foreground">Coming to iPhone soon 🎤</p>
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      Voice Mode isn't supported in the iPhone app yet — Safari doesn't allow it.
+                      We're working on full native iOS support.
+                    </p>
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      In the meantime, try it in <span className="font-medium text-foreground">Chrome on Android</span>.
+                    </p>
+                  </div>
+                </div>
+                <Button className="w-full" variant="outline" onClick={handleClose}>
+                  Got it
+                </Button>
+              </div>
+            ) : <>
 
             {/* ── LISTENING STATE ──────────────────────────────────────── */}
             {(voiceState === "listening" || voiceState === "idle") && (
@@ -466,6 +497,7 @@ export function VoiceMicButton() {
                 )}
               </div>
             )}
+            </>} {/* end isIOS ternary */}
           </div>
         </SheetContent>
       </Sheet>

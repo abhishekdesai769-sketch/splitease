@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "@/lib/auth";
+import { isIosNative } from "@/lib/iap";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -334,8 +335,8 @@ export default function AuthPage() {
           </div>
           </Card>
 
-          {/* Download the app */}
-          <div className="space-y-3">
+          {/* Download the app — hidden inside the native app (you're already in it) */}
+          {!isIosNative && <div className="space-y-3">
             <div className="relative">
               <div className="absolute inset-0 flex items-center">
                 <span className="w-full border-t border-border" />
@@ -369,7 +370,7 @@ export default function AuthPage() {
                 <div className="text-sm font-semibold leading-tight">Google Play</div>
               </div>
             </div>
-          </div>
+          </div>}
 
         </div>
       </div>
