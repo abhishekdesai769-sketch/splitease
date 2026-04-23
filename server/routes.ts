@@ -3110,5 +3110,53 @@ setInterval(loadAll,30000);
     res.json({ ok: true, reminderEnabled: enabled, reminderDays: days, reminderTone: tone });
   });
 
+  // ========== User Preferences ==========
+
+  const VALID_CURRENCIES = ["CAD", "USD", "EUR", "GBP", "AUD", "INR", "MXN", "JPY", "CHF", "NZD", "SGD", "HKD"];
+
+  // POST /api/user/currency — set default currency ONE TIME (locked after)
+  app.post("/api/user/currency", requireAuth, async (req, res) => {
+    const userId = (req.session as any).userId as string;
+    const user = await storage.getUser(userId);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+    // Already locked — reject silently (anti-abuse)
+    if (user.currencyLockedAt) {
+      return res.status(403).json({ error: "Default currency is already set and cannot be changed. Contact support if you need help." });
+    }
+
+    const { currency } = req.body;
+    if (!currency || !VALID_CURRENCIES.includes(currency)) {
+      return res.status(400).json({ error: "Invalid currency code." });
+    }
+
+    const updated = await storage.updateUser(userId, {
+      defaultCurrency: currency,
+      currencyLockedAt: new Date().toISOString(),
+    });
+    if (!updated) return res.status(500).json({ error: "Failed to save currency." });
+
+    const { password: _, ...safeUser } = updated;
+    res.json(safeUser);
+  });
+
+  // PATCH /api/user/preferences — update theme preference (currency NOT updatable here)
+  app.patch("/api/user/preferences", requireAuth, async (req, res) => {
+    const userId = (req.session as any).userId as string;
+    const user = await storage.getUser(userId);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+    const { themePreference } = req.body;
+    if (!themePreference || !["dark", "light", "system"].includes(themePreference)) {
+      return res.status(400).json({ error: "Invalid theme preference. Must be 'dark', 'light', or 'system'." });
+    }
+
+    const updated = await storage.updateUser(userId, { themePreference });
+    if (!updated) return res.status(500).json({ error: "Failed to save preference." });
+
+    const { password: _, ...safeUser } = updated;
+    res.json(safeUser);
+  });
+
   return httpServer;
 }

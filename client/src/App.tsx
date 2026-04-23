@@ -7,6 +7,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/lib/theme";
 import { AuthProvider, useAuth } from "@/lib/auth";
+import { useTheme } from "@/lib/theme";
 import { trackPageView } from "@/lib/analytics";
 import { Layout } from "@/components/Layout";
 import Dashboard from "@/pages/dashboard";
@@ -21,8 +22,19 @@ import ResetPassword from "@/pages/reset-password";
 import NotFound from "@/pages/not-found";
 import Import from "@/pages/import";
 import Upgrade from "@/pages/upgrade";
+import OnboardingPreferences from "@/pages/onboarding";
+
 function AppRouter() {
   const { user, isLoading } = useAuth();
+  const { syncFromDb } = useTheme();
+
+  // Sync theme from DB when user loads (cross-device consistency)
+  useEffect(() => {
+    if (user?.themePreference) {
+      syncFromDb(user.themePreference);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   if (isLoading) {
     return (
@@ -46,6 +58,11 @@ function AppRouter() {
       return <ResetPassword />;
     }
     return <AuthPage />;
+  }
+
+  // Onboarding gate — show once for new users (and legacy users with no currency set)
+  if (!user.defaultCurrency) {
+    return <OnboardingPreferences />;
   }
 
   return (

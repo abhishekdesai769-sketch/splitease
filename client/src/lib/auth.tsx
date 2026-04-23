@@ -13,6 +13,7 @@ interface AuthContextType {
   forgotPassword: (email: string) => Promise<string>;
   resetPassword: (token: string, password: string) => Promise<string>;
   logout: () => Promise<void>;
+  refreshUser: () => Promise<void>; // re-fetch user from server (e.g. after onboarding)
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -24,6 +25,7 @@ const AuthContext = createContext<AuthContextType>({
   forgotPassword: async () => "",
   resetPassword: async () => "",
   logout: async () => {},
+  refreshUser: async () => {},
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -91,6 +93,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return data.message;
   }, []);
 
+  const refreshUser = useCallback(async () => {
+    const res = await fetch(
+      ("__PORT_5000__".startsWith("__") ? "" : "__PORT_5000__") + "/api/auth/me",
+      { credentials: "include" }
+    );
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.id) setUser(data);
+    }
+  }, []);
+
   const logout = useCallback(async () => {
     await apiRequest("POST", "/api/auth/logout");
     setUser(null);
@@ -99,7 +112,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, signup, sendOtp, forgotPassword, resetPassword, logout }}>
+    <AuthContext.Provider value={{ user, isLoading, login, signup, sendOtp, forgotPassword, resetPassword, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

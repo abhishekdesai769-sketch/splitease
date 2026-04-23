@@ -10,7 +10,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { apiRequest } from "@/lib/queryClient";
-import { Headphones, Send, Loader2, CheckCircle2, UserPlus, Copy, Check, MessageCircle, Mail, Trash2, AlertTriangle, Upload, HelpCircle, ChevronDown, Bell, Crown } from "lucide-react";
+import { Headphones, Send, Loader2, CheckCircle2, UserPlus, Copy, Check, MessageCircle, Mail, Trash2, AlertTriangle, Upload, HelpCircle, ChevronDown, Bell, Crown, Lock, Monitor, Moon, Settings, Sun } from "lucide-react";
+import { useTheme, type ThemePref } from "@/lib/theme";
+import { CURRENCIES } from "@/components/CurrencySelector";
 import { useLocation } from "wouter";
 import { UpgradePromptSheet } from "@/components/UpgradePromptSheet";
 
@@ -53,7 +55,8 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const [open, setOpen] = useState(false);
-  const [view, setView] = useState<"menu" | "support" | "invite" | "delete" | "sent" | "faq" | "reminders">("menu");
+  const [view, setView] = useState<"menu" | "support" | "invite" | "delete" | "sent" | "faq" | "reminders" | "preferences">("menu");
+  const { themePref, setThemePref } = useTheme();
   const [faqOpen, setFaqOpen] = useState<number | null>(null);
 
   // Support form state
@@ -270,6 +273,21 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
                   )}
                 </div>
                 <p className="text-xs text-muted-foreground">Auto-email people who owe you</p>
+              </div>
+            </button>
+
+            {/* Preferences */}
+            <button
+              onClick={() => setView("preferences")}
+              className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-muted/50 transition-colors text-left group"
+              data-testid="menu-preferences"
+            >
+              <div className="w-9 h-9 rounded-lg bg-indigo-500/10 flex items-center justify-center flex-shrink-0">
+                <Settings className="w-4.5 h-4.5 text-indigo-500" />
+              </div>
+              <div>
+                <p className="text-sm font-medium">Preferences</p>
+                <p className="text-xs text-muted-foreground">Currency & appearance</p>
               </div>
             </button>
 
@@ -746,7 +764,7 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
             },
             {
               q: "How do I change the app theme (dark/light mode)?",
-              a: "Tap the sun/moon icon at the top right of the home page — it's just to the left of the logout button. Tap it to toggle between light and dark mode.",
+              a: "Tap the logo in the top left to open the menu, then tap Preferences. You can choose Light, Dark, or System (which follows your device's setting). You can also tap the sun/moon icon in the top right to quickly toggle between light and dark.",
             },
             {
               q: "How do I delete my account?",
@@ -780,6 +798,74 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
                     )}
                   </div>
                 ))}
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* ===== PREFERENCES VIEW ===== */}
+        {view === "preferences" && (() => {
+          const currencyInfo = CURRENCIES.find((c) => c.code === user?.defaultCurrency);
+          const themeOptions: { pref: ThemePref; icon: React.ReactNode; label: string }[] = [
+            { pref: "light",  icon: <Sun className="w-4 h-4" />,     label: "Light"  },
+            { pref: "dark",   icon: <Moon className="w-4 h-4" />,    label: "Dark"   },
+            { pref: "system", icon: <Monitor className="w-4 h-4" />, label: "System" },
+          ];
+          return (
+            <div className="flex-1 flex flex-col px-5 overflow-y-auto pb-6">
+              <button
+                onClick={() => setView("menu")}
+                className="text-xs text-muted-foreground hover:text-foreground mb-3 self-start flex-shrink-0"
+              >
+                ← Back
+              </button>
+
+              <h3 className="text-sm font-semibold mb-1 flex-shrink-0">Preferences</h3>
+              <p className="text-xs text-muted-foreground mb-5 flex-shrink-0">
+                Manage your currency and appearance settings.
+              </p>
+
+              {/* Currency (locked) */}
+              <div className="mb-5">
+                <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">Default Currency</p>
+                <div className="flex items-center justify-between px-3 py-3 rounded-lg border border-border bg-muted/20">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">
+                      {currencyInfo ? `${currencyInfo.name} (${currencyInfo.code})` : user?.defaultCurrency ?? "Not set"}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Set at account setup · cannot be changed</p>
+                  </div>
+                  <Lock className="w-4 h-4 text-muted-foreground shrink-0" />
+                </div>
+                <p className="text-[11px] text-muted-foreground mt-1.5 leading-relaxed">
+                  To change your home currency, contact{" "}
+                  <a href="mailto:support@spliiit.com" className="text-primary underline">support@spliiit.com</a>.
+                </p>
+              </div>
+
+              {/* Theme */}
+              <div>
+                <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">Appearance</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {themeOptions.map(({ pref, icon, label }) => (
+                    <button
+                      key={pref}
+                      type="button"
+                      onClick={() => setThemePref(pref)}
+                      className={`flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border transition-all ${
+                        themePref === pref
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "border-border text-muted-foreground hover:bg-muted/50"
+                      }`}
+                    >
+                      {icon}
+                      <span className="text-xs font-semibold">{label}</span>
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[11px] text-muted-foreground mt-2">
+                  System follows your device's dark/light setting automatically.
+                </p>
               </div>
             </div>
           );
