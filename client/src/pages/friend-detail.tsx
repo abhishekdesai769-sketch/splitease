@@ -18,6 +18,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { calculateGroupBalances } from "@/lib/simplify";
+import { recordExpenseAndCheck, triggerReview } from "@/lib/reviewPrompt";
 
 export default function FriendDetail({ friendId }: { friendId: string }) {
   const { user } = useAuth();
@@ -158,6 +159,7 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
       resetExpenseForm();
       setAddExpenseOpen(false);
       toast({ title: "Expense added" });
+      if (recordExpenseAndCheck()) setTimeout(() => triggerReview("expense_6"), 1500);
     },
     onError: (err: Error) => {
       let msg = err.message;

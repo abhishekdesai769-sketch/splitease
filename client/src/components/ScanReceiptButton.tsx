@@ -3,6 +3,7 @@ import { Camera, Crown, Loader2 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { ReceiptReviewSheet, type Member, type ItemSplit } from "@/components/ReceiptReviewSheet";
+import { triggerReview } from "@/lib/reviewPrompt";
 
 interface ReceiptItem {
   name: string;
@@ -81,6 +82,7 @@ export function ScanReceiptButton({ isPremium, onUpgrade, members, onItemSplit, 
   const handleConfirm = (merchant: string, total: number, date?: string) => {
     if (!reviewFile) return;
     onResult({ merchant, total, date }, reviewFile);
+    setTimeout(() => triggerReview("receipt"), 1500);
     setReviewData(null);
     setReviewFile(null);
   };

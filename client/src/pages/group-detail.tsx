@@ -19,6 +19,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { calculateGroupBalances, simplifyDebts, calculatePairwiseBalances } from "@/lib/simplify";
+import { recordExpenseAndCheck, triggerReview } from "@/lib/reviewPrompt";
 
 export default function GroupDetail({ groupId }: { groupId: string }) {
   const { user } = useAuth();
@@ -178,6 +179,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
       resetForm();
       setAddOpen(false);
       toast({ title: "Expense added" });
+      if (recordExpenseAndCheck()) setTimeout(() => triggerReview("expense_6"), 1500);
     },
     onError: (err: Error) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });

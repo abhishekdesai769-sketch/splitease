@@ -13,6 +13,7 @@ import { Link } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { calculateGroupBalances } from "@/lib/simplify";
 import { track } from "@/lib/analytics";
+import { triggerReview } from "@/lib/reviewPrompt";
 
 export default function Groups() {
   const { user } = useAuth();
@@ -37,6 +38,7 @@ export default function Groups() {
       setGroupName("");
       setOpen(false);
       toast({ title: "Group created" });
+      setTimeout(() => triggerReview("group"), 1500);
     },
     onError: (err: Error) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });

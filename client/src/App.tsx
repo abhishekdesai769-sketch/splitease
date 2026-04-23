@@ -23,6 +23,7 @@ import NotFound from "@/pages/not-found";
 import Import from "@/pages/import";
 import Upgrade from "@/pages/upgrade";
 import OnboardingPreferences from "@/pages/onboarding";
+import { ReviewPromptSheet } from "@/components/ReviewPromptSheet";
 
 function AppRouter() {
   const { user, isLoading } = useAuth();
@@ -107,6 +108,7 @@ function App() {
         <ThemeProvider>
           <AuthProvider>
             <Toaster />
+            <ReviewPromptSheet />
             <Router hook={useHashLocation}>
               <PageViewTracker />
               <AppRouter />

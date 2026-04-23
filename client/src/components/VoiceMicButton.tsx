@@ -29,6 +29,7 @@ import { formatVoiceAmount, VOICE_EXAMPLES } from "@/lib/voiceParser";
 import type { SafeUser, Group } from "@shared/schema";
 import { UpgradePromptSheet } from "./UpgradePromptSheet";
 import { track } from "@/lib/analytics";
+import { recordExpenseAndCheck, triggerReview } from "@/lib/reviewPrompt";
 
 // ─── Waveform animation ────────────────────────────────────────────────────────
 
@@ -192,6 +193,7 @@ export function VoiceMicButton() {
 
       handleClose();
       toast({ title: "Expense added ✓", description: `${parsedIntent.description} — ${formatVoiceAmount(parsedIntent.amount, voiceCtx.defaultCurrency)}` });
+      if (recordExpenseAndCheck()) setTimeout(() => triggerReview("expense_6"), 2000);
     } catch {
       toast({ title: "Failed to add expense", description: "Try again or add it manually.", variant: "destructive" });
       track("voice_error", { reason: "api_failure" });
