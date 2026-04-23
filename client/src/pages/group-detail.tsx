@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Plus, ArrowLeft, Trash2, Shuffle, Receipt, UserPlus, X, HandCoins, CheckCircle2, AlertTriangle, Camera, Mail, Loader2, Crown, Shield, LogOut, UserMinus, Clock, Check, Ghost, FileText, Pencil, MoreVertical, Upload, Download, Repeat, ChevronDown } from "lucide-react";
+import { Plus, ArrowLeft, Trash2, Shuffle, Receipt, UserPlus, X, HandCoins, CheckCircle2, AlertTriangle, Camera, Mail, Loader2, Crown, Shield, LogOut, UserMinus, Clock, Check, Ghost, FileText, Pencil, MoreVertical, Upload, Download, Repeat, ChevronDown, Copy, MessageCircle } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { UpgradePromptSheet } from "@/components/UpgradePromptSheet";
 import { ScanReceiptButton } from "@/components/ScanReceiptButton";
@@ -26,6 +26,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
   const { toast } = useToast();
   const [addOpen, setAddOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteLinkCopied, setInviteLinkCopied] = useState(false);
   // simplifyDebts is now a persistent group setting, read from group?.simplifyDebts
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
@@ -1262,8 +1263,31 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                   data-testid="input-invite-email"
                 />
                 <p className="text-xs text-muted-foreground">
-                  They must have a Spliiit account. Share the app link with them to sign up.
+                  They need a Spliiit account to accept. Not on Spliiit yet?
                 </p>
+                <div className="flex gap-2 pt-0.5">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await navigator.clipboard.writeText("https://spliiit.klarityit.ca");
+                      setInviteLinkCopied(true);
+                      setTimeout(() => setInviteLinkCopied(false), 2000);
+                    }}
+                    className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md border border-border bg-muted/30 hover:bg-muted/60 transition-colors"
+                  >
+                    {inviteLinkCopied ? <Check className="w-3.5 h-3.5 text-primary" /> : <Copy className="w-3.5 h-3.5 text-muted-foreground" />}
+                    {inviteLinkCopied ? "Copied!" : "Copy invite link"}
+                  </button>
+                  <a
+                    href={`https://wa.me/?text=${encodeURIComponent("Hey! I use Spliiit to split expenses — it's free with no limits. Join me: https://spliiit.klarityit.ca")}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md border border-border bg-muted/30 hover:bg-muted/60 transition-colors"
+                  >
+                    <MessageCircle className="w-3.5 h-3.5 text-green-500" />
+                    WhatsApp
+                  </a>
+                </div>
               </div>
               <Button
                 type="submit"

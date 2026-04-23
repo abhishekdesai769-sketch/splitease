@@ -10,7 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { apiRequest } from "@/lib/queryClient";
-import { Headphones, Send, Loader2, CheckCircle2, UserPlus, Copy, Check, MessageCircle, Mail, Trash2, AlertTriangle, Upload, HelpCircle, ChevronDown, Bell, Crown, Lock, Monitor, Moon, Settings, Sun } from "lucide-react";
+import { Headphones, Send, Loader2, CheckCircle2, UserPlus, Copy, Check, MessageCircle, Mail, Trash2, AlertTriangle, Upload, HelpCircle, ChevronDown, Bell, Crown, Lock, Monitor, Moon, Settings, Sun, Star } from "lucide-react";
+import { getStorePlatform, getStoreLink } from "@/lib/reviewPrompt";
 import { useTheme, type ThemePref } from "@/lib/theme";
 import { CURRENCIES } from "@/components/CurrencySelector";
 import { useLocation } from "wouter";
@@ -236,6 +237,21 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
               <div>
                 <p className="text-sm font-medium">Invite a Friend</p>
                 <p className="text-xs text-muted-foreground">Share Spliiit with your friends</p>
+              </div>
+            </button>
+
+            {/* Leave a Review */}
+            <button
+              onClick={() => window.open(getStoreLink(getStorePlatform()), "_blank", "noopener,noreferrer")}
+              className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-muted/50 transition-colors text-left group"
+              data-testid="menu-leave-review"
+            >
+              <div className="w-9 h-9 rounded-lg bg-amber-500/10 flex items-center justify-center flex-shrink-0">
+                <Star className="w-4.5 h-4.5 text-amber-500 fill-amber-500" />
+              </div>
+              <div>
+                <p className="text-sm font-medium">Leave a Review ⭐</p>
+                <p className="text-xs text-muted-foreground">Takes 30 seconds · means the world to us</p>
               </div>
             </button>
 

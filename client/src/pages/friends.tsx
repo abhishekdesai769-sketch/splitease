@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { UserPlus, Plus, Users2, HandCoins, CheckCircle2, ChevronRight, Camera, X, Repeat, Crown } from "lucide-react";
+import { UserPlus, Plus, Users2, HandCoins, CheckCircle2, ChevronRight, Camera, X, Repeat, Crown, Copy, Check, MessageCircle } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { UpgradePromptSheet } from "@/components/UpgradePromptSheet";
 import { ScanReceiptButton } from "@/components/ScanReceiptButton";
@@ -22,6 +22,7 @@ export default function Friends() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [addFriendOpen, setAddFriendOpen] = useState(false);
+  const [inviteLinkCopied, setInviteLinkCopied] = useState(false);
   const [addExpenseOpen, setAddExpenseOpen] = useState(false);
   const [settleUpOpen, setSettleUpOpen] = useState(false);
   const [settleUpFriend, setSettleUpFriend] = useState<{ id: string; name: string; amount: number } | null>(null);
@@ -528,8 +529,31 @@ export default function Friends() {
                     data-testid="input-friend-email"
                   />
                   <p className="text-xs text-muted-foreground">
-                    They must have a Spliiit account first.
+                    They need a Spliiit account to connect. Not on Spliiit yet?
                   </p>
+                  <div className="flex gap-2 pt-0.5">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await navigator.clipboard.writeText("https://spliiit.klarityit.ca");
+                        setInviteLinkCopied(true);
+                        setTimeout(() => setInviteLinkCopied(false), 2000);
+                      }}
+                      className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md border border-border bg-muted/30 hover:bg-muted/60 transition-colors"
+                    >
+                      {inviteLinkCopied ? <Check className="w-3.5 h-3.5 text-primary" /> : <Copy className="w-3.5 h-3.5 text-muted-foreground" />}
+                      {inviteLinkCopied ? "Copied!" : "Copy invite link"}
+                    </button>
+                    <a
+                      href={`https://wa.me/?text=${encodeURIComponent("Hey! I use Spliiit to split expenses — it's free with no limits. Join me: https://spliiit.klarityit.ca")}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md border border-border bg-muted/30 hover:bg-muted/60 transition-colors"
+                    >
+                      <MessageCircle className="w-3.5 h-3.5 text-green-500" />
+                      WhatsApp
+                    </a>
+                  </div>
                 </div>
                 <Button
                   type="submit"
