@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { SupportDrawer } from "@/components/SupportDrawer";
+import { VoiceMicButton } from "@/components/VoiceMicButton";
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
@@ -85,6 +86,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <main className="flex-1 max-w-3xl mx-auto w-full px-4 py-5 pb-24">
         {children}
       </main>
+
+      {/* Voice Mode floating mic button — sits above the bottom nav */}
+      <VoiceMicButton />
 
       {/* Bottom navigation */}
       <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-background/90 backdrop-blur-md">
