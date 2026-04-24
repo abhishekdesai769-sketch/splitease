@@ -176,13 +176,8 @@ export function useVoiceMode(ctx: VoiceContext): UseVoiceModeResult {
           const msg = String(err?.message || err || "unknown");
           console.error("[voice] native start error:", msg);
           track("voice_error", { reason: msg });
-          // Most common cause after permissions granted: Speech Recognition is
-          // disabled under iOS Settings → Privacy & Security → Speech Recognition
-          setErrorMessage(
-            msg.toLowerCase().includes("permission") || msg.toLowerCase().includes("auth")
-              ? "Enable Speech Recognition for Spliiit in iOS Settings → Privacy & Security → Speech Recognition."
-              : "Couldn't start Voice Mode. Check that Microphone AND Speech Recognition are both enabled for Spliiit in iOS Settings."
-          );
+          // Show the actual iOS error so we can diagnose it
+          setErrorMessage(`Voice error: ${msg}`);
           setVoiceState("error");
         }
       })();
