@@ -934,20 +934,6 @@ setInterval(loadAll,30000);
     res.json(safeUser);
   });
 
-  // Admin: toggle premium status for a user (temporary, for testing/screenshots)
-  app.patch("/api/admin/users/:id/set-premium", requireAuth, requireAdmin, async (req, res) => {
-    const { isPremium } = req.body;
-    const user = await storage.getUser(req.params.id);
-    if (!user) return res.status(404).json({ error: "User not found" });
-    await storage.updateUserSubscription(req.params.id, {
-      isPremium: !!isPremium,
-      premiumUntil: isPremium
-        ? (user.premiumUntil ?? new Date(Date.now() + 366 * 24 * 60 * 60 * 1000).toISOString())
-        : null,
-    });
-    res.json({ ok: true, userId: req.params.id, isPremium: !!isPremium });
-  });
-
   // Admin: force-reset a user's password (for locked-out users)
   app.post("/api/admin/users/:id/reset-password", requireAuth, requireAdmin, async (req, res) => {
     const { newPassword } = req.body;
