@@ -139,7 +139,7 @@ export function UpgradePromptSheet({
             }`}
             onClick={() => setPlan("yearly")}
           >
-            Yearly · CA$35.99
+            Yearly · CA$34.99
             <span
               className={`text-xs px-1.5 py-0.5 rounded-full font-semibold ${
                 plan === "yearly"
@@ -147,7 +147,7 @@ export function UpgradePromptSheet({
                   : "bg-amber-100 text-amber-700"
               }`}
             >
-              Save 25%
+              Save 27%
             </span>
           </button>
         </div>
@@ -176,7 +176,7 @@ export function UpgradePromptSheet({
           )}
           {isPending
             ? "Processing..."
-            : `Get Premium — ${plan === "monthly" ? "CA$3.99/mo" : "CA$29.99/yr"}`}
+            : `Get Premium — ${plan === "monthly" ? "CA$3.99/mo" : "CA$34.99/yr"}`}
         </Button>
 
         {/* Restore Purchases — iOS only, required by App Store guidelines */}
