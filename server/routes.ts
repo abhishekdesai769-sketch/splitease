@@ -5,6 +5,7 @@ import pgSession from "connect-pg-simple";
 import { Pool } from "pg";
 import { randomBytes } from "crypto";
 import { OAuth2Client } from "google-auth-library";
+import appleSignin from "apple-signin-auth";
 import { storage } from "./storage";
 import { signupSchema, loginSchema, forgotPasswordSchema, resetPasswordSchema } from "@shared/schema";
 import { notifyExpenseCreated, sendOtpEmail, sendResetPasswordEmail, sendExportEmail, sendSupportEmail, sendInviteToInviteeEmail, sendInviteToAdminEmail } from "./email";
@@ -695,6 +696,146 @@ setInterval(loadAll,30000);
     } catch (err) {
       console.error("[google-oauth] callback error:", err);
       res.redirect("/#/?error=google_failed");
+    }
+  });
+
+  // ========== Native Google Sign-In (Capacitor) ==========
+  // Receives an ID token from the native Google Sign-In SDK (no browser redirect needed)
+  app.post("/api/auth/google/token", authLimiter, async (req, res) => {
+    try {
+      const { idToken } = req.body;
+      if (!idToken || typeof idToken !== "string") {
+        return res.status(400).json({ error: "Missing idToken" });
+      }
+
+      // Accept both the web client ID and the iOS client ID as valid audiences
+      const audiences = [
+        process.env.GOOGLE_CLIENT_ID,
+        process.env.GOOGLE_IOS_CLIENT_ID,
+      ].filter(Boolean) as string[];
+
+      const ticket = await googleClient.verifyIdToken({
+        idToken,
+        audience: audiences,
+      });
+      const payload = ticket.getPayload();
+      if (!payload?.sub || !payload.email) {
+        return res.status(400).json({ error: "Invalid Google token" });
+      }
+
+      const googleId = payload.sub;
+      const email = payload.email.toLowerCase().trim();
+      const name = payload.name || email.split("@")[0];
+
+      let user = await storage.getUserByGoogleId(googleId);
+      if (!user) {
+        const existing = await storage.getUserByEmail(email);
+        if (existing && !existing.isGhost) {
+          await storage.linkGoogleId(existing.id, googleId);
+          user = await storage.getUser(existing.id) ?? null as any;
+        } else {
+          const avatarColor = AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
+          const isAdmin = email === ADMIN_EMAIL;
+          user = await storage.createUser({
+            name: sanitize(name, 100),
+            email,
+            password: null as any,
+            googleId,
+            avatarColor,
+            isAdmin,
+            isApproved: true,
+            isEmailVerified: true,
+          });
+          try {
+            const ghosts = await storage.getGhostsByEmail(email);
+            for (const ghost of ghosts) {
+              await storage.mergeGhostUser(ghost.id, user.id);
+            }
+          } catch { /* non-blocking */ }
+        }
+      }
+
+      if (!user) return res.status(400).json({ error: "Google sign-in failed" });
+
+      (req.session as any).userId = user.id;
+      const { password: _, ...safeUser } = user;
+      return res.json({ user: safeUser });
+    } catch (err) {
+      console.error("[google-native] token error:", err);
+      return res.status(400).json({ error: "Google sign-in failed" });
+    }
+  });
+
+  // ========== Sign in with Apple (Capacitor) ==========
+  // Apple only provides name/email on the first sign-in; subsequent logins only send identityToken
+  app.post("/api/auth/apple", authLimiter, async (req, res) => {
+    try {
+      const { identityToken, givenName, familyName, email: emailFromClient } = req.body;
+      if (!identityToken || typeof identityToken !== "string") {
+        return res.status(400).json({ error: "Missing identityToken" });
+      }
+
+      // Verify with Apple's public keys
+      let applePayload: any;
+      try {
+        applePayload = await appleSignin.verifyIdToken(identityToken, {
+          audience: "ca.klarityit.spliiit",
+          ignoreExpiration: false,
+        });
+      } catch (verifyErr) {
+        console.error("[apple-auth] token verify error:", verifyErr);
+        return res.status(400).json({ error: "Invalid Apple token" });
+      }
+
+      const appleId = applePayload.sub as string;
+      if (!appleId) return res.status(400).json({ error: "Invalid Apple token" });
+
+      // Apple only provides email on first sign-in; fall back to client-sent value
+      const email = ((applePayload.email as string) || emailFromClient || "").toLowerCase().trim();
+      const name = [givenName, familyName].filter(Boolean).join(" ").trim()
+        || email.split("@")[0]
+        || "Spliiit User";
+
+      let user = await storage.getUserByAppleId(appleId);
+      if (!user) {
+        if (!email) {
+          // No email on subsequent Apple logins — Apple ID not found in DB yet
+          return res.status(400).json({ error: "Please sign out and try again — we need your email on first sign-in." });
+        }
+        const existing = await storage.getUserByEmail(email);
+        if (existing && !existing.isGhost) {
+          await storage.linkAppleId(existing.id, appleId);
+          user = await storage.getUser(existing.id) ?? null as any;
+        } else {
+          const avatarColor = AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
+          const isAdmin = email === ADMIN_EMAIL;
+          user = await storage.createUser({
+            name: sanitize(name, 100),
+            email,
+            password: null as any,
+            appleId,
+            avatarColor,
+            isAdmin,
+            isApproved: true,
+            isEmailVerified: true,
+          });
+          try {
+            const ghosts = await storage.getGhostsByEmail(email);
+            for (const ghost of ghosts) {
+              await storage.mergeGhostUser(ghost.id, user.id);
+            }
+          } catch { /* non-blocking */ }
+        }
+      }
+
+      if (!user) return res.status(400).json({ error: "Apple sign-in failed" });
+
+      (req.session as any).userId = user.id;
+      const { password: _, ...safeUser } = user;
+      return res.json({ user: safeUser });
+    } catch (err) {
+      console.error("[apple-auth] error:", err);
+      return res.status(400).json({ error: "Apple sign-in failed" });
     }
   });
 

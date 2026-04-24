@@ -10,6 +10,7 @@ export const users = pgTable("users", {
   email: text("email").notNull(), // mandatory, unique identity
   password: text("password"), // hashed; null for Google-OAuth-only accounts
   googleId: text("google_id"), // Google OAuth sub — null for email/password accounts
+  appleId: text("apple_id"),   // Apple Sign In sub — null for non-Apple accounts
   avatarColor: text("avatar_color").notNull(),
   isAdmin: boolean("is_admin").notNull().default(false),
   isApproved: boolean("is_approved").notNull().default(true), // auto-approved on signup

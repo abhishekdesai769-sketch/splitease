@@ -23,6 +23,8 @@ export interface IStorage {
   getUserByEmail(email: string): Promise<User | undefined>;
   getUserByGoogleId(googleId: string): Promise<User | undefined>;
   linkGoogleId(userId: string, googleId: string): Promise<void>;
+  getUserByAppleId(appleId: string): Promise<User | undefined>;
+  linkAppleId(userId: string, appleId: string): Promise<void>;
   createUser(user: InsertUser): Promise<User>;
   getUsersSafe(ids: string[]): Promise<SafeUser[]>;
   searchUsersByEmail(email: string, excludeId: string): Promise<SafeUser[]>;
@@ -126,6 +128,15 @@ export class PgStorage implements IStorage {
 
   async linkGoogleId(userId: string, googleId: string): Promise<void> {
     await db.update(users).set({ googleId }).where(eq(users.id, userId));
+  }
+
+  async getUserByAppleId(appleId: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.appleId, appleId));
+    return user;
+  }
+
+  async linkAppleId(userId: string, appleId: string): Promise<void> {
+    await db.update(users).set({ appleId }).where(eq(users.id, userId));
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {

@@ -72,11 +72,13 @@ jobs:
           cd ../..
           npx cap copy ios
 
-      - name: Copy app icons and Info.plist
+      - name: Copy app icons, Info.plist and entitlements
         run: |
           cp -r ios-assets/Assets.xcassets/AppIcon.appiconset/* \
             ios/App/App/Assets.xcassets/AppIcon.appiconset/
           cp ios-assets/Info.plist ios/App/App/Info.plist
+          # Sign in with Apple entitlement (App.entitlements is already referenced by the Xcode project)
+          cp ios-assets/App.entitlements ios/App/App/App.entitlements
 
       - name: Set up App Store Connect API key
         env:

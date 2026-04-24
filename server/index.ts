@@ -95,6 +95,9 @@ async function runMigrations() {
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id text`);
     await pool.query(`ALTER TABLE users ALTER COLUMN password DROP NOT NULL`);
     await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS users_google_id_idx ON users(google_id) WHERE google_id IS NOT NULL`);
+    // Apple Sign In support
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS apple_id text`);
+    await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS users_apple_id_idx ON users(apple_id) WHERE apple_id IS NOT NULL`);
     // User preferences (currency + theme)
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS default_currency text`);
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS currency_locked_at text`);

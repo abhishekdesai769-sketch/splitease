@@ -17,6 +17,16 @@ const config: CapacitorConfig = {
     minVersion: "16.0",
   },
   plugins: {
+    // @codetrix-studio/capacitor-google-auth config
+    // serverClientId = your Web OAuth Client ID (same as GOOGLE_CLIENT_ID on the server)
+    // iosClientId   = the iOS OAuth Client ID you created in Google Cloud Console
+    //                 (Application type: iOS, Bundle ID: ca.klarityit.spliiit)
+    GoogleAuth: {
+      scopes: ["profile", "email"],
+      serverClientId: "314660995062-dd9g2np13sq0ojjim68pkjk606kse95t.apps.googleusercontent.com",
+      iosClientId: "314660995062-9n1tqoks8mm5eb0ockhaff7r3tp6gq0e.apps.googleusercontent.com",
+      forceCodeForRefreshToken: true,
+    },
     SplashScreen: {
       launchAutoHide: true,
       launchShowDuration: 2000,

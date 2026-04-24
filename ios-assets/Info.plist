@@ -53,5 +53,18 @@
 	<string>Spliiit uses speech recognition for Voice Mode to understand your expense commands</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<!-- Google Sign-In: replace REVERSED_IOS_CLIENT_ID with the reversed form of your iOS OAuth Client ID -->
+	<!-- e.g. if iOS Client ID is "12345.apps.googleusercontent.com" → reversed = "com.googleusercontent.apps.12345" -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>Google Sign-In</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.314660995062-9n1tqoks8mm5eb0ockhaff7r3tp6gq0e</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>
