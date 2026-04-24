@@ -129,6 +129,10 @@ export function useVoiceMode(ctx: VoiceContext): UseVoiceModeResult {
       // ── NATIVE iOS PATH (AVFoundation / SFSpeechRecognizer) ──────────────
       (async () => {
         try {
+          // 0. Stop any lingering session from a previous attempt — calling start()
+          //    while the engine is still active throws "already started" on iOS.
+          await NativeSpeech.stop().catch(() => {});
+
           // 1. Check hardware availability
           const { available } = await NativeSpeech.available();
           if (!available) {
