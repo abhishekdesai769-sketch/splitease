@@ -71,29 +71,28 @@ jobs:
           # Fixes ITMS-91061 rejection for GTMAppAuth, GTMSessionFetcher, GoogleSignIn.
           # These versions are compatible with @codetrix-studio/capacitor-google-auth@3.4.x.
           python3 - << 'PY'
-with open('Podfile', 'r') as f:
-    lines = f.readlines()
-# Find the last bare 'end' line and insert pod pins just before it
-insert_at = None
-for i in range(len(lines) - 1, -1, -1):
-    if lines[i].strip() == 'end':
-        insert_at = i
-        break
-if insert_at is not None:
-    pins = [
-        "\n",
-        "  # Privacy-manifest-compliant versions (Apple ITMS-91061 fix)\n",
-        "  pod 'GoogleSignIn', '>= 7.1.0'\n",
-        "  pod 'GTMAppAuth', '>= 4.1.1'\n",
-        "  pod 'GTMSessionFetcher', '>= 3.3.1'\n",
-    ]
-    lines = lines[:insert_at] + pins + lines[insert_at:]
-    with open('Podfile', 'w') as f:
-        f.writelines(lines)
-    print("Podfile patched: pod version pins inserted")
-else:
-    print("WARNING: could not find closing 'end' in Podfile")
-PY
+          with open('Podfile', 'r') as f:
+              lines = f.readlines()
+          insert_at = None
+          for i in range(len(lines) - 1, -1, -1):
+              if lines[i].strip() == 'end':
+                  insert_at = i
+                  break
+          if insert_at is not None:
+              pins = [
+                  "\n",
+                  "  # Privacy-manifest-compliant versions (Apple ITMS-91061 fix)\n",
+                  "  pod 'GoogleSignIn', '>= 7.1.0'\n",
+                  "  pod 'GTMAppAuth', '>= 4.1.1'\n",
+                  "  pod 'GTMSessionFetcher', '>= 3.3.1'\n",
+              ]
+              lines = lines[:insert_at] + pins + lines[insert_at:]
+              with open('Podfile', 'w') as f:
+                  f.writelines(lines)
+              print("Podfile patched: pod version pins inserted")
+          else:
+              print("WARNING: could not find closing 'end' in Podfile")
+          PY
 
           echo "Podfile tail:"
           tail -20 Podfile
