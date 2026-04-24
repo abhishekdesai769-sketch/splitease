@@ -10,10 +10,24 @@ export function serveStatic(app: Express) {
     );
   }
 
-  app.use(express.static(distPath));
+  // Hashed assets (JS, CSS, images) — filenames change every build so it's
+  // safe to cache them forever. This makes repeat visits instant.
+  app.use(express.static(distPath, {
+    maxAge: "1y",
+    immutable: true,
+    setHeaders: (res, filePath) => {
+      // HTML must NEVER be cached — it references hashed bundle filenames.
+      // A stale HTML file pointing at old (now-deleted) bundles = broken app.
+      if (filePath.endsWith(".html")) {
+        res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+      }
+    },
+  }));
 
-  // fall through to index.html if the file doesn't exist
+  // SPA fallback — serve index.html for all unknown routes.
+  // Always no-store so the browser fetches fresh HTML on every navigation.
   app.use("/{*path}", (_req, res) => {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
     res.sendFile(path.resolve(distPath, "index.html"));
   });
 }
