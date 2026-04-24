@@ -47,6 +47,10 @@
 	<string>Spliiit needs camera access to scan receipts</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Spliiit needs photo library access to upload receipt images</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Spliiit uses the microphone for Voice Mode so you can add expenses hands-free</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Spliiit uses speech recognition for Voice Mode to understand your expense commands</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 </dict>

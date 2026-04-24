@@ -32,8 +32,8 @@ import { track } from "@/lib/analytics";
 import { recordExpenseAndCheck, triggerReview } from "@/lib/reviewPrompt";
 import { isIosNative } from "@/lib/iap";
 
-// iOS detection — covers both the Capacitor native app AND Safari on iPhone
-const isIOS = isIosNative || /iPhone|iPad|iPod/i.test(
+// "Coming soon" only for iOS Safari on the web — native app uses the Capacitor plugin
+const isIOSSafariWeb = !isIosNative && /iPhone|iPad|iPod/i.test(
   typeof navigator !== "undefined" ? navigator.userAgent : ""
 );
 
@@ -118,7 +118,7 @@ export function VoiceMicButton() {
       return;
     }
     setSheetOpen(true);
-    if (isIOS) return; // Show "coming soon" UI — don't attempt speech recognition on iOS
+    if (isIOSSafariWeb) return; // Show "coming soon" UI — Safari web can't do speech recognition
     setShowExamples(false);
     startListening();
   }, [user?.isPremium, startListening]);
@@ -266,7 +266,7 @@ export function VoiceMicButton() {
             </div>
 
             {/* ── iOS: Voice Mode not yet supported ────────────────────── */}
-            {isIOS ? (
+            {isIOSSafariWeb ? (
               <div className="space-y-4 py-2">
                 <div className="rounded-2xl border border-border bg-muted/20 px-4 py-5 flex flex-col items-center gap-3 text-center">
                   <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center">
@@ -497,7 +497,7 @@ export function VoiceMicButton() {
                 )}
               </div>
             )}
-            </>} {/* end isIOS ternary */}
+            </>} {/* end isIOSSafariWeb ternary */}
           </div>
         </SheetContent>
       </Sheet>
