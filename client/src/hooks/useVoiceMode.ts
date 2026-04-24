@@ -138,9 +138,12 @@ export function useVoiceMode(ctx: VoiceContext): UseVoiceModeResult {
           }
 
           // 2. Request mic + speech recognition permission (OS dialog on first use)
-          const perms = await NativeSpeech.requestPermissions();
+          // requestPermissions() shows the dialog but can return the state before the user
+          // taps — so we follow up with checkPermissions() to read the actual granted state.
+          await NativeSpeech.requestPermissions();
+          const perms = await NativeSpeech.checkPermissions();
           if (perms.speechRecognition !== "granted" || perms.microphone !== "granted") {
-            setErrorMessage("Microphone denied — go to Settings → Spliiit → Microphone.");
+            setErrorMessage("Microphone access is required. Go to Settings → Spliiit → enable Microphone and Speech Recognition.");
             setVoiceState("error");
             return;
           }
