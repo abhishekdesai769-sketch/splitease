@@ -31,7 +31,7 @@ import { track } from "@/lib/analytics";
 const COPY: Record<ReviewTrigger, { headline: string; body: string }> = {
   expense_6: {
     headline: "Other apps would've stopped you by now 🚫",
-    body: "You've added 6 expenses — most well-known apps would've cut you off or started throwing ads at you by now. We didn't. A 30-second review helps us keep our commitment to keeping the basics free for you, forever. It means the world to us. 🙏",
+    body: "You've added 6 expenses — most well-known apps would've cut you off or started throwing ads at you by now. We didn't. If Spliiit is already treating you better, a 30-second review helps us keep that commitment and keep the basics free for you, forever. It means the world to us. 🙏",
   },
   receipt: {
     headline: "Receipt attached — and it was free",
