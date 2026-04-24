@@ -30,16 +30,16 @@ import { track } from "@/lib/analytics";
 
 const COPY: Record<ReviewTrigger, { headline: string; body: string }> = {
   expense_6: {
-    headline: "You just passed Splitwise's daily limit 🚫",
-    body: "You've added 6 expenses — and Splitwise would've cut you off by now. If Spliiit is already treating you better, a 30-second review genuinely helps us compete against apps with million-dollar budgets. It means the world to a small indie team. 🙏",
+    headline: "Other apps would've stopped you by now 🚫",
+    body: "You've added 6 expenses — most well-known apps would've cut you off or started throwing ads at you by now. We didn't. A 30-second review helps us keep our commitment to keeping the basics free for you, forever. It means the world to us. 🙏",
   },
   receipt: {
     headline: "Receipt attached — and it was free",
-    body: "Splitwise charges $5/month just to upload a receipt. You didn't pay a cent. If that matters to you, a quick review on the App Store helps other people find us when they're fed up with Splitwise's paywalls.",
+    body: "Most popular apps charge a monthly fee just to upload a receipt. You didn't pay a cent — and you never will for this. A quick review helps more people find us who are tired of paying for things that should just be free. It means the world to us. 🙏",
   },
   group: {
     headline: "Your group is live! 🎉",
-    body: "If Spliiit is already better than what you were using, 30 seconds on the App Store helps a tiny indie app compete against VC-funded competitors. We read every single review. 🙏",
+    body: "If Spliiit is already working better for you, a 30-second review genuinely helps us keep the basics free for everyone, forever. We read every single review. It means the world to us. 🙏",
   },
 };
 
