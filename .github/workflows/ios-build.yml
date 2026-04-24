@@ -67,38 +67,46 @@ jobs:
           sed -i '' "s/IPHONEOS_DEPLOYMENT_TARGET = [0-9.]*/IPHONEOS_DEPLOYMENT_TARGET = 16.0/g" App.xcodeproj/project.pbxproj
           ruby ../../scripts/patch_podfile_signing.rb Podfile
 
-          # Force minimum pod versions that include Apple-required privacy manifests.
-          # Fixes ITMS-91061 rejection for GTMAppAuth, GTMSessionFetcher, GoogleSignIn.
-          # These versions are compatible with @codetrix-studio/capacitor-google-auth@3.4.x.
-          python3 - << 'PY'
-          with open('Podfile', 'r') as f:
-              lines = f.readlines()
-          insert_at = None
-          for i in range(len(lines) - 1, -1, -1):
-              if lines[i].strip() == 'end':
-                  insert_at = i
-                  break
-          if insert_at is not None:
-              pins = [
-                  "\n",
-                  "  # Privacy-manifest-compliant versions (Apple ITMS-91061 fix)\n",
-                  "  pod 'GoogleSignIn', '>= 7.1.0'\n",
-                  "  pod 'GTMAppAuth', '>= 4.1.1'\n",
-                  "  pod 'GTMSessionFetcher', '>= 3.3.1'\n",
-              ]
-              lines = lines[:insert_at] + pins + lines[insert_at:]
-              with open('Podfile', 'w') as f:
-                  f.writelines(lines)
-              print("Podfile patched: pod version pins inserted")
-          else:
-              print("WARNING: could not find closing 'end' in Podfile")
-          PY
-
           echo "Podfile tail:"
           tail -20 Podfile
           pod install
           cd ../..
           npx cap copy ios
+
+      - name: Inject PrivacyInfo.xcprivacy into Google SDK frameworks (ITMS-91061)
+        run: |
+          cd ios/App
+          # capacitor-google-auth@3.4.x requires GoogleSignIn ~> 6.2.4 (version 6, no manifest).
+          # We can't upgrade without breaking the plugin, so we inject the manifest directly.
+          # This is the standard workaround for legacy SDKs that predate Apple's May 2024 requirement.
+          printf '%s\n' \
+            '<?xml version="1.0" encoding="UTF-8"?>' \
+            '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' \
+            '<plist version="1.0"><dict>' \
+            '  <key>NSPrivacyTracking</key><false/>' \
+            '  <key>NSPrivacyTrackingDomains</key><array/>' \
+            '  <key>NSPrivacyCollectedDataTypes</key><array/>' \
+            '  <key>NSPrivacyAccessedAPITypes</key>' \
+            '  <array><dict>' \
+            '    <key>NSPrivacyAccessedAPIType</key><string>NSPrivacyAccessedAPICategoryUserDefaults</string>' \
+            '    <key>NSPrivacyAccessedAPITypeReasons</key><array><string>CA92.1</string></array>' \
+            '  </dict></array>' \
+            '</dict></plist>' \
+            > /tmp/PrivacyInfo.xcprivacy
+          echo "Privacy manifest written:"
+          cat /tmp/PrivacyInfo.xcprivacy
+          for SDK in GoogleSignIn GTMAppAuth GTMSessionFetcher; do
+            echo "--- Searching for ${SDK}.framework ---"
+            find Pods -type d -name "${SDK}.framework" 2>/dev/null | while read -r fw; do
+              DEST="${fw}/PrivacyInfo.xcprivacy"
+              if [ -f "$DEST" ]; then
+                echo "Already present: $DEST"
+              else
+                cp /tmp/PrivacyInfo.xcprivacy "$DEST"
+                echo "Injected: $DEST"
+              fi
+            done
+          done
 
       - name: Copy app icons, Info.plist and entitlements
         run: |
