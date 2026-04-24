@@ -73,41 +73,6 @@ jobs:
           cd ../..
           npx cap copy ios
 
-      - name: Inject PrivacyInfo.xcprivacy into Google SDK frameworks (ITMS-91061)
-        run: |
-          cd ios/App
-          # capacitor-google-auth@3.4.x requires GoogleSignIn ~> 6.2.4 (version 6, no manifest).
-          # We can't upgrade without breaking the plugin, so we inject the manifest directly.
-          # This is the standard workaround for legacy SDKs that predate Apple's May 2024 requirement.
-          printf '%s\n' \
-            '<?xml version="1.0" encoding="UTF-8"?>' \
-            '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' \
-            '<plist version="1.0"><dict>' \
-            '  <key>NSPrivacyTracking</key><false/>' \
-            '  <key>NSPrivacyTrackingDomains</key><array/>' \
-            '  <key>NSPrivacyCollectedDataTypes</key><array/>' \
-            '  <key>NSPrivacyAccessedAPITypes</key>' \
-            '  <array><dict>' \
-            '    <key>NSPrivacyAccessedAPIType</key><string>NSPrivacyAccessedAPICategoryUserDefaults</string>' \
-            '    <key>NSPrivacyAccessedAPITypeReasons</key><array><string>CA92.1</string></array>' \
-            '  </dict></array>' \
-            '</dict></plist>' \
-            > /tmp/PrivacyInfo.xcprivacy
-          echo "Privacy manifest written:"
-          cat /tmp/PrivacyInfo.xcprivacy
-          for SDK in GoogleSignIn GTMAppAuth GTMSessionFetcher; do
-            echo "--- Searching for ${SDK}.framework ---"
-            find Pods -type d -name "${SDK}.framework" 2>/dev/null | while read -r fw; do
-              DEST="${fw}/PrivacyInfo.xcprivacy"
-              if [ -f "$DEST" ]; then
-                echo "Already present: $DEST"
-              else
-                cp /tmp/PrivacyInfo.xcprivacy "$DEST"
-                echo "Injected: $DEST"
-              fi
-            done
-          done
-
       - name: Copy app icons, Info.plist and entitlements
         run: |
           cp -r ios-assets/Assets.xcassets/AppIcon.appiconset/* \
@@ -263,6 +228,40 @@ jobs:
             DEVELOPMENT_TEAM=$APPLE_TEAM_ID 2>&1 | tee /tmp/xcodebuild-archive.log | tail -80
           echo "--- Archive exit code: $? ---"
           ls -la $RUNNER_TEMP/App.xcarchive/ 2>/dev/null || echo "Archive not created!"
+
+      - name: Inject PrivacyInfo.xcprivacy into archive frameworks (ITMS-91061)
+        run: |
+          # GTMAppAuth + GTMSessionFetcher are source pods — compiled into DerivedData by Xcode,
+          # not pre-built in Pods/. GoogleSignIn 6.x is binary but same approach works for all.
+          # Inject AFTER archive (frameworks are fully built) but BEFORE export (which re-signs,
+          # so the new file gets a valid signature in the final IPA).
+          FW_DIR="$RUNNER_TEMP/App.xcarchive/Products/Applications/App.app/Frameworks"
+          echo "=== Frameworks in archive ==="
+          ls "$FW_DIR" 2>/dev/null || echo "WARNING: Frameworks dir not found at $FW_DIR"
+          printf '%s\n' \
+            '<?xml version="1.0" encoding="UTF-8"?>' \
+            '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' \
+            '<plist version="1.0"><dict>' \
+            '  <key>NSPrivacyTracking</key><false/>' \
+            '  <key>NSPrivacyTrackingDomains</key><array/>' \
+            '  <key>NSPrivacyCollectedDataTypes</key><array/>' \
+            '  <key>NSPrivacyAccessedAPITypes</key>' \
+            '  <array><dict>' \
+            '    <key>NSPrivacyAccessedAPIType</key><string>NSPrivacyAccessedAPICategoryUserDefaults</string>' \
+            '    <key>NSPrivacyAccessedAPITypeReasons</key><array><string>CA92.1</string></array>' \
+            '  </dict></array>' \
+            '</dict></plist>' \
+            > /tmp/PrivacyInfo.xcprivacy
+          for SDK in GoogleSignIn GTMAppAuth GTMSessionFetcher; do
+            FW="$FW_DIR/${SDK}.framework"
+            if [ -d "$FW" ]; then
+              cp /tmp/PrivacyInfo.xcprivacy "$FW/PrivacyInfo.xcprivacy"
+              echo "Injected → $FW/PrivacyInfo.xcprivacy"
+            else
+              echo "WARNING: $FW not found in archive"
+            fi
+          done
+          echo "=== Done ==="
 
       - name: Export IPA
         env:
