@@ -24,6 +24,7 @@ import Import from "@/pages/import";
 import Upgrade from "@/pages/upgrade";
 import OnboardingPreferences from "@/pages/onboarding";
 import { ReviewPromptSheet } from "@/components/ReviewPromptSheet";
+import { ForceUpdateGate } from "@/components/ForceUpdateGate";
 
 function AppRouter() {
   const { user, isLoading } = useAuth();
@@ -107,12 +108,14 @@ function App() {
       <TooltipProvider>
         <ThemeProvider>
           <AuthProvider>
-            <Toaster />
-            <ReviewPromptSheet />
-            <Router hook={useHashLocation}>
-              <PageViewTracker />
-              <AppRouter />
-            </Router>
+            <ForceUpdateGate>
+              <Toaster />
+              <ReviewPromptSheet />
+              <Router hook={useHashLocation}>
+                <PageViewTracker />
+                <AppRouter />
+              </Router>
+            </ForceUpdateGate>
           </AuthProvider>
         </ThemeProvider>
       </TooltipProvider>

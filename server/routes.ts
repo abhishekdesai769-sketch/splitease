@@ -51,6 +51,19 @@ export async function registerRoutes(
   const globalApiLimiter = rateLimit(60 * 1000, 200);
   app.use("/api", globalApiLimiter);
 
+  // ========== App version check (force-update gate) ==========
+  // Returns the minimum iOS version required to use the app.
+  // Set IOS_MINIMUM_VERSION on Render to force old clients to update.
+  // Defaults to "1.0.0" (no one blocked) until you explicitly bump it.
+  app.get("/api/app/version-check", (_req, res) => {
+    res.json({
+      ios: {
+        minimumVersion: process.env.IOS_MINIMUM_VERSION || "1.0.0",
+        storeUrl: "https://apps.apple.com/app/spliiit/id6761338254",
+      },
+    });
+  });
+
   // Digital Asset Links for Google Play TWA verification
   app.get("/.well-known/assetlinks.json", (_req, res) => {
     res.json([
