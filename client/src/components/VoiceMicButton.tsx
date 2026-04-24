@@ -32,7 +32,8 @@ import { track } from "@/lib/analytics";
 import { recordExpenseAndCheck, triggerReview } from "@/lib/reviewPrompt";
 import { isIosNative } from "@/lib/iap";
 
-// "Coming soon" only for iOS Safari on the web — native app uses the Capacitor plugin
+// All iOS browsers (Safari, Chrome, Firefox) use WebKit — Apple blocks microphone
+// access for web apps on iOS entirely. Only the native Capacitor app can use it.
 const isIOSSafariWeb = !isIosNative && /iPhone|iPad|iPod/i.test(
   typeof navigator !== "undefined" ? navigator.userAgent : ""
 );
@@ -118,7 +119,7 @@ export function VoiceMicButton() {
       return;
     }
     setSheetOpen(true);
-    if (isIOSSafariWeb) return; // Show "coming soon" UI — Safari web can't do speech recognition
+    if (isIOSSafariWeb) return; // Show "use the app" card — no iOS browser supports Web Speech API
     setShowExamples(false);
     startListening();
   }, [user?.isPremium, startListening]);
@@ -273,13 +274,12 @@ export function VoiceMicButton() {
                     <Mic className="w-6 h-6 text-primary" />
                   </div>
                   <div className="space-y-1">
-                    <p className="text-sm font-semibold text-foreground">Coming to iPhone soon 🎤</p>
+                    <p className="text-sm font-semibold text-foreground">Voice Mode needs the app 🎤</p>
                     <p className="text-xs text-muted-foreground leading-relaxed">
-                      Voice Mode isn't supported in the iPhone app yet — Safari doesn't allow it.
-                      We're working on full native iOS support.
+                      iOS doesn't allow microphone access in web browsers — it's an Apple restriction that applies to all browsers on iPhone, including Chrome.
                     </p>
                     <p className="text-xs text-muted-foreground leading-relaxed">
-                      In the meantime, try it in <span className="font-medium text-foreground">Chrome on Android</span>.
+                      Get the free <span className="font-medium text-foreground">Spliiit app from the App Store</span> to use Voice Mode.
                     </p>
                   </div>
                 </div>
