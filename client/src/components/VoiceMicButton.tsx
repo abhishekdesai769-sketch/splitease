@@ -15,7 +15,7 @@
 import { useState, useCallback } from "react";
 import {
   Mic, MicOff, X, Check, Loader2, Crown, AlertCircle,
-  DollarSign, Users, Navigation, BarChart2, ChevronRight,
+  DollarSign, Users, Navigation, BarChart2, ChevronRight, Square,
 } from "lucide-react";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
@@ -113,20 +113,21 @@ export function VoiceMicButton() {
 
   // ── Handlers ────────────────────────────────────────────────────────────────
 
-  const handleMicPress = useCallback(() => {
+  const handleMicTap = useCallback(() => {
     if (!user?.isPremium) {
       setUpgradeOpen(true);
+      return;
+    }
+    // Tap-to-toggle: if already listening → stop; otherwise open sheet + start
+    if (voiceState === "listening") {
+      stopListening();
       return;
     }
     setSheetOpen(true);
     if (isIOSSafariWeb) return; // Show "use the app" card — no iOS browser supports Web Speech API
     setShowExamples(false);
     startListening();
-  }, [user?.isPremium, startListening]);
-
-  const handleMicRelease = useCallback(() => {
-    stopListening();
-  }, [stopListening]);
+  }, [user?.isPremium, voiceState, stopListening, startListening]);
 
   const handleClose = useCallback(() => {
     reset();
@@ -228,10 +229,7 @@ export function VoiceMicButton() {
             : "w-14 h-14 bg-muted border border-border text-muted-foreground hover:bg-muted/80"
           }`}
         style={{ bottom: "76px" }} // clears the 64px nav bar
-        onPointerDown={(e) => { e.preventDefault(); e.currentTarget.setPointerCapture(e.pointerId); handleMicPress(); }}
-        onPointerUp={handleMicRelease}
-        onPointerLeave={handleMicRelease}
-        onPointerCancel={handleMicRelease}
+        onClick={handleMicTap}
         aria-label="Voice mode"
         data-testid="voice-mic-button"
       >
@@ -299,12 +297,12 @@ export function VoiceMicButton() {
                     {voiceState === "listening" ? (
                       <>
                         <p className="text-sm font-medium text-primary">Listening…</p>
-                        <p className="text-xs text-muted-foreground">Release when done</p>
+                        <p className="text-xs text-muted-foreground">Tap the stop button when done</p>
                       </>
                     ) : (
                       <>
-                        <p className="text-sm font-medium text-muted-foreground">Hold the mic to speak</p>
-                        <p className="text-xs text-muted-foreground">Release when you're done</p>
+                        <p className="text-sm font-medium text-muted-foreground">Tap the mic to speak</p>
+                        <p className="text-xs text-muted-foreground">Tap stop when you're done</p>
                       </>
                     )}
                   </div>
@@ -316,6 +314,19 @@ export function VoiceMicButton() {
                     </div>
                   )}
                 </div>
+
+                {/* Stop button — big circular button, only shown while actively listening */}
+                {voiceState === "listening" && (
+                  <div className="flex justify-center">
+                    <button
+                      onClick={stopListening}
+                      className="w-16 h-16 rounded-full bg-red-500 text-white flex items-center justify-center shadow-lg hover:bg-red-600 active:scale-95 transition-all duration-150"
+                      aria-label="Stop listening"
+                    >
+                      <Square className="w-6 h-6 fill-current" />
+                    </button>
+                  </div>
+                )}
 
                 {/* Examples hint */}
                 <div>
@@ -370,8 +381,7 @@ export function VoiceMicButton() {
                 <Button
                   className="w-full"
                   variant="outline"
-                  onPointerDown={(e) => { e.preventDefault(); reset(); startListening(); }}
-                  onPointerUp={handleMicRelease}
+                  onClick={() => { reset(); startListening(); }}
                 >
                   <Mic className="w-4 h-4 mr-2" />
                   Try again
@@ -395,7 +405,7 @@ export function VoiceMicButton() {
                         ))}
                       </div>
                     </div>
-                    <Button className="w-full" variant="outline" onPointerDown={(e) => { e.preventDefault(); reset(); startListening(); }} onPointerUp={handleMicRelease}>
+                    <Button className="w-full" variant="outline" onClick={() => { reset(); startListening(); }}>
                       <Mic className="w-4 h-4 mr-2" /> Try again
                     </Button>
                   </div>
@@ -411,7 +421,7 @@ export function VoiceMicButton() {
                         Say a friend's name or group to split it.
                       </p>
                     </div>
-                    <Button className="w-full" variant="outline" onPointerDown={(e) => { e.preventDefault(); reset(); startListening(); }} onPointerUp={handleMicRelease}>
+                    <Button className="w-full" variant="outline" onClick={() => { reset(); startListening(); }}>
                       <Mic className="w-4 h-4 mr-2" /> Try again
                     </Button>
                   </div>
