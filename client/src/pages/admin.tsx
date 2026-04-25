@@ -6,8 +6,11 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Shield, Trash2, RotateCcw, FolderX, ReceiptText,
-  Search, Clock, AlertTriangle, KeyRound, Crown
+  Search, Clock, AlertTriangle, KeyRound, Crown, Settings
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
@@ -77,6 +80,9 @@ export default function Admin() {
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
   const [userSearchQuery, setUserSearchQuery] = useState("");
+  const [selectedUser, setSelectedUser] = useState<SafeUser | null>(null);
+  const [premiumMonths, setPremiumMonths] = useState("3");
+  const [newPassword, setNewPassword] = useState("");
 
   const { data: allUsers = [], isLoading } = useQuery<SafeUser[]>({
     queryKey: ["/api/admin/users"],
@@ -275,58 +281,18 @@ export default function Admin() {
                   )}
                 </div>
                 {u.id !== user?.id && (
-                  <div className="flex items-center gap-1">
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      title={hasPremium ? "Adjust or revoke premium" : "Grant premium"}
-                      onClick={() => {
-                        const input = prompt(
-                          `Grant premium to ${u.name} (${u.email}):\n\nEnter number of months (1–12).\nEnter 0 to revoke premium.`
-                        );
-                        if (input === null) return;
-                        const months = parseInt(input);
-                        if (isNaN(months) || months < 0 || months > 120) {
-                          toast({ title: "Error", description: "Enter a number between 0 and 120", variant: "destructive" });
-                          return;
-                        }
-                        grantPremiumMutation.mutate({ userId: u.id, months });
-                      }}
-                    >
-                      <Crown className={`w-4 h-4 ${hasPremium ? "text-yellow-500" : "text-muted-foreground"}`} />
-                    </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      title="Reset password"
-                      onClick={() => {
-                        const pw = prompt(`Set new password for ${u.name} (${u.email}):\n\nMin 6 characters.`);
-                        if (pw && pw.length >= 6) {
-                          resetPasswordMutation.mutate({ userId: u.id, newPassword: pw });
-                        } else if (pw) {
-                          toast({ title: "Error", description: "Password must be at least 6 characters", variant: "destructive" });
-                        }
-                      }}
-                      data-testid={`reset-pw-${u.id}`}
-                    >
-                      <KeyRound className="w-4 h-4 text-muted-foreground" />
-                    </Button>
-                    {!u.isAdmin && (
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        title="Delete user"
-                        onClick={() => {
-                          if (confirm(`Delete ${u.name}? This removes them and their friend links.`)) {
-                            deleteMutation.mutate(u.id);
-                          }
-                        }}
-                        data-testid={`delete-${u.id}`}
-                      >
-                        <Trash2 className="w-4 h-4 text-muted-foreground" />
-                      </Button>
-                    )}
-                  </div>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    title="Manage user"
+                    onClick={() => {
+                      setSelectedUser(u);
+                      setPremiumMonths("3");
+                      setNewPassword("");
+                    }}
+                  >
+                    <Settings className="w-4 h-4 text-muted-foreground" />
+                  </Button>
                 )}
               </Card>
             );
@@ -492,6 +458,129 @@ export default function Admin() {
           </div>
         )}
       </div>
+
+      {/* User Management Dialog */}
+      <Dialog open={!!selectedUser} onOpenChange={(open) => { if (!open) setSelectedUser(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <div
+                className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-semibold shrink-0"
+                style={{ backgroundColor: selectedUser?.avatarColor }}
+              >
+                {selectedUser?.name[0]?.toUpperCase()}
+              </div>
+              <div>
+                <p className="text-sm font-semibold leading-tight">{selectedUser?.name}</p>
+                <p className="text-xs text-muted-foreground font-normal">{selectedUser?.email}</p>
+              </div>
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 pt-1">
+            {/* Grant Premium */}
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                <Crown className="w-3.5 h-3.5 text-yellow-500" /> Premium Access
+              </p>
+              {selectedUser?.isPremium && selectedUser?.premiumUntil && (
+                <p className="text-xs text-yellow-500">
+                  Active until {new Date(selectedUser.premiumUntil).toLocaleDateString()}
+                </p>
+              )}
+              <div className="flex gap-2">
+                <Input
+                  type="number"
+                  min="0"
+                  max="120"
+                  placeholder="Months (0 = revoke)"
+                  value={premiumMonths}
+                  onChange={(e) => setPremiumMonths(e.target.value)}
+                  className="h-9 text-sm"
+                />
+                <Button
+                  size="sm"
+                  className="shrink-0"
+                  disabled={grantPremiumMutation.isPending}
+                  onClick={() => {
+                    const months = parseInt(premiumMonths);
+                    if (isNaN(months) || months < 0 || months > 120) {
+                      toast({ title: "Error", description: "Enter 0–120 months", variant: "destructive" });
+                      return;
+                    }
+                    grantPremiumMutation.mutate(
+                      { userId: selectedUser!.id, months },
+                      { onSuccess: () => setSelectedUser(null) }
+                    );
+                  }}
+                >
+                  {parseInt(premiumMonths) === 0 ? "Revoke" : "Grant"}
+                </Button>
+              </div>
+            </div>
+
+            <div className="border-t border-border" />
+
+            {/* Reset Password */}
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                <KeyRound className="w-3.5 h-3.5" /> Reset Password
+              </p>
+              <div className="flex gap-2">
+                <Input
+                  type="password"
+                  placeholder="New password (min 6 chars)"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="h-9 text-sm"
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="shrink-0"
+                  disabled={resetPasswordMutation.isPending || newPassword.length < 6}
+                  onClick={() => {
+                    resetPasswordMutation.mutate(
+                      { userId: selectedUser!.id, newPassword },
+                      { onSuccess: () => { setNewPassword(""); setSelectedUser(null); } }
+                    );
+                  }}
+                >
+                  Reset
+                </Button>
+              </div>
+            </div>
+
+            {/* Delete User */}
+            {!selectedUser?.isAdmin && (
+              <>
+                <div className="border-t border-border" />
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                    <Trash2 className="w-3.5 h-3.5 text-destructive" /> Danger Zone
+                  </p>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    className="w-full"
+                    disabled={deleteMutation.isPending}
+                    onClick={() => {
+                      if (confirm(`Delete ${selectedUser?.name}? This removes them and their friend links.`)) {
+                        deleteMutation.mutate(selectedUser!.id, {
+                          onSuccess: () => setSelectedUser(null),
+                        });
+                      }
+                    }}
+                  >
+                    <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+                    Delete {selectedUser?.name}
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
