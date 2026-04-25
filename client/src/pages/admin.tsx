@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Shield, Trash2, RotateCcw, FolderX, ReceiptText,
-  Search, Clock, AlertTriangle, KeyRound
+  Search, Clock, AlertTriangle, KeyRound, Crown
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
@@ -76,6 +76,7 @@ export default function Admin() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
+  const [userSearchQuery, setUserSearchQuery] = useState("");
 
   const { data: allUsers = [], isLoading } = useQuery<SafeUser[]>({
     queryKey: ["/api/admin/users"],
@@ -144,7 +145,30 @@ export default function Admin() {
     },
   });
 
-  const approvedUsers = allUsers;
+  const grantPremiumMutation = useMutation({
+    mutationFn: async ({ userId, months }: { userId: string; months: number }) => {
+      const res = await apiRequest("POST", `/api/admin/users/${userId}/grant-premium`, { months });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      toast({ title: "Premium updated", description: data.message });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  // Filter users by search
+  const filteredUsers = useMemo(() => {
+    const uq = userSearchQuery.toLowerCase().trim();
+    if (!uq) return allUsers;
+    return allUsers.filter(
+      (u) =>
+        u.name.toLowerCase().includes(uq) ||
+        u.email.toLowerCase().includes(uq)
+    );
+  }, [allUsers, userSearchQuery]);
 
   // Filter deleted items by search query
   const q = searchQuery.toLowerCase().trim();
@@ -195,70 +219,121 @@ export default function Admin() {
       {/* Approved Users */}
       <div>
         <h2 className="text-sm font-medium text-muted-foreground mb-2">
-          Active Users ({approvedUsers.length})
+          Active Users ({allUsers.length})
         </h2>
+
+        {/* User search */}
+        <div className="relative mb-3">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            placeholder="Search by name or email..."
+            value={userSearchQuery}
+            onChange={(e) => setUserSearchQuery(e.target.value)}
+            className="pl-9 h-9 text-sm"
+          />
+        </div>
+
         <div className="space-y-2">
-          {approvedUsers.map((u) => (
-            <Card
-              key={u.id}
-              className="p-3 flex items-center gap-3"
-              data-testid={`approved-user-${u.id}`}
-            >
-              <div
-                className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-semibold shrink-0"
-                style={{ backgroundColor: u.avatarColor }}
+          {filteredUsers.map((u) => {
+            const hasPremium = u.isPremium && u.premiumUntil
+              ? new Date(u.premiumUntil) > new Date()
+              : u.isPremium;
+            const premiumUntilDate = u.premiumUntil
+              ? new Date(u.premiumUntil).toLocaleDateString()
+              : null;
+            return (
+              <Card
+                key={u.id}
+                className="p-3 flex items-center gap-3"
+                data-testid={`approved-user-${u.id}`}
               >
-                {u.name[0]?.toUpperCase()}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-1.5">
-                  <p className="text-sm font-medium truncate">{u.name}</p>
-                  {u.isAdmin && (
-                    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-primary/15 text-primary">
-                      <Shield className="w-3 h-3" />
-                      Admin
-                    </span>
+                <div
+                  className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-semibold shrink-0"
+                  style={{ backgroundColor: u.avatarColor }}
+                >
+                  {u.name[0]?.toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-sm font-medium truncate">{u.name}</p>
+                    {u.isAdmin && (
+                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-primary/15 text-primary">
+                        <Shield className="w-3 h-3" />
+                        Admin
+                      </span>
+                    )}
+                    {hasPremium && (
+                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-yellow-500/15 text-yellow-500">
+                        <Crown className="w-3 h-3" />
+                        Premium
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground truncate">{u.email}</p>
+                  {hasPremium && premiumUntilDate && (
+                    <p className="text-[10px] text-yellow-500/70">Until {premiumUntilDate}</p>
                   )}
                 </div>
-                <p className="text-xs text-muted-foreground truncate">{u.email}</p>
-              </div>
-              {u.id !== user?.id && (
-                <div className="flex items-center gap-1">
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    title="Reset password"
-                    onClick={() => {
-                      const pw = prompt(`Set new password for ${u.name} (${u.email}):\n\nMin 6 characters.`);
-                      if (pw && pw.length >= 6) {
-                        resetPasswordMutation.mutate({ userId: u.id, newPassword: pw });
-                      } else if (pw) {
-                        toast({ title: "Error", description: "Password must be at least 6 characters", variant: "destructive" });
-                      }
-                    }}
-                    data-testid={`reset-pw-${u.id}`}
-                  >
-                    <KeyRound className="w-4 h-4 text-muted-foreground" />
-                  </Button>
-                  {!u.isAdmin && (
+                {u.id !== user?.id && (
+                  <div className="flex items-center gap-1">
                     <Button
                       size="icon"
                       variant="ghost"
-                      title="Delete user"
+                      title={hasPremium ? "Adjust or revoke premium" : "Grant premium"}
                       onClick={() => {
-                        if (confirm(`Delete ${u.name}? This removes them and their friend links.`)) {
-                          deleteMutation.mutate(u.id);
+                        const input = prompt(
+                          `Grant premium to ${u.name} (${u.email}):\n\nEnter number of months (1–12).\nEnter 0 to revoke premium.`
+                        );
+                        if (input === null) return;
+                        const months = parseInt(input);
+                        if (isNaN(months) || months < 0 || months > 120) {
+                          toast({ title: "Error", description: "Enter a number between 0 and 120", variant: "destructive" });
+                          return;
+                        }
+                        grantPremiumMutation.mutate({ userId: u.id, months });
+                      }}
+                    >
+                      <Crown className={`w-4 h-4 ${hasPremium ? "text-yellow-500" : "text-muted-foreground"}`} />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      title="Reset password"
+                      onClick={() => {
+                        const pw = prompt(`Set new password for ${u.name} (${u.email}):\n\nMin 6 characters.`);
+                        if (pw && pw.length >= 6) {
+                          resetPasswordMutation.mutate({ userId: u.id, newPassword: pw });
+                        } else if (pw) {
+                          toast({ title: "Error", description: "Password must be at least 6 characters", variant: "destructive" });
                         }
                       }}
-                      data-testid={`delete-${u.id}`}
+                      data-testid={`reset-pw-${u.id}`}
                     >
-                      <Trash2 className="w-4 h-4 text-muted-foreground" />
+                      <KeyRound className="w-4 h-4 text-muted-foreground" />
                     </Button>
-                  )}
-                </div>
-              )}
-            </Card>
-          ))}
+                    {!u.isAdmin && (
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        title="Delete user"
+                        onClick={() => {
+                          if (confirm(`Delete ${u.name}? This removes them and their friend links.`)) {
+                            deleteMutation.mutate(u.id);
+                          }
+                        }}
+                        data-testid={`delete-${u.id}`}
+                      >
+                        <Trash2 className="w-4 h-4 text-muted-foreground" />
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </Card>
+            );
+          })}
+          {filteredUsers.length === 0 && userSearchQuery && (
+            <p className="text-sm text-muted-foreground text-center py-4">No users found for "{userSearchQuery}"</p>
+          )}
         </div>
       </div>
 

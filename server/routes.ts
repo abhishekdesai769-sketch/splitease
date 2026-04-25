@@ -960,6 +960,28 @@ setInterval(loadAll,30000);
     res.status(204).send();
   });
 
+  // Admin: grant premium access for N months (or revoke)
+  app.post("/api/admin/users/:id/grant-premium", requireAuth, requireAdmin, async (req, res) => {
+    const months = parseInt(req.body.months);
+    if (isNaN(months) || months < 0 || months > 120) {
+      return res.status(400).json({ error: "months must be 0–120" });
+    }
+    const user = await storage.getUser(req.params.id);
+    if (!user) return res.status(404).json({ error: "User not found" });
+    if (months === 0) {
+      // Revoke premium
+      await storage.updateUser(req.params.id, { isPremium: false, premiumUntil: null });
+      return res.json({ message: `Premium revoked for ${user.email}` });
+    }
+    const until = new Date();
+    until.setMonth(until.getMonth() + months);
+    await storage.updateUser(req.params.id, {
+      isPremium: true,
+      premiumUntil: until.toISOString(),
+    });
+    res.json({ message: `Premium granted to ${user.email} until ${until.toDateString()}` });
+  });
+
   // Get soft-deleted groups and expenses (enriched with user names)
   app.get("/api/admin/deleted", requireAuth, requireAdmin, async (_req, res) => {
     // Auto-purge items older than 30 days on every fetch
