@@ -133,6 +133,7 @@ export default function Admin() {
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
   const [userSearchQuery, setUserSearchQuery] = useState("");
+  const [premiumOnly, setPremiumOnly] = useState(false);
   // useDeferredValue: input stays instant; list filtering waits until browser is idle
   const deferredSearch = useDeferredValue(userSearchQuery);
   const [selectedUser, setSelectedUser] = useState<SafeUser | null>(null);
@@ -269,16 +270,15 @@ export default function Admin() {
     setNewPassword("");
   }, []);
 
-  // Filter users by the deferred search value — runs off the critical path
+  // Filter users by search + premium toggle — runs off the critical path
   const filteredUsers = useMemo(() => {
     const uq = deferredSearch.toLowerCase().trim();
-    if (!uq) return allUsers;
-    return allUsers.filter(
-      (u) =>
-        u.name.toLowerCase().includes(uq) ||
-        u.email.toLowerCase().includes(uq)
-    );
-  }, [allUsers, deferredSearch]);
+    return allUsers.filter((u) => {
+      if (premiumOnly && !u.isPremium) return false;
+      if (!uq) return true;
+      return u.name.toLowerCase().includes(uq) || u.email.toLowerCase().includes(uq);
+    });
+  }, [allUsers, deferredSearch, premiumOnly]);
 
   // Filter deleted items by search query
   const q = searchQuery.toLowerCase().trim();
@@ -332,15 +332,26 @@ export default function Admin() {
           Active Users ({allUsers.length})
         </h2>
 
-        {/* User search */}
-        <div className="relative mb-3">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            placeholder="Search by name or email..."
-            value={userSearchQuery}
-            onChange={(e) => setUserSearchQuery(e.target.value)}
-            className="pl-9 h-9 text-sm"
-          />
+        {/* User search + premium filter */}
+        <div className="flex gap-2 mb-3">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              placeholder="Search by name or email..."
+              value={userSearchQuery}
+              onChange={(e) => setUserSearchQuery(e.target.value)}
+              className="pl-9 h-9 text-sm"
+            />
+          </div>
+          <Button
+            size="sm"
+            variant={premiumOnly ? "default" : "outline"}
+            className={`shrink-0 gap-1.5 h-9 ${premiumOnly ? "bg-yellow-500 hover:bg-yellow-600 text-white border-0" : ""}`}
+            onClick={() => setPremiumOnly((v) => !v)}
+          >
+            <Crown className="w-3.5 h-3.5" />
+            Premium
+          </Button>
         </div>
 
         <div className="space-y-2">
