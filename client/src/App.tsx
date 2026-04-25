@@ -30,6 +30,16 @@ function AppRouter() {
   const { user, isLoading } = useAuth();
   const { syncFromDb } = useTheme();
 
+  // Capture UTM params from URL on first load and persist in localStorage
+  // so they survive the OTP step (which doesn't change the URL)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const campaign = params.get("utm_campaign");
+    if (campaign) {
+      localStorage.setItem("spliiit_utm_campaign", campaign);
+    }
+  }, []);
+
   // Sync theme from DB when user loads (cross-device consistency)
   useEffect(() => {
     if (user?.themePreference) {

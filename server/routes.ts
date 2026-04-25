@@ -507,6 +507,9 @@ setInterval(loadAll,30000);
     const otpCode = req.body.otpCode;
     const cleanName = sanitize(name, 100);
     const cleanEmail = email.toLowerCase().trim();
+    const utmCampaign = typeof req.body.utmCampaign === "string"
+      ? req.body.utmCampaign.slice(0, 100)
+      : null;
 
     // Verify OTP
     if (!otpCode) {
@@ -553,6 +556,7 @@ setInterval(loadAll,30000);
       isAdmin,
       isApproved,
       isEmailVerified: true,
+      ...(utmCampaign ? { utmCampaign } : {}),
     });
 
     (req.session as any).userId = user.id;

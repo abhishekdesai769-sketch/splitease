@@ -71,11 +71,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signup = useCallback(async (name: string, email: string, password: string, otpCode: string) => {
-    const res = await apiRequest("POST", "/api/auth/signup", { name, email, password, otpCode });
+    // Read UTM campaign captured on page load (survives the OTP step)
+    const utmCampaign = localStorage.getItem("spliiit_utm_campaign") ?? undefined;
+    const res = await apiRequest("POST", "/api/auth/signup", { name, email, password, otpCode, utmCampaign });
     const data = await res.json();
     setUser(data);
     identifyUser(data.id, { name: data.name, email: data.email });
     track("user_signed_up");
+    // Clear UTM after successful signup so it doesn't bleed into future signups
+    localStorage.removeItem("spliiit_utm_campaign");
     queryClient.clear();
     // Always navigate to dashboard after signup
     window.location.hash = "#/";
