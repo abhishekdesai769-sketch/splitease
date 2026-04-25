@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useDeferredValue, useCallback, memo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { SafeUser } from "@shared/schema";
@@ -77,18 +77,64 @@ function DaysRemainingBadge({ deletedAt }: { deletedAt: string | null }) {
   );
 }
 
+// Memoized user card — only re-renders when this specific user's data changes,
+// not when any other state in the Admin component changes (e.g. search input).
+const UserCard = memo(function UserCard({
+  u, isCurrent, onManage,
+}: {
+  u: SafeUser;
+  isCurrent: boolean;
+  onManage: (u: SafeUser) => void;
+}) {
+  const hasPremium = u.isPremium && u.premiumUntil
+    ? new Date(u.premiumUntil) > new Date()
+    : u.isPremium;
+  const premiumUntilDate = u.premiumUntil
+    ? new Date(u.premiumUntil).toLocaleDateString()
+    : null;
+  return (
+    <Card className="p-3 flex items-center gap-3" data-testid={`approved-user-${u.id}`}>
+      <div
+        className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-semibold shrink-0"
+        style={{ backgroundColor: u.avatarColor }}
+      >
+        {u.name[0]?.toUpperCase()}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5">
+          <p className="text-sm font-medium truncate">{u.name}</p>
+          {u.isAdmin && (
+            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-primary/15 text-primary">
+              <Shield className="w-3 h-3" /> Admin
+            </span>
+          )}
+          {hasPremium && (
+            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-yellow-500/15 text-yellow-500">
+              <Crown className="w-3 h-3" /> Premium
+            </span>
+          )}
+        </div>
+        <p className="text-xs text-muted-foreground truncate">{u.email}</p>
+        {hasPremium && premiumUntilDate && (
+          <p className="text-[10px] text-yellow-500/70">Until {premiumUntilDate}</p>
+        )}
+      </div>
+      {!isCurrent && (
+        <Button size="icon" variant="ghost" title="Manage user" onClick={() => onManage(u)}>
+          <Settings className="w-4 h-4 text-muted-foreground" />
+        </Button>
+      )}
+    </Card>
+  );
+});
+
 export default function Admin() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
-  const [userSearchInput, setUserSearchInput] = useState("");
   const [userSearchQuery, setUserSearchQuery] = useState("");
-
-  // Debounce user search — only filter after user stops typing for 300ms
-  useEffect(() => {
-    const t = setTimeout(() => setUserSearchQuery(userSearchInput), 300);
-    return () => clearTimeout(t);
-  }, [userSearchInput]);
+  // useDeferredValue: input stays instant; list filtering waits until browser is idle
+  const deferredSearch = useDeferredValue(userSearchQuery);
   const [selectedUser, setSelectedUser] = useState<SafeUser | null>(null);
   const [premiumMonths, setPremiumMonths] = useState("3");
   const [newPassword, setNewPassword] = useState("");
@@ -216,16 +262,23 @@ export default function Admin() {
     },
   });
 
-  // Filter users by search
+  // Stable handler for UserCard — useCallback so memo() on UserCard actually works
+  const handleManageUser = useCallback((u: SafeUser) => {
+    setSelectedUser(u);
+    setPremiumMonths("3");
+    setNewPassword("");
+  }, []);
+
+  // Filter users by the deferred search value — runs off the critical path
   const filteredUsers = useMemo(() => {
-    const uq = userSearchQuery.toLowerCase().trim();
+    const uq = deferredSearch.toLowerCase().trim();
     if (!uq) return allUsers;
     return allUsers.filter(
       (u) =>
         u.name.toLowerCase().includes(uq) ||
         u.email.toLowerCase().includes(uq)
     );
-  }, [allUsers, userSearchQuery]);
+  }, [allUsers, deferredSearch]);
 
   // Filter deleted items by search query
   const q = searchQuery.toLowerCase().trim();
@@ -284,72 +337,23 @@ export default function Admin() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
             placeholder="Search by name or email..."
-            value={userSearchInput}
-            onChange={(e) => setUserSearchInput(e.target.value)}
+            value={userSearchQuery}
+            onChange={(e) => setUserSearchQuery(e.target.value)}
             className="pl-9 h-9 text-sm"
           />
         </div>
 
         <div className="space-y-2">
-          {filteredUsers.map((u) => {
-            const hasPremium = u.isPremium && u.premiumUntil
-              ? new Date(u.premiumUntil) > new Date()
-              : u.isPremium;
-            const premiumUntilDate = u.premiumUntil
-              ? new Date(u.premiumUntil).toLocaleDateString()
-              : null;
-            return (
-              <Card
-                key={u.id}
-                className="p-3 flex items-center gap-3"
-                data-testid={`approved-user-${u.id}`}
-              >
-                <div
-                  className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-semibold shrink-0"
-                  style={{ backgroundColor: u.avatarColor }}
-                >
-                  {u.name[0]?.toUpperCase()}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <p className="text-sm font-medium truncate">{u.name}</p>
-                    {u.isAdmin && (
-                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-primary/15 text-primary">
-                        <Shield className="w-3 h-3" />
-                        Admin
-                      </span>
-                    )}
-                    {hasPremium && (
-                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-yellow-500/15 text-yellow-500">
-                        <Crown className="w-3 h-3" />
-                        Premium
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-muted-foreground truncate">{u.email}</p>
-                  {hasPremium && premiumUntilDate && (
-                    <p className="text-[10px] text-yellow-500/70">Until {premiumUntilDate}</p>
-                  )}
-                </div>
-                {u.id !== user?.id && (
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    title="Manage user"
-                    onClick={() => {
-                      setSelectedUser(u);
-                      setPremiumMonths("3");
-                      setNewPassword("");
-                    }}
-                  >
-                    <Settings className="w-4 h-4 text-muted-foreground" />
-                  </Button>
-                )}
-              </Card>
-            );
-          })}
-          {filteredUsers.length === 0 && userSearchQuery && (
-            <p className="text-sm text-muted-foreground text-center py-4">No users found for "{userSearchQuery}"</p>
+          {filteredUsers.map((u) => (
+            <UserCard
+              key={u.id}
+              u={u}
+              isCurrent={u.id === user?.id}
+              onManage={handleManageUser}
+            />
+          ))}
+          {filteredUsers.length === 0 && deferredSearch && (
+            <p className="text-sm text-muted-foreground text-center py-4">No users found for "{deferredSearch}"</p>
           )}
         </div>
       </div>
