@@ -28,7 +28,8 @@ export const users = pgTable("users", {
   defaultCurrency: text("default_currency"),              // e.g. "CAD" — locked after first set
   currencyLockedAt: text("currency_locked_at"),           // ISO timestamp — null = not yet set
   themePreference: text("theme_preference").notNull().default("system"), // "dark"|"light"|"system"
-  utmCampaign: text("utm_campaign"),  // WhatsApp / referral campaign tracking (nullable)
+  utmCampaign: text("utm_campaign"),   // WhatsApp / referral campaign tracking (nullable)
+  adminNotes: text("admin_notes"),     // Private admin notes (deal info, outreach status, etc.)
 }, (table) => [
   uniqueIndex("users_email_idx").on(table.email),
 ]);

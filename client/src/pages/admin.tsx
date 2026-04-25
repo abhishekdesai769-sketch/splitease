@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { SafeUser } from "@shared/schema";
@@ -10,8 +10,10 @@ import {
 } from "@/components/ui/dialog";
 import {
   Shield, Trash2, RotateCcw, FolderX, ReceiptText,
-  Search, Clock, AlertTriangle, KeyRound, Crown, Settings
+  Search, Clock, AlertTriangle, KeyRound, Crown, Settings,
+  Users, BarChart2, StickyNote, Smartphone, Mail, Chrome
 } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 
@@ -83,6 +85,40 @@ export default function Admin() {
   const [selectedUser, setSelectedUser] = useState<SafeUser | null>(null);
   const [premiumMonths, setPremiumMonths] = useState("3");
   const [newPassword, setNewPassword] = useState("");
+  const [adminNotes, setAdminNotes] = useState("");
+
+  // Fetch stats when a user is selected
+  const { data: userStats, isLoading: statsLoading } = useQuery<{
+    groups: { id: string; name: string; memberCount: number }[];
+    expenseCount: number;
+    totalPaid: number;
+  }>({
+    queryKey: ["/api/admin/users", selectedUser?.id, "stats"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/admin/users/${selectedUser!.id}/stats`);
+      return res.json();
+    },
+    enabled: !!selectedUser,
+  });
+
+  // Sync adminNotes when a new user is selected
+  useEffect(() => {
+    setAdminNotes(selectedUser?.adminNotes ?? "");
+  }, [selectedUser?.id]);
+
+  const saveNotesMutation = useMutation({
+    mutationFn: async ({ userId, notes }: { userId: string; notes: string }) => {
+      const res = await apiRequest("PATCH", `/api/admin/users/${userId}/notes`, { notes });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      toast({ title: "Notes saved" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
 
   const { data: allUsers = [], isLoading } = useQuery<SafeUser[]>({
     queryKey: ["/api/admin/users"],
@@ -477,17 +513,100 @@ export default function Admin() {
             </DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-4 pt-1">
+          <div className="space-y-4 pt-1 max-h-[70vh] overflow-y-auto pr-1">
+
+            {/* Account Info */}
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                <Smartphone className="w-3.5 h-3.5" /> Account Info
+              </p>
+              <div className="rounded-lg bg-muted/40 p-3 space-y-1.5 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Login method</span>
+                  <span className="font-medium flex items-center gap-1">
+                    {selectedUser?.googleId ? <><Chrome className="w-3 h-3" /> Google</> :
+                     selectedUser?.appleId  ? <><Smartphone className="w-3 h-3" /> Apple</> :
+                     <><Mail className="w-3 h-3" /> Email</>}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Email verified</span>
+                  <span className={`font-medium ${selectedUser?.isEmailVerified ? "text-green-500" : "text-destructive"}`}>
+                    {selectedUser?.isEmailVerified ? "Yes" : "No"}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">UTM source</span>
+                  <span className="font-medium text-primary">
+                    {selectedUser?.utmCampaign ?? <span className="text-muted-foreground">—</span>}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Premium</span>
+                  <span className={`font-medium ${selectedUser?.isPremium ? "text-yellow-500" : "text-muted-foreground"}`}>
+                    {selectedUser?.isPremium
+                      ? selectedUser.premiumUntil
+                        ? `Until ${new Date(selectedUser.premiumUntil).toLocaleDateString()}`
+                        : "Active"
+                      : "Free"}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t border-border" />
+
+            {/* Activity */}
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                <BarChart2 className="w-3.5 h-3.5" /> Activity
+              </p>
+              {statsLoading ? (
+                <div className="h-12 bg-muted animate-pulse rounded-lg" />
+              ) : (
+                <div className="rounded-lg bg-muted/40 p-3 space-y-1.5 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Expenses added</span>
+                    <span className="font-medium">{userStats?.expenseCount ?? 0}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Total paid</span>
+                    <span className="font-medium">${(userStats?.totalPaid ?? 0).toFixed(2)}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="border-t border-border" />
+
+            {/* Groups */}
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                <Users className="w-3.5 h-3.5" /> Groups ({userStats?.groups.length ?? "…"})
+              </p>
+              {statsLoading ? (
+                <div className="h-12 bg-muted animate-pulse rounded-lg" />
+              ) : userStats?.groups.length === 0 ? (
+                <p className="text-xs text-muted-foreground">Not in any groups yet</p>
+              ) : (
+                <div className="space-y-1">
+                  {userStats?.groups.map(g => (
+                    <div key={g.id} className="flex justify-between items-center rounded-md bg-muted/40 px-3 py-1.5 text-xs">
+                      <span className="font-medium truncate">{g.name}</span>
+                      <span className="text-muted-foreground shrink-0 ml-2">{g.memberCount} members</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="border-t border-border" />
+
             {/* Grant Premium */}
             <div className="space-y-2">
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-                <Crown className="w-3.5 h-3.5 text-yellow-500" /> Premium Access
+                <Crown className="w-3.5 h-3.5 text-yellow-500" /> Grant Premium
               </p>
-              {selectedUser?.isPremium && selectedUser?.premiumUntil && (
-                <p className="text-xs text-yellow-500">
-                  Active until {new Date(selectedUser.premiumUntil).toLocaleDateString()}
-                </p>
-              )}
               <div className="flex gap-2">
                 <Input
                   type="number"
@@ -510,7 +629,7 @@ export default function Admin() {
                     }
                     grantPremiumMutation.mutate(
                       { userId: selectedUser!.id, months },
-                      { onSuccess: () => setSelectedUser(null) }
+                      { onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] }) }
                     );
                   }}
                 >
@@ -542,13 +661,38 @@ export default function Admin() {
                   onClick={() => {
                     resetPasswordMutation.mutate(
                       { userId: selectedUser!.id, newPassword },
-                      { onSuccess: () => { setNewPassword(""); setSelectedUser(null); } }
+                      { onSuccess: () => setNewPassword("") }
                     );
                   }}
                 >
                   Reset
                 </Button>
               </div>
+            </div>
+
+            <div className="border-t border-border" />
+
+            {/* Admin Notes */}
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                <StickyNote className="w-3.5 h-3.5" /> Admin Notes
+              </p>
+              <Textarea
+                placeholder="e.g. Ottawa Gujarati admin — paid $75, post scheduled May 1, follow up May 15"
+                value={adminNotes}
+                onChange={(e) => setAdminNotes(e.target.value)}
+                className="text-sm resize-none"
+                rows={3}
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                className="w-full"
+                disabled={saveNotesMutation.isPending}
+                onClick={() => saveNotesMutation.mutate({ userId: selectedUser!.id, notes: adminNotes })}
+              >
+                Save Notes
+              </Button>
             </div>
 
             {/* Delete User */}

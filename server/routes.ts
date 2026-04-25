@@ -982,6 +982,23 @@ setInterval(loadAll,30000);
     res.json({ message: `Premium granted to ${user.email} until ${until.toDateString()}` });
   });
 
+  // Admin: get stats for a user (groups, expense count, total paid)
+  app.get("/api/admin/users/:id/stats", requireAuth, requireAdmin, async (req, res) => {
+    const user = await storage.getUser(req.params.id);
+    if (!user) return res.status(404).json({ error: "User not found" });
+    const stats = await storage.getUserStats(req.params.id);
+    res.json(stats);
+  });
+
+  // Admin: save private notes on a user
+  app.patch("/api/admin/users/:id/notes", requireAuth, requireAdmin, async (req, res) => {
+    const { notes } = req.body;
+    if (typeof notes !== "string") return res.status(400).json({ error: "notes must be a string" });
+    const updated = await storage.updateUser(req.params.id, { adminNotes: notes.slice(0, 2000) });
+    if (!updated) return res.status(404).json({ error: "User not found" });
+    res.json({ message: "Notes saved" });
+  });
+
   // Get soft-deleted groups and expenses (enriched with user names)
   app.get("/api/admin/deleted", requireAuth, requireAdmin, async (_req, res) => {
     // Auto-purge items older than 30 days on every fetch

@@ -166,9 +166,31 @@ export class PgStorage implements IStorage {
     return result.map(toSafeUser);
   }
 
-  async updateUser(id: string, data: Partial<Pick<User, "isAdmin" | "isApproved" | "name">>): Promise<User | undefined> {
+  async updateUser(id: string, data: Partial<Omit<User, "id" | "password">>): Promise<User | undefined> {
     const [updated] = await db.update(users).set(data).where(eq(users.id, id)).returning();
     return updated;
+  }
+
+  async getUserStats(userId: string): Promise<{
+    groups: { id: string; name: string; memberCount: number }[];
+    expenseCount: number;
+    totalPaid: number;
+  }> {
+    const userGroups = await this.getGroupsForUser(userId);
+    const userExpenses = await db
+      .select()
+      .from(expenses)
+      .where(and(eq(expenses.addedById, userId), isNull(expenses.deletedAt)));
+    const paid = await db
+      .select()
+      .from(expenses)
+      .where(and(eq(expenses.paidById, userId), isNull(expenses.deletedAt), eq(expenses.isSettlement, false)));
+    const totalPaid = paid.reduce((sum, e) => sum + (e.amount ?? 0), 0);
+    return {
+      groups: userGroups.map(g => ({ id: g.id, name: g.name, memberCount: g.memberIds.length })),
+      expenseCount: userExpenses.length,
+      totalPaid,
+    };
   }
 
   async updateUserPassword(id: string, hashedPassword: string): Promise<void> {
