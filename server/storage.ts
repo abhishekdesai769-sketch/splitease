@@ -1,4 +1,4 @@
-import { eq, and, or, ilike, inArray, ne, isNull, isNotNull, lt } from "drizzle-orm";
+import { eq, and, or, ilike, inArray, ne, isNull, isNotNull, lt, sql, sum } from "drizzle-orm";
 import { db } from "./db";
 import {
   users, friends, groups, expenses, otpCodes, resetTokens, groupInvites, recurringExpenses, sentReminders, activityLog,
@@ -177,19 +177,22 @@ export class PgStorage implements IStorage {
     totalPaid: number;
   }> {
     const userGroups = await this.getGroupsForUser(userId);
-    const userExpenses = await db
-      .select()
+
+    // Use SQL aggregates — never fetch individual rows just to count/sum
+    const [countRow] = await db
+      .select({ count: sql<number>`count(*)::int` })
       .from(expenses)
       .where(and(eq(expenses.addedById, userId), isNull(expenses.deletedAt)));
-    const paid = await db
-      .select()
+
+    const [sumRow] = await db
+      .select({ total: sql<number>`coalesce(sum(amount), 0)::float` })
       .from(expenses)
       .where(and(eq(expenses.paidById, userId), isNull(expenses.deletedAt), eq(expenses.isSettlement, false)));
-    const totalPaid = paid.reduce((sum, e) => sum + (e.amount ?? 0), 0);
+
     return {
       groups: userGroups.map(g => ({ id: g.id, name: g.name, memberCount: g.memberIds.length })),
-      expenseCount: userExpenses.length,
-      totalPaid,
+      expenseCount: countRow?.count ?? 0,
+      totalPaid: sumRow?.total ?? 0,
     };
   }
 

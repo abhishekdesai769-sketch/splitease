@@ -81,13 +81,20 @@ export default function Admin() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
+  const [userSearchInput, setUserSearchInput] = useState("");
   const [userSearchQuery, setUserSearchQuery] = useState("");
+
+  // Debounce user search — only filter after user stops typing for 300ms
+  useEffect(() => {
+    const t = setTimeout(() => setUserSearchQuery(userSearchInput), 300);
+    return () => clearTimeout(t);
+  }, [userSearchInput]);
   const [selectedUser, setSelectedUser] = useState<SafeUser | null>(null);
   const [premiumMonths, setPremiumMonths] = useState("3");
   const [newPassword, setNewPassword] = useState("");
   const [adminNotes, setAdminNotes] = useState("");
 
-  // Fetch stats when a user is selected
+  // Fetch stats only when a user dialog is open — never refetch on window focus
   const { data: userStats, isLoading: statsLoading } = useQuery<{
     groups: { id: string; name: string; memberCount: number }[];
     expenseCount: number;
@@ -99,6 +106,8 @@ export default function Admin() {
       return res.json();
     },
     enabled: !!selectedUser,
+    staleTime: 5 * 60 * 1000,      // 5 min — no background refetch while dialog is open
+    refetchOnWindowFocus: false,
   });
 
   // Sync adminNotes when a new user is selected
@@ -122,12 +131,18 @@ export default function Admin() {
 
   const { data: allUsers = [], isLoading } = useQuery<SafeUser[]>({
     queryKey: ["/api/admin/users"],
+    staleTime: 2 * 60 * 1000,      // 2 min — clicking search input won't re-fire this
+    refetchOnWindowFocus: false,
   });
 
   const { data: deletedData } = useQuery<{
     groups: EnrichedGroup[];
     expenses: EnrichedExpense[];
-  }>({ queryKey: ["/api/admin/deleted"] });
+  }>({
+    queryKey: ["/api/admin/deleted"],
+    staleTime: 2 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
 
   const restoreGroupMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -269,8 +284,8 @@ export default function Admin() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
             placeholder="Search by name or email..."
-            value={userSearchQuery}
-            onChange={(e) => setUserSearchQuery(e.target.value)}
+            value={userSearchInput}
+            onChange={(e) => setUserSearchInput(e.target.value)}
             className="pl-9 h-9 text-sm"
           />
         </div>
