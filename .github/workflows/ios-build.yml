@@ -176,8 +176,12 @@ jobs:
           DECODED_PLIST=$(mktemp /tmp/profile_decoded.XXXXXX.plist)
           security cms -D -i "$PROFILE" -o "$DECODED_PLIST"
           PROFILE_UUID=$(/usr/libexec/PlistBuddy -c 'Print UUID' "$DECODED_PLIST")
-          rm -f "$DECODED_PLIST"
           echo "Profile UUID: $PROFILE_UUID"
+          echo "=== Profile Entitlements (what sigh gave us) ==="
+          /usr/libexec/PlistBuddy -c 'Print Entitlements' "$DECODED_PLIST" || echo "(no Entitlements key in profile)"
+          echo "=== App.entitlements file we copied ==="
+          cat ios/App/App/App.entitlements || echo "(file not found)"
+          rm -f "$DECODED_PLIST"
           echo "PROFILE_UUID=$PROFILE_UUID" >> $GITHUB_ENV
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           cp "$PROFILE" ~/Library/MobileDevice/Provisioning\ Profiles/${PROFILE_UUID}.mobileprovision
