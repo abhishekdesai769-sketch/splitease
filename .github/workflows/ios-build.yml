@@ -53,7 +53,7 @@ jobs:
 
       - name: Install Capacitor (pinned to v7)
         run: |
-          npm install @capacitor/core@7 @capacitor/ios@7 @capacitor/cli@7
+          npm install @capacitor/core@7 @capacitor/ios@7 @capacitor/cli@7 "@capacitor-community/apple-sign-in@^7.0.0"
 
       - name: Add iOS platform (allow pod install to fail — we fix it next)
         run: |
@@ -221,7 +221,7 @@ jobs:
             -authenticationKeyIssuerID $ASC_ISSUER_ID \
             OTHER_CODE_SIGN_FLAGS="--keychain $HOME/Library/Keychains/build.keychain-db" \
             CURRENT_PROJECT_VERSION=$BUILD_NUMBER \
-            MARKETING_VERSION=1.2.0 \
+            MARKETING_VERSION=1.2.1 \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="Apple Distribution" \
             PROVISIONING_PROFILE_SPECIFIER="$PROFILE_UUID" \
@@ -262,6 +262,21 @@ jobs:
             fi
           done
           echo "=== Done ==="
+
+      - name: Verify entitlements in archive
+        run: |
+          APP_PATH="$RUNNER_TEMP/App.xcarchive/Products/Applications/App.app"
+          echo "=== Entitlements in signed binary ==="
+          codesign -d --entitlements :- "$APP_PATH" 2>/dev/null || \
+            codesign -d --entitlements - "$APP_PATH" 2>/dev/null || true
+          echo "=== Checking for Sign in with Apple entitlement ==="
+          if codesign -d --entitlements :- "$APP_PATH" 2>/dev/null | grep -q "applesignin"; then
+            echo "✅ com.apple.developer.applesignin entitlement is present"
+          else
+            echo "❌ ERROR: Sign in with Apple entitlement NOT found in signed binary!"
+            echo "   Fix: Enable 'Sign in with Apple' in Apple Developer Portal for App ID ca.klarityit.spliiit"
+            exit 1
+          fi
 
       - name: Export IPA
         env:
