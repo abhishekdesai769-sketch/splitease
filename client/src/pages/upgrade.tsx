@@ -54,13 +54,13 @@ function ReferralCard() {
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Refer 5 friends who sign up and get 1 month of premium absolutely free. One-time reward.
+        Refer 5 friends who sign up and add their first expense — get 1 month of premium free. One-time reward, activates automatically.
       </p>
 
       {/* Progress */}
       <div className="space-y-1.5">
         <div className="flex justify-between text-xs">
-          <span className="text-muted-foreground">Friends joined</span>
+          <span className="text-muted-foreground">Friends who signed up &amp; split an expense</span>
           <span className="font-mono font-medium tabular-nums">
             {stats.rewardClaimed ? "5/5 ✓" : `${progress}/5`}
           </span>

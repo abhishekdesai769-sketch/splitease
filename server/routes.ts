@@ -515,6 +515,8 @@ setInterval(loadAll,30000);
       : null;
     // Generate a unique referral code for this new user (8 hex chars, e.g. "A3F29BC1")
     const newReferralCode = randomBytes(4).toString("hex").toUpperCase();
+    // Capture signup IP for abuse detection (x-forwarded-for set by Render's proxy)
+    const signupIp = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.socket.remoteAddress || null;
 
     // Verify OTP
     if (!otpCode) {
@@ -564,6 +566,7 @@ setInterval(loadAll,30000);
       referralCode: newReferralCode,
       ...(utmCampaign ? { utmCampaign } : {}),
       ...(referredByCode ? { referredByCode } : {}),
+      ...(signupIp ? { signupIp } : {}),
     });
 
     (req.session as any).userId = user.id;

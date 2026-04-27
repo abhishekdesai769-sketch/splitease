@@ -222,11 +222,30 @@ export class PgStorage implements IStorage {
   }
 
   async getReferralCount(referralCode: string): Promise<number> {
-    const [row] = await db
-      .select({ count: sql<number>`count(*)::int` })
+    // A referral only counts if the referred user has added at least 1 expense
+    // (proves they actually used the app — prevents fake account farming).
+    // Also excludes referred users whose signup IP matches the referrer's IP
+    // (catches same-device / same-home multi-account abuse).
+    const referrer = await this.getUserByReferralCode(referralCode);
+    const referrerIp = referrer?.signupIp ?? null;
+
+    const result = await db
+      .selectDistinct({ userId: users.id })
       .from(users)
-      .where(eq(users.referredByCode, referralCode));
-    return row?.count ?? 0;
+      .innerJoin(
+        expenses,
+        and(eq(expenses.addedById, users.id), isNull(expenses.deletedAt))
+      )
+      .where(
+        and(
+          eq(users.referredByCode, referralCode),
+          // Exclude referred users whose IP matches the referrer's IP
+          referrerIp
+            ? sql`${users.signupIp} IS DISTINCT FROM ${referrerIp}`
+            : sql`true`
+        )
+      );
+    return result.length;
   }
 
   async setReferralCode(userId: string, code: string): Promise<void> {

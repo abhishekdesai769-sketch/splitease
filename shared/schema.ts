@@ -34,6 +34,7 @@ export const users = pgTable("users", {
   referralCode: text("referral_code"),                                        // unique 8-char code, generated on signup
   referredByCode: text("referred_by_code"),                                   // code of who referred this user
   referralRewardClaimed: boolean("referral_reward_claimed").notNull().default(false), // one-time reward flag
+  signupIp: text("signup_ip"),                                                // IP at signup — used for abuse detection
 }, (table) => [
   uniqueIndex("users_email_idx").on(table.email),
   uniqueIndex("users_referral_code_idx").on(table.referralCode),
