@@ -56,6 +56,7 @@ export interface ParsedVoiceIntent {
 
   // ── Meta ──
   confidence: "high" | "low";
+  splitType?: "equal" | "unequal";
 }
 
 // ─── Navigation keyword → route ───────────────────────────────────────────────
@@ -166,6 +167,8 @@ export function parseVoiceIntent(
   const transcript = rawTranscript.trim();
   const t = transcript.toLowerCase();
 
+  const isUnequal = /\b(unequal|unevenly?|not\s+equal(?:ly)?|different\s+amounts?|custom\s+split|split\s+different|divide\s+unequal)\b/i.test(t);
+
   // 1. Cancel
   if (/\b(cancel|never ?mind|stop|quit|abort|exit|close)\b/i.test(t)) {
     return { type: "cancel", transcript, confidence: "high" };
@@ -201,6 +204,7 @@ export function parseVoiceIntent(
       groupId: group.id,
       groupName: group.name,
       confidence: amount ? "high" : "low",
+      splitType: isUnequal ? "unequal" : "equal",
     };
   }
 
@@ -217,6 +221,7 @@ export function parseVoiceIntent(
       friendId: friend.id,
       friendName: friend.name,
       confidence: amount ? "high" : "low",
+      splitType: isUnequal ? "unequal" : "equal",
     };
   }
 
