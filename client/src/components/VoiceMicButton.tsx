@@ -1,61 +1,64 @@
 /**
- * VoiceMicButton — floating mic button + full voice mode UI
+ * VoiceMicButton — floating mic button + step-by-step voice wizard
  *
- * Renders:
- *   1. A fixed floating mic button (bottom-right, above nav bar)
- *   2. A bottom sheet that opens when voice mode is active:
- *      - Listening state: waveform + live transcript
- *      - Processing state: spinner
- *      - Result state: parsed intent confirmation card
- *      - Error state: error message + retry
+ * The wizard guides the user question-by-question:
+ *   ask_target → ask_description → ask_amount → ask_split_type
+ *   → ask_members (groups only) → unequal_amounts (if unequal) → null (confirmation card)
+ *
+ * TTS (Web Speech API speechSynthesis) speaks each question aloud.
+ * STT (Web Speech API SpeechRecognition via useVoiceMode) captures the answer.
+ * The mic auto-starts after each question finishes speaking — fully hands-free.
  *
  * Premium-gated: non-premium users see the upgrade sheet on tap.
  */
 
-import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import {
   Mic, MicOff, Check, Loader2, Crown, AlertCircle,
-  DollarSign, Users, UsersRound, Navigation, BarChart2, ChevronRight, Square,
+  DollarSign, Users, UsersRound, Square,
 } from "lucide-react";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
 import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { useVoiceMode } from "@/hooks/useVoiceMode";
-import { formatVoiceAmount, VOICE_EXAMPLES } from "@/lib/voiceParser";
-import { speak, stopSpeaking } from "@/lib/speech";
+import {
+  formatVoiceAmount,
+  matchVoiceTarget,
+  parseVoiceAmountOnly,
+  parseVoiceDescription,
+  parseVoiceSplitType,
+  parseVoiceMembers,
+} from "@/lib/voiceParser";
 import type { SafeUser, Group } from "@shared/schema";
 import { UpgradePromptSheet } from "./UpgradePromptSheet";
 import { track } from "@/lib/analytics";
 import { recordExpenseAndCheck, triggerReview } from "@/lib/reviewPrompt";
 import { isIosNative } from "@/lib/iap";
+import { speak, stopSpeaking } from "@/lib/speech";
 
-// All iOS browsers (Safari, Chrome, Firefox) use WebKit — Apple blocks microphone
-// access for web apps on iOS entirely. Only the native Capacitor app can use it.
+// iOS browsers block microphone access in web views — only the native Capacitor app can use it.
 const isIOSSafariWeb = !isIosNative && /iPhone|iPad|iPod/i.test(
   typeof navigator !== "undefined" ? navigator.userAgent : ""
 );
 
 // ─── Waveform animation ────────────────────────────────────────────────────────
 
-const WAVE_KEYFRAMES = `
-@keyframes voiceBarAnim {
-  0%, 100% { transform: scaleY(0.15); }
-  50%       { transform: scaleY(1); }
-}
-`;
-
-// Bar heights give a natural-looking waveform shape
-const BAR_HEIGHTS = [28, 48, 72, 56, 88, 100, 64, 44, 80, 96, 52, 76, 40, 88, 60, 36, 72, 56, 84, 48];
+const BAR_HEIGHTS = [40, 60, 80, 55, 70, 45, 85, 50, 65, 75, 42, 68];
 
 function VoiceWaveform({ active }: { active: boolean }) {
   return (
     <>
-      <style dangerouslySetInnerHTML={{ __html: WAVE_KEYFRAMES }} />
-      <div className="flex items-center justify-center gap-[3px]" style={{ height: 40 }}>
+      <style>{`
+        @keyframes voiceBarAnim {
+          0%   { transform: scaleY(0.15); }
+          100% { transform: scaleY(1); }
+        }
+      `}</style>
+      <div className="flex items-center justify-center gap-[3px] h-10">
         {BAR_HEIGHTS.map((h, i) => (
           <div
             key={i}
@@ -79,30 +82,47 @@ function VoiceWaveform({ active }: { active: boolean }) {
   );
 }
 
+// ─── Wizard types ──────────────────────────────────────────────────────────────
+
+type WizardStep =
+  | "ask_target"       // "Who do you want to split with?"
+  | "ask_description"  // "What was this for?"
+  | "ask_amount"       // "How much did you pay?"
+  | "ask_split_type"   // "Equally or unequally?"
+  | "ask_members"      // "Who in the group?" (groups only)
+  | "unequal_amounts"  // Text form for custom per-person amounts
+  | null;              // Show confirmation card
+
+interface WizardData {
+  groupId?: string;
+  groupName?: string;
+  friendId?: string;
+  friendName?: string;
+  splitAmongIds?: string[];
+  description?: string;
+  amount?: number;
+  splitType?: "equal" | "unequal";
+  unequalAmounts?: Record<string, number>;
+}
+
 // ─── Main component ────────────────────────────────────────────────────────────
 
 export function VoiceMicButton() {
   const { user } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+
   const [sheetOpen, setSheetOpen] = useState(false);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [showExamples, setShowExamples] = useState(false);
 
-  // ── Clarification flow state ────────────────────────────────────────────────
-  type ClarifyStep = "pick_target" | "get_amount" | "unequal_amounts";
-  const [clarifyStep, setClarifyStep] = useState<ClarifyStep | null>(null);
-  const [supp, setSupp] = useState<{
-    groupId?: string; groupName?: string; friendId?: string; friendName?: string;
-    splitAmongIds?: string[]; amount?: number; description?: string;
-    splitType?: "equal" | "unequal"; unequalAmounts?: Record<string, number>;
-    paidById?: string;
-  }>({});
-  const [amountStr, setAmountStr] = useState("");
+  // Wizard state
+  const [wizardStep, setWizardStep] = useState<WizardStep>(null);
+  const [data, setData] = useState<WizardData>({});
   const [unequalStrs, setUnequalStrs] = useState<Record<string, string>>({});
+  const [tapMemberIds, setTapMemberIds] = useState<string[]>([]); // tap fallback for ask_members
 
-  // Fetch friends + groups (uses existing cache — no extra API calls if already loaded)
+  // Remote data
   const { data: friends = [] } = useQuery<SafeUser[]>({
     queryKey: ["/api/friends"],
     enabled: !!user?.isPremium,
@@ -120,7 +140,7 @@ export function VoiceMicButton() {
   };
 
   const {
-    voiceState, transcript, interimTranscript, parsedIntent,
+    voiceState, transcript, interimTranscript,
     errorMessage, isSupported, startListening, stopListening, reset,
   } = useVoiceMode(voiceCtx);
 
@@ -129,257 +149,242 @@ export function VoiceMicButton() {
     return friends.find((f) => f.id === uid)?.name ?? "Member";
   }, [user, friends]);
 
-  // Merge original parsed intent with clarification supplement
-  const mergedIntent = useMemo(() => {
-    if (!parsedIntent) return null;
-    return { ...parsedIntent, ...supp };
-  }, [parsedIntent, supp]);
+  // ── Stable refs (for use inside effects without stale closures) ───────────
+  const dataRef = useRef<WizardData>({});
+  useEffect(() => { dataRef.current = data; }, [data]);
 
-  // Stable ref so the auto-listen effect never captures a stale startListening
+  const transcriptRef = useRef("");
+  useEffect(() => { transcriptRef.current = transcript; }, [transcript]);
+
   const startListeningRef = useRef(startListening);
   useEffect(() => { startListeningRef.current = startListening; }, [startListening]);
 
-  // Speak the clarifying question, then auto-start the mic once speech ends.
-  // stopSpeaking() on cleanup ensures no leftover audio if the user cancels.
+  const groupsRef = useRef(groups);
+  useEffect(() => { groupsRef.current = groups; }, [groups]);
+
+  const friendsRef = useRef(friends);
+  useEffect(() => { friendsRef.current = friends; }, [friends]);
+
+  const userRef = useRef(user);
+  useEffect(() => { userRef.current = user; }, [user]);
+
+  // ── Speak the step question, then auto-start listening ────────────────────
   useEffect(() => {
-    if (clarifyStep === "pick_target") {
-      let cancelled = false;
-      speak("Who do you want to split this with?").then(() => {
-        if (!cancelled) startListeningRef.current();
-      });
-      return () => {
-        cancelled = true;
-        stopSpeaking();
-      };
-    }
-    if (clarifyStep === "get_amount") {
-      let cancelled = false;
-      speak("How much was it?").then(() => {
-        if (!cancelled) startListeningRef.current();
-      });
-      return () => {
-        cancelled = true;
-        stopSpeaking();
-      };
-    }
-  }, [clarifyStep]);
+    if (!wizardStep || wizardStep === "unequal_amounts") return;
+    let cancelled = false;
 
-  // Process every voice result — handles both initial parse and clarification re-listens
+    const buildQuestion = (): string => {
+      const d = dataRef.current;
+      switch (wizardStep) {
+        case "ask_target":
+          return "Who do you want to split this with?";
+        case "ask_description":
+          return `Got it — ${d.groupName ?? d.friendName}. What was this for?`;
+        case "ask_amount":
+          return "How much did you pay?";
+        case "ask_split_type":
+          return "Should I split it equally or unequally?";
+        case "ask_members": {
+          const g = groupsRef.current.find(gr => gr.id === d.groupId);
+          const count = g?.memberIds.length ?? 0;
+          return `Who should I split it between? The group has ${count} member${count !== 1 ? "s" : ""}.`;
+        }
+        default: return "";
+      }
+    };
+
+    speak(buildQuestion()).then(() => {
+      if (!cancelled) startListeningRef.current();
+    });
+    return () => { cancelled = true; stopSpeaking(); };
+  }, [wizardStep]);
+
+  // ── Process voice result per wizard step ──────────────────────────────────
   useEffect(() => {
-    if (voiceState !== "result" || !parsedIntent) return;
-    if (parsedIntent.type === "navigate" || parsedIntent.type === "cancel") return;
+    if (voiceState !== "result") return;
+    const t = transcriptRef.current;
 
-    // ── Clarification re-listen: pick_target ──────────────────────────────────
-    if (clarifyStep === "pick_target") {
-      const g = parsedIntent.groupId
-        ? voiceCtx.groups.find((grp) => grp.id === parsedIntent.groupId) : null;
-      if (g) {
-        setSupp((prev) => {
-          const updated = { ...prev, groupId: g.id, groupName: g.name, splitAmongIds: g.memberIds,
-            amount: parsedIntent.amount ?? prev.amount };
-          if (!updated.amount) { setClarifyStep("get_amount"); }
-          else if (updated.splitType === "unequal") {
-            const s: Record<string,string> = {};
-            g.memberIds.forEach((id) => { s[id] = ""; });
-            setUnequalStrs(s); setClarifyStep("unequal_amounts");
-          } else { setClarifyStep(null); }
-          return updated;
-        });
-        return;
+    switch (wizardStep) {
+
+      case "ask_target": {
+        const gList = groupsRef.current.map(g => ({ id: g.id, name: g.name, memberIds: g.memberIds }));
+        const fList = friendsRef.current.map(f => ({ id: f.id, name: f.name }));
+        const match = matchVoiceTarget(t, gList, fList);
+        if (!match) {
+          speak("I couldn't find that in your list. Try saying the group or friend name.")
+            .then(startListeningRef.current);
+          return;
+        }
+        setData(prev => ({ ...prev, ...match }));
+        reset();
+        setWizardStep("ask_description");
+        break;
       }
-      const f = parsedIntent.friendId
-        ? voiceCtx.friends.find((fr) => fr.id === parsedIntent.friendId) : null;
-      if (f) {
-        const splitAmongIds = [voiceCtx.currentUserId, f.id];
-        setSupp((prev) => {
-          const updated = { ...prev, friendId: f.id, friendName: f.name, splitAmongIds,
-            amount: parsedIntent.amount ?? prev.amount };
-          if (!updated.amount) { setClarifyStep("get_amount"); }
-          else { setClarifyStep(null); }
-          return updated;
-        });
+
+      case "ask_description": {
+        const desc = parseVoiceDescription(t);
+        setData(prev => ({ ...prev, description: desc }));
+        reset();
+        setWizardStep("ask_amount");
+        break;
       }
-      // nothing matched → stay in pick_target, user can try again or tap
-      return;
-    }
 
-    // ── Clarification re-listen: get_amount ───────────────────────────────────
-    if (clarifyStep === "get_amount") {
-      const amount = parsedIntent.amount;
-      if (amount && amount > 0) {
-        setSupp((prev) => {
-          const updated = { ...prev, amount };
-          if (updated.splitType === "unequal" && updated.splitAmongIds?.length) {
-            const s: Record<string,string> = {};
-            updated.splitAmongIds.forEach((id) => { s[id] = ""; });
-            setUnequalStrs(s); setClarifyStep("unequal_amounts");
-          } else { setClarifyStep(null); }
-          return updated;
-        });
+      case "ask_amount": {
+        const amt = parseVoiceAmountOnly(t);
+        if (!amt) {
+          speak("I didn't catch that. How much did you pay?")
+            .then(startListeningRef.current);
+          return;
+        }
+        setData(prev => ({ ...prev, amount: amt }));
+        reset();
+        setWizardStep("ask_split_type");
+        break;
       }
-      // no amount → stay in get_amount
-      return;
+
+      case "ask_split_type": {
+        const splitType = parseVoiceSplitType(t);
+        if (!splitType) {
+          speak("Say equally or unequally.").then(startListeningRef.current);
+          return;
+        }
+        const d = dataRef.current;
+        const currentUserId = userRef.current?.id ?? "";
+        setData(prev => ({ ...prev, splitType }));
+        reset();
+        if (d.groupId) {
+          // Group split — need to ask who's included
+          const g = groupsRef.current.find(gr => gr.id === d.groupId);
+          if (g) setTapMemberIds(g.memberIds); // default: all checked
+          setWizardStep("ask_members");
+        } else {
+          // Friend split — two people only
+          const splitAmongIds = [currentUserId, d.friendId!].filter(Boolean) as string[];
+          setData(prev => ({ ...prev, splitAmongIds }));
+          if (splitType === "unequal") {
+            const initStrs: Record<string, string> = {};
+            splitAmongIds.forEach(id => { initStrs[id] = ""; });
+            setUnequalStrs(initStrs);
+            setWizardStep("unequal_amounts");
+          } else {
+            setWizardStep(null); // → confirmation card
+          }
+        }
+        break;
+      }
+
+      case "ask_members": {
+        const d = dataRef.current;
+        const g = groupsRef.current.find(gr => gr.id === d.groupId);
+        if (!g) { reset(); setWizardStep(null); return; }
+        const membersWithNames = g.memberIds.map(id => ({
+          id,
+          name: id === (userRef.current?.id ?? "")
+            ? (userRef.current?.name ?? "You")
+            : (friendsRef.current.find(f => f.id === id)?.name ?? "Member"),
+        }));
+        const selectedIds = parseVoiceMembers(t, membersWithNames);
+        if (!selectedIds || selectedIds.length === 0) {
+          speak("I didn't catch that. Who should I split it between?")
+            .then(startListeningRef.current);
+          return;
+        }
+        setData(prev => ({ ...prev, splitAmongIds: selectedIds }));
+        reset();
+        if (d.splitType === "unequal") {
+          const initStrs: Record<string, string> = {};
+          selectedIds.forEach(id => { initStrs[id] = ""; });
+          setUnequalStrs(initStrs);
+          setWizardStep("unequal_amounts");
+        } else {
+          setWizardStep(null); // → confirmation card
+        }
+        break;
+      }
     }
+  }, [voiceState, wizardStep]);
 
-    // ── Initial parse ─────────────────────────────────────────────────────────
-    const hasTarget = !!(parsedIntent.groupId || parsedIntent.friendId);
-    const hasAmount = !!parsedIntent.amount;
-    if (!hasTarget) {
-      setSupp({ paidById: parsedIntent.paidById, description: parsedIntent.description, amount: parsedIntent.amount });
-      setClarifyStep("pick_target");
-    } else if (!hasAmount) {
-      setSupp({ groupId: parsedIntent.groupId, groupName: parsedIntent.groupName,
-        friendId: parsedIntent.friendId, friendName: parsedIntent.friendName,
-        splitAmongIds: parsedIntent.splitAmongIds, paidById: parsedIntent.paidById,
-        description: parsedIntent.description, splitType: parsedIntent.splitType });
-      setClarifyStep("get_amount");
-    } else if (parsedIntent.splitType === "unequal") {
-      const members = parsedIntent.splitAmongIds ?? [];
-      const s: Record<string,string> = {};
-      members.forEach((id) => { s[id] = ""; });
-      setUnequalStrs(s);
-      setSupp({ ...parsedIntent });
-      setClarifyStep("unequal_amounts");
-    }
-    // else: clarifyStep stays null → normal confirmation card
-  }, [voiceState, parsedIntent?.type, parsedIntent?.groupId, parsedIntent?.friendId, parsedIntent?.amount, parsedIntent?.splitType, clarifyStep, voiceCtx.groups, voiceCtx.friends, voiceCtx.currentUserId]);
+  // ── Tap-select handlers for ask_members fallback ──────────────────────────
+  const handleToggleMember = useCallback((uid: string) => {
+    setTapMemberIds(prev =>
+      prev.includes(uid) ? prev.filter(id => id !== uid) : [...prev, uid]
+    );
+  }, []);
 
-  // ── Handlers ────────────────────────────────────────────────────────────────
-
-  const handleMicTap = useCallback(() => {
-    if (!user?.isPremium) {
-      setUpgradeOpen(true);
-      return;
-    }
-    // Tap-to-toggle: if already listening → stop; otherwise open sheet + start
-    if (voiceState === "listening") {
-      stopListening();
-      return;
-    }
-    setSheetOpen(true);
-    if (isIOSSafariWeb) return; // Show "use the app" card — no iOS browser supports Web Speech API
-    setShowExamples(false);
-    startListening();
-  }, [user?.isPremium, voiceState, stopListening, startListening]);
-
-  const handleClose = useCallback(() => {
-    stopSpeaking(); // cancel any in-flight TTS before closing
-    reset();
-    setSheetOpen(false);
-    setShowExamples(false);
-    setSubmitting(false);
-    setClarifyStep(null);
-    setSupp({});
-    setAmountStr("");
-    setUnequalStrs({});
-  }, [reset]);
-
-  // ── Clarification handlers ────────────────────────────────────────────────
-
-  const handlePickGroup = useCallback((g: { id: string; name: string; memberIds: string[] }) => {
-    const updated = { ...supp, groupId: g.id, groupName: g.name, splitAmongIds: g.memberIds, splitType: (supp.splitType ?? "equal") as "equal" | "unequal" };
-    setSupp(updated);
-    if (!updated.amount) {
-      setClarifyStep("get_amount");
-    } else if (updated.splitType === "unequal") {
+  const handleConfirmMembers = useCallback(() => {
+    if (tapMemberIds.length === 0) return;
+    const d = dataRef.current;
+    setData(prev => ({ ...prev, splitAmongIds: tapMemberIds }));
+    if (d.splitType === "unequal") {
       const initStrs: Record<string, string> = {};
-      g.memberIds.forEach((id) => { initStrs[id] = ""; });
+      tapMemberIds.forEach(id => { initStrs[id] = ""; });
       setUnequalStrs(initStrs);
-      setClarifyStep("unequal_amounts");
+      setWizardStep("unequal_amounts");
     } else {
-      setClarifyStep(null);
+      setWizardStep(null);
     }
-  }, [supp]);
+  }, [tapMemberIds]);
 
-  const handlePickFriend = useCallback((f: { id: string; name: string }) => {
-    const splitAmongIds = [voiceCtx.currentUserId, f.id];
-    const updated = { ...supp, friendId: f.id, friendName: f.name, splitAmongIds, splitType: (supp.splitType ?? "equal") as "equal" | "unequal" };
-    setSupp(updated);
-    if (!updated.amount) {
-      setClarifyStep("get_amount");
-    } else {
-      setClarifyStep(null);
-    }
-  }, [supp, voiceCtx.currentUserId]);
-
-  const handleAmountConfirm = useCallback(() => {
-    const amt = parseFloat(amountStr);
-    if (!amt || amt <= 0) return;
-    const updated = { ...supp, amount: amt };
-    setSupp(updated);
-    if (updated.splitType === "unequal" && updated.splitAmongIds) {
-      const initStrs: Record<string, string> = {};
-      updated.splitAmongIds.forEach((id) => { initStrs[id] = ""; });
-      setUnequalStrs(initStrs);
-      setClarifyStep("unequal_amounts");
-    } else {
-      setClarifyStep(null);
-    }
-  }, [amountStr, supp]);
-
+  // ── Unequal amounts text-form confirm ─────────────────────────────────────
   const handleUnequalConfirm = useCallback(() => {
     const amounts: Record<string, number> = {};
     for (const [id, val] of Object.entries(unequalStrs)) {
       const n = parseFloat(val);
       if (n > 0) amounts[id] = n;
     }
-    setSupp((prev) => ({ ...prev, unequalAmounts: amounts }));
-    setClarifyStep(null);
+    setData(prev => ({ ...prev, unequalAmounts: amounts }));
+    setWizardStep(null);
   }, [unequalStrs]);
 
-  // ── Handle "navigate" intent immediately ──────────────────────────────────
+  // ── Close & reset ─────────────────────────────────────────────────────────
+  const handleClose = useCallback(() => {
+    stopSpeaking();
+    reset();
+    setSheetOpen(false);
+    setWizardStep(null);
+    setData({});
+    setUnequalStrs({});
+    setTapMemberIds([]);
+    setSubmitting(false);
+  }, [reset]);
 
-  if (voiceState === "result" && parsedIntent?.type === "navigate" && parsedIntent.destination) {
-    setLocation(parsedIntent.destination);
-    handleClose();
-    toast({ title: "Navigated ✓" });
-  }
+  // ── Mic button tap → open sheet + start wizard ────────────────────────────
+  const handleMicTap = useCallback(() => {
+    if (!user?.isPremium) { setUpgradeOpen(true); return; }
+    if (voiceState === "listening") { stopListening(); return; }
+    if (sheetOpen) return;
+    setSheetOpen(true);
+    if (isIOSSafariWeb) return;
+    // Reset any previous session and kick off the wizard
+    reset();
+    setData({});
+    setUnequalStrs({});
+    setTapMemberIds([]);
+    setWizardStep("ask_target"); // speak+listen effect takes over from here
+  }, [user?.isPremium, voiceState, stopListening, sheetOpen, reset]);
 
-  if (voiceState === "result" && parsedIntent?.type === "cancel") {
-    handleClose();
-  }
-
-  // ── Confirm expense / balance action ─────────────────────────────────────
-
+  // ── Submit the expense ────────────────────────────────────────────────────
   const handleConfirm = useCallback(async () => {
-    const intent = mergedIntent;
-    if (!intent || submitting) return;
-
-    if (intent.type === "ask_balance") {
-      handleClose();
-      setLocation("/");
-      toast({ title: "Here are your balances" });
-      return;
-    }
-
-    if ((intent.type === "add_expense" || intent.type === "split_friend" || intent.type === "split_group") && !intent.friendId && !intent.groupId) {
-      toast({ title: "Who to split with?", description: "Say the name of a friend or group, or add it manually.", variant: "destructive" });
-      return;
-    }
-
-    if (!intent.amount || !intent.description) {
-      toast({ title: "Missing info", description: "Couldn't get the full expense details.", variant: "destructive" });
-      return;
-    }
+    const d = dataRef.current;
+    if (!d.amount || (!d.groupId && !d.friendId) || submitting) return;
 
     setSubmitting(true);
     try {
       const fd = new FormData();
-      fd.append("description", intent.description);
-      fd.append("amount", intent.amount.toString());
-      fd.append("paidById", intent.paidById ?? voiceCtx.currentUserId);
+      fd.append("description", d.description ?? "Expense");
+      fd.append("amount", String(d.amount));
+      fd.append("paidById", userRef.current?.id ?? "");
       fd.append("date", new Date().toISOString());
 
-      // Unequal split — use splitAmounts JSON
-      if (intent.unequalAmounts && Object.keys(intent.unequalAmounts).length > 0) {
-        fd.append("splitAmongIds", JSON.stringify(Object.keys(intent.unequalAmounts)));
-        fd.append("splitAmounts", JSON.stringify(intent.unequalAmounts));
+      if (d.unequalAmounts && Object.keys(d.unequalAmounts).length > 0) {
+        fd.append("splitAmongIds", JSON.stringify(Object.keys(d.unequalAmounts)));
+        fd.append("splitAmounts", JSON.stringify(d.unequalAmounts));
       } else {
-        fd.append("splitAmongIds", JSON.stringify(intent.splitAmongIds ?? []));
+        fd.append("splitAmongIds", JSON.stringify(d.splitAmongIds ?? []));
       }
 
-      if ((intent.type === "split_group" || intent.groupId) && intent.groupId) {
-        fd.append("groupId", intent.groupId);
+      if (d.groupId) {
+        fd.append("groupId", d.groupId);
         await fetch("/api/expenses", { method: "POST", body: fd, credentials: "include" });
         await queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
         await queryClient.invalidateQueries({ queryKey: ["/api/groups"] });
@@ -389,9 +394,12 @@ export function VoiceMicButton() {
         await queryClient.invalidateQueries({ queryKey: ["/api/friends"] });
       }
 
-      track("voice_action_confirmed", { intent: intent.type, amount: intent.amount });
+      track("voice_action_confirmed", { wizardSplit: d.splitType, hasGroup: !!d.groupId });
       handleClose();
-      toast({ title: "Expense added ✓", description: `${intent.description} — ${formatVoiceAmount(intent.amount, voiceCtx.defaultCurrency)}` });
+      toast({
+        title: "Expense added ✓",
+        description: `${d.description ?? "Expense"} — ${formatVoiceAmount(d.amount, voiceCtx.defaultCurrency)}`,
+      });
       if (recordExpenseAndCheck()) setTimeout(() => triggerReview("expense_6"), 2000);
     } catch {
       toast({ title: "Failed to add expense", description: "Try again or add it manually.", variant: "destructive" });
@@ -399,26 +407,64 @@ export function VoiceMicButton() {
     } finally {
       setSubmitting(false);
     }
-  }, [mergedIntent, submitting, handleClose, setLocation, toast, voiceCtx.defaultCurrency, voiceCtx.currentUserId]);
-
-  // ─── Don't render if not logged in ────────────────────────────────────────
+  }, [submitting, handleClose, toast, voiceCtx.defaultCurrency]);
 
   if (!user) return null;
 
-  // ─── Floating mic button ───────────────────────────────────────────────────
-
   const isPremium = !!user.isPremium;
+  const isListening = voiceState === "listening";
+  const isProcessing = voiceState === "processing";
+
+  // ── Shared UI fragments ───────────────────────────────────────────────────
+
+  const ListenCard = ({ hint, subhint }: { hint: string; subhint?: string }) => (
+    <div className="rounded-2xl border border-border bg-muted/20 px-4 py-5 space-y-3">
+      <VoiceWaveform active={isListening} />
+      <div className="text-center space-y-1">
+        {isListening ? (
+          <>
+            <p className="text-sm font-medium text-primary">Listening…</p>
+            <p className="text-xs text-muted-foreground">{hint}</p>
+            {interimTranscript && (
+              <p className="text-xs text-muted-foreground italic mt-1">{interimTranscript}…</p>
+            )}
+          </>
+        ) : isProcessing ? (
+          <p className="text-sm text-muted-foreground">Got it…</p>
+        ) : (
+          <>
+            <p className="text-sm font-medium text-muted-foreground">{hint}</p>
+            {subhint && <p className="text-xs text-muted-foreground">{subhint}</p>}
+          </>
+        )}
+      </div>
+    </div>
+  );
+
+  const StopBtn = () => isListening ? (
+    <div className="flex justify-center">
+      <button
+        onClick={stopListening}
+        className="w-14 h-14 rounded-full bg-red-500 text-white flex items-center justify-center shadow-lg hover:bg-red-600 active:scale-95 transition-all"
+        aria-label="Stop listening"
+      >
+        <Square className="w-5 h-5 fill-current" />
+      </button>
+    </div>
+  ) : null;
+
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <>
-      {/* Floating mic button — fixed above bottom nav */}
+      {/* ── Floating mic button ── */}
       <button
         className={`fixed right-4 z-40 flex items-center justify-center rounded-full shadow-lg transition-all duration-200 select-none
           ${isPremium
             ? "w-14 h-14 bg-primary text-primary-foreground hover:scale-105 active:scale-95"
             : "w-14 h-14 bg-muted border border-border text-muted-foreground hover:bg-muted/80"
           }`}
-        style={{ bottom: "76px" }} // clears the 64px nav bar
+        style={{ bottom: "76px" }}
         onClick={handleMicTap}
         aria-label="Voice mode"
         data-testid="voice-mic-button"
@@ -427,22 +473,23 @@ export function VoiceMicButton() {
           <Mic className="w-6 h-6" />
         ) : (
           <>
-            <Mic className="w-5 h-5" />
-            <Crown className="w-3 h-3 absolute bottom-2 right-2 text-amber-500" />
+            <MicOff className="w-5 h-5" />
+            <Crown className="absolute -top-1 -right-1 w-4 h-4 text-amber-400" />
           </>
         )}
       </button>
 
-      {/* Voice mode bottom sheet */}
+      {/* ── Voice wizard sheet ── */}
       <Sheet open={sheetOpen} onOpenChange={(open) => { if (!open) handleClose(); }}>
         <SheetContent
           side="bottom"
           className="rounded-t-2xl pb-safe select-none"
-          style={{ maxHeight: "70vh", touchAction: "none" }}
+          style={{ maxHeight: "80vh", touchAction: "none" }}
         >
-          <div className="pt-1 pb-6 px-1">
+          <div className="pt-1 pb-6 px-1 space-y-4">
+
             {/* Header */}
-            <div className="flex items-center gap-2 mb-4">
+            <div className="flex items-center gap-2">
               <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center">
                 <Mic className="w-3.5 h-3.5 text-primary" />
               </div>
@@ -452,7 +499,7 @@ export function VoiceMicButton() {
               </span>
             </div>
 
-            {/* ── iOS: Voice Mode not yet supported ────────────────────── */}
+            {/* iOS web blocker */}
             {isIOSSafariWeb ? (
               <div className="space-y-4 py-2">
                 <div className="rounded-2xl border border-border bg-muted/20 px-4 py-5 flex flex-col items-center gap-3 text-center">
@@ -462,357 +509,307 @@ export function VoiceMicButton() {
                   <div className="space-y-1">
                     <p className="text-sm font-semibold text-foreground">Voice Mode needs the app 🎤</p>
                     <p className="text-xs text-muted-foreground leading-relaxed">
-                      iOS doesn't allow microphone access in web browsers — it's an Apple restriction that applies to all browsers on iPhone, including Chrome.
-                    </p>
-                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      iOS doesn't allow microphone access in web browsers — it's an Apple restriction.
                       Get the free <span className="font-medium text-foreground">Spliiit app from the App Store</span> to use Voice Mode.
                     </p>
                   </div>
                 </div>
-                <Button className="w-full" variant="outline" onClick={handleClose}>
-                  Got it
-                </Button>
+                <Button className="w-full" variant="outline" onClick={handleClose}>Got it</Button>
               </div>
-            ) : <>
 
-            {/* ── CLARIFY: pick target (voice-first) ───────────────────── */}
-            {clarifyStep === "pick_target" && (
-              <div className="space-y-4">
-                <div className="rounded-xl border border-border bg-muted/20 px-4 py-3">
-                  <p className="text-xs text-muted-foreground mb-1">I heard:</p>
-                  <p className="text-sm italic text-foreground">"{transcript}"</p>
-                  {supp.amount && <p className="text-xs text-muted-foreground mt-1">Amount: {formatVoiceAmount(supp.amount, voiceCtx.defaultCurrency)}</p>}
-                </div>
-                <div className="rounded-2xl border border-border bg-muted/20 px-4 py-4 space-y-3">
-                  <VoiceWaveform active={voiceState === "listening"} />
-                  <div className="text-center space-y-0.5">
-                    {voiceState === "listening" ? (
-                      <><p className="text-sm font-medium text-primary">Listening…</p>
-                      <p className="text-xs text-muted-foreground">Say a group or friend name</p>
-                      {interimTranscript && <p className="text-xs text-muted-foreground italic mt-1">{interimTranscript}…</p>}</>
-                    ) : voiceState === "processing" ? (
-                      <p className="text-sm text-muted-foreground">Got it…</p>
-                    ) : (
-                      <><p className="text-sm font-medium text-muted-foreground">Say a group or friend name</p>
-                      <p className="text-xs text-muted-foreground">e.g. "Roommates" or "Sarah"</p></>
+            ) : (
+              <>
+                {/* ── Context strip — shows collected data as chips ── */}
+                {(data.groupName || data.friendName || data.description || data.amount) && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {(data.groupName || data.friendName) && (
+                      <span className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-primary/10 text-primary font-medium">
+                        {data.groupName
+                          ? <UsersRound className="w-3 h-3" />
+                          : <Users className="w-3 h-3" />}
+                        {data.groupName ?? data.friendName}
+                      </span>
+                    )}
+                    {data.description && (
+                      <span className="text-xs px-2 py-1 rounded-full bg-muted/60 text-muted-foreground">
+                        {data.description}
+                      </span>
+                    )}
+                    {data.amount && (
+                      <span className="text-xs px-2 py-1 rounded-full bg-green-500/15 text-green-600 font-semibold">
+                        {formatVoiceAmount(data.amount, voiceCtx.defaultCurrency)}
+                      </span>
+                    )}
+                    {data.splitType && (
+                      <span className="text-xs px-2 py-1 rounded-full bg-muted/60 text-muted-foreground">
+                        {data.splitType === "equal" ? "Equal split" : "Custom split"}
+                      </span>
                     )}
                   </div>
-                </div>
-                {voiceState === "listening" && (
-                  <div className="flex justify-center">
-                    <button onClick={stopListening}
-                      className="w-14 h-14 rounded-full bg-red-500 text-white flex items-center justify-center shadow-lg hover:bg-red-600 active:scale-95 transition-all">
-                      <Square className="w-5 h-5 fill-current" />
-                    </button>
-                  </div>
-                )}
-                {voiceState !== "listening" && voiceState !== "processing" && (
-                  <div className="space-y-1.5">
-                    <p className="text-[11px] text-muted-foreground text-center">or tap to select:</p>
-                    {voiceCtx.groups.slice(0, 3).map((g) => (
-                      <button key={g.id} onClick={() => handlePickGroup(g)}
-                        className="w-full flex items-center gap-3 px-3 py-2 rounded-xl border border-border bg-muted/10 hover:bg-muted/30 transition-colors text-left">
-                        <UsersRound className="w-4 h-4 text-muted-foreground shrink-0" />
-                        <span className="text-sm text-foreground">{g.name}</span>
-                        <span className="text-xs text-muted-foreground ml-auto">{g.memberIds.length} members</span>
-                      </button>
-                    ))}
-                    {voiceCtx.friends.slice(0, 3).map((f) => (
-                      <button key={f.id} onClick={() => handlePickFriend(f)}
-                        className="w-full flex items-center gap-3 px-3 py-2 rounded-xl border border-border bg-muted/10 hover:bg-muted/30 transition-colors text-left">
-                        <Users className="w-4 h-4 text-muted-foreground shrink-0" />
-                        <span className="text-sm text-foreground">{f.name}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-                <Button variant="outline" className="w-full" onClick={handleClose}>Cancel</Button>
-              </div>
-            )}
-
-            {/* ── CLARIFY: get amount (voice-first) ────────────────────── */}
-            {clarifyStep === "get_amount" && (
-              <div className="space-y-4">
-                <div className="rounded-xl border border-border bg-muted/20 px-4 py-3 space-y-0.5">
-                  <p className="text-xs text-muted-foreground">Got so far:</p>
-                  {supp.groupName && <p className="text-sm font-medium text-foreground">Group: <span className="text-primary">{supp.groupName}</span></p>}
-                  {supp.friendName && <p className="text-sm font-medium text-foreground">With: <span className="text-primary">{supp.friendName}</span></p>}
-                  {supp.description && <p className="text-xs text-muted-foreground">For: {supp.description}</p>}
-                </div>
-                <div className="rounded-2xl border border-border bg-muted/20 px-4 py-4 space-y-3">
-                  <VoiceWaveform active={voiceState === "listening"} />
-                  <div className="text-center space-y-0.5">
-                    {voiceState === "listening" ? (
-                      <><p className="text-sm font-medium text-primary">Listening…</p>
-                      <p className="text-xs text-muted-foreground">Say the amount</p>
-                      {interimTranscript && <p className="text-xs text-muted-foreground italic mt-1">{interimTranscript}…</p>}</>
-                    ) : voiceState === "processing" ? (
-                      <p className="text-sm text-muted-foreground">Got it…</p>
-                    ) : (
-                      <><p className="text-sm font-medium text-muted-foreground">How much was it?</p>
-                      <p className="text-xs text-muted-foreground">e.g. "$45" or "120 dollars"</p></>
-                    )}
-                  </div>
-                </div>
-                {voiceState === "listening" && (
-                  <div className="flex justify-center">
-                    <button onClick={stopListening}
-                      className="w-14 h-14 rounded-full bg-red-500 text-white flex items-center justify-center shadow-lg hover:bg-red-600 active:scale-95 transition-all">
-                      <Square className="w-5 h-5 fill-current" />
-                    </button>
-                  </div>
-                )}
-                {voiceState !== "listening" && voiceState !== "processing" && (
-                  <div className="flex gap-2">
-                    <input type="number" inputMode="decimal" placeholder="0.00" value={amountStr}
-                      onChange={(e) => setAmountStr(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && handleAmountConfirm()}
-                      className="flex-1 h-10 rounded-xl border border-border bg-background px-4 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30" />
-                    <Button onClick={handleAmountConfirm} disabled={!amountStr || parseFloat(amountStr) <= 0}>
-                      <Check className="w-4 h-4" />
-                    </Button>
-                  </div>
-                )}
-                <Button variant="outline" className="w-full" onClick={handleClose}>Cancel</Button>
-              </div>
-            )}
-
-            {/* ── CLARIFY: unequal amounts (text input, no mic) ────────── */}
-            {clarifyStep === "unequal_amounts" && (() => {
-              const members = supp.splitAmongIds ?? [];
-              const totalEntered = members.reduce((s, id) => s + (parseFloat(unequalStrs[id] ?? "") || 0), 0);
-              const totalMatch = Math.abs(totalEntered - (supp.amount ?? 0)) < 0.02;
-              return (
-                <div className="space-y-3">
-                  <div className="rounded-xl border border-border bg-muted/20 px-4 py-3 space-y-0.5">
-                    <p className="text-xs text-muted-foreground">Custom split</p>
-                    <p className="text-sm font-semibold text-foreground">{supp.description} — {formatVoiceAmount(supp.amount ?? 0, voiceCtx.defaultCurrency)}</p>
-                    {supp.groupName && <p className="text-xs text-muted-foreground">in {supp.groupName}</p>}
-                    {supp.friendName && <p className="text-xs text-muted-foreground">with {supp.friendName}</p>}
-                  </div>
-                  <p className="text-sm font-semibold text-foreground">Enter each person's share:</p>
-                  <div className="space-y-2">
-                    {members.map((uid) => (
-                      <div key={uid} className="flex items-center gap-3">
-                        <span className="text-sm text-foreground flex-1 truncate">{resolveName(uid)}</span>
-                        <input type="number" inputMode="decimal" placeholder="0.00"
-                          value={unequalStrs[uid] ?? ""}
-                          onChange={(e) => setUnequalStrs((prev) => ({ ...prev, [uid]: e.target.value }))}
-                          className="w-24 h-9 rounded-lg border border-border bg-background px-3 text-sm text-right text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
-                        />
-                      </div>
-                    ))}
-                  </div>
-                  <div className="flex justify-between items-center text-xs px-1">
-                    <span className="text-muted-foreground">Total assigned</span>
-                    <span className={totalMatch ? "text-green-500 font-semibold" : "text-amber-500 font-semibold"}>
-                      {formatVoiceAmount(totalEntered, voiceCtx.defaultCurrency)} / {formatVoiceAmount(supp.amount ?? 0, voiceCtx.defaultCurrency)}
-                    </span>
-                  </div>
-                  {!totalMatch && totalEntered > 0 && (
-                    <p className="text-[11px] text-amber-600 text-center">Amounts don't add up to the total yet</p>
-                  )}
-                  <div className="flex gap-2">
-                    <Button variant="outline" className="flex-1" onClick={handleClose}>Cancel</Button>
-                    <Button className="flex-1" onClick={handleUnequalConfirm} disabled={!totalMatch}>
-                      <Check className="w-4 h-4 mr-1.5" /> Confirm Split
-                    </Button>
-                  </div>
-                </div>
-              );
-            })()}
-
-            {/* ── Normal states (only when no clarification step active) ── */}
-            {clarifyStep === null && <>
-
-            {/* ── LISTENING STATE ──────────────────────────────────────── */}
-            {(voiceState === "listening" || voiceState === "idle") && (
-              <div className="space-y-5">
-                {/* Waveform */}
-                <div className="rounded-2xl border border-border bg-muted/20 px-4 py-5 space-y-3">
-                  <VoiceWaveform active={voiceState === "listening"} />
-                  <div className="text-center space-y-1">
-                    {voiceState === "listening" ? (
-                      <>
-                        <p className="text-sm font-medium text-primary">Listening…</p>
-                        <p className="text-xs text-muted-foreground">Tap the stop button when done</p>
-                      </>
-                    ) : (
-                      <>
-                        <p className="text-sm font-medium text-muted-foreground">Tap the mic to speak</p>
-                        <p className="text-xs text-muted-foreground">Tap stop when you're done</p>
-                      </>
-                    )}
-                  </div>
-                  {/* Live transcript */}
-                  {(transcript || interimTranscript) && (
-                    <div className="mt-2 px-3 py-2 rounded-xl bg-background border border-border text-sm text-foreground text-center min-h-[2rem]">
-                      {transcript || interimTranscript}
-                      {interimTranscript && <span className="text-muted-foreground">…</span>}
-                    </div>
-                  )}
-                </div>
-
-                {/* Stop button — big circular button, only shown while actively listening */}
-                {voiceState === "listening" && (
-                  <div className="flex justify-center">
-                    <button
-                      onClick={stopListening}
-                      className="w-16 h-16 rounded-full bg-red-500 text-white flex items-center justify-center shadow-lg hover:bg-red-600 active:scale-95 transition-all duration-150"
-                      aria-label="Stop listening"
-                    >
-                      <Square className="w-6 h-6 fill-current" />
-                    </button>
-                  </div>
                 )}
 
-                {/* Examples hint */}
-                <div>
-                  <button
-                    onClick={() => setShowExamples(!showExamples)}
-                    className="w-full flex items-center justify-between text-xs text-muted-foreground px-1 py-1 hover:text-foreground transition-colors"
-                  >
-                    <span>What can I say?</span>
-                    <ChevronRight className={`w-3.5 h-3.5 transition-transform ${showExamples ? "rotate-90" : ""}`} />
-                  </button>
-                  {showExamples && (
-                    <div className="mt-2 space-y-1.5">
-                      {VOICE_EXAMPLES.map((ex) => (
-                        <div key={ex} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-muted/40 text-xs text-muted-foreground">
-                          <Mic className="w-3 h-3 shrink-0 text-primary" />
-                          <span>"{ex}"</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Early access disclaimer */}
-                <p className="text-[11px] text-muted-foreground text-center leading-relaxed px-3">
-                  🧪 <span className="font-medium">Early Access</span> — Voice Mode is still being trained and improved. As a premium member, you get it first. It'll keep getting better!
-                </p>
-              </div>
-            )}
-
-            {/* ── PROCESSING STATE ─────────────────────────────────────── */}
-            {voiceState === "processing" && (
-              <div className="flex flex-col items-center gap-3 py-8">
-                <Loader2 className="w-8 h-8 text-primary animate-spin" />
-                <p className="text-sm text-muted-foreground">Understanding…</p>
-                {transcript && (
-                  <p className="text-xs text-muted-foreground italic text-center max-w-[260px]">
-                    "{transcript}"
-                  </p>
-                )}
-              </div>
-            )}
-
-            {/* ── ERROR STATE ──────────────────────────────────────────── */}
-            {voiceState === "error" && (
-              <div className="space-y-4">
-                <div className="rounded-2xl border border-red-500/20 bg-red-500/5 px-4 py-4 flex gap-3">
-                  <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-medium text-foreground">{errorMessage ?? "Something went wrong"}</p>
-                    {!isSupported && (
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Voice Mode works best in Chrome or Edge.
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <Button
-                  className="w-full"
-                  variant="outline"
-                  onClick={() => { reset(); startListening(); }}
-                >
-                  <Mic className="w-4 h-4 mr-2" />
-                  Try again
-                </Button>
-              </div>
-            )}
-
-            {/* ── RESULT STATE ─────────────────────────────────────────── */}
-            {voiceState === "result" && mergedIntent && (
-              <div className="space-y-3">
-
-                {/* Unknown intent */}
-                {mergedIntent.type === "unknown" && (
+                {/* ── Error state (shown over any step) ── */}
+                {voiceState === "error" && (
                   <div className="space-y-3">
-                    <div className="rounded-2xl border border-border bg-muted/20 px-4 py-4">
-                      <p className="text-sm font-medium text-foreground mb-1">Didn't understand that</p>
-                      <p className="text-xs text-muted-foreground">"{transcript}"</p>
-                      <div className="mt-3 space-y-1">
-                        <p className="text-xs text-muted-foreground font-medium">Try saying:</p>
-                        {VOICE_EXAMPLES.slice(0, 3).map((ex) => (
-                          <p key={ex} className="text-xs text-muted-foreground">• "{ex}"</p>
+                    <div className="rounded-2xl border border-red-500/20 bg-red-500/5 px-4 py-4 flex gap-3">
+                      <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-sm font-medium text-foreground">{errorMessage ?? "Microphone error"}</p>
+                        {!isSupported && (
+                          <p className="text-xs text-muted-foreground mt-1">Voice Mode works best in Chrome or Edge.</p>
+                        )}
+                      </div>
+                    </div>
+                    <Button className="w-full" variant="outline" onClick={() => startListeningRef.current()}>
+                      <Mic className="w-4 h-4 mr-2" /> Try again
+                    </Button>
+                  </div>
+                )}
+
+                {/* ── STEP: ask_target ── */}
+                {wizardStep === "ask_target" && voiceState !== "error" && (
+                  <div className="space-y-3">
+                    <ListenCard
+                      hint={isListening ? "Say a group or friend name" : "Who do you want to split this with?"}
+                      subhint={!isListening && !isProcessing ? "e.g. \"Roommates\" or \"Sarah\"" : undefined}
+                    />
+                    <StopBtn />
+                    {/* Tap fallback: groups + friends list */}
+                    {!isListening && !isProcessing && (voiceCtx.groups.length + voiceCtx.friends.length > 0) && (
+                      <div className="space-y-1.5">
+                        <p className="text-[11px] text-muted-foreground text-center">or tap to select:</p>
+                        {voiceCtx.groups.map(g => (
+                          <button key={g.id}
+                            onClick={() => {
+                              setData(prev => ({ ...prev, groupId: g.id, groupName: g.name, splitAmongIds: g.memberIds }));
+                              stopSpeaking(); reset(); setWizardStep("ask_description");
+                            }}
+                            className="w-full flex items-center gap-3 px-3 py-2 rounded-xl border border-border bg-muted/10 hover:bg-muted/30 transition-colors text-left">
+                            <UsersRound className="w-4 h-4 text-muted-foreground shrink-0" />
+                            <span className="text-sm text-foreground">{g.name}</span>
+                            <span className="text-xs text-muted-foreground ml-auto">{g.memberIds.length} members</span>
+                          </button>
+                        ))}
+                        {voiceCtx.friends.map(f => (
+                          <button key={f.id}
+                            onClick={() => {
+                              setData(prev => ({ ...prev, friendId: f.id, friendName: f.name }));
+                              stopSpeaking(); reset(); setWizardStep("ask_description");
+                            }}
+                            className="w-full flex items-center gap-3 px-3 py-2 rounded-xl border border-border bg-muted/10 hover:bg-muted/30 transition-colors text-left">
+                            <Users className="w-4 h-4 text-muted-foreground shrink-0" />
+                            <span className="text-sm text-foreground">{f.name}</span>
+                          </button>
                         ))}
                       </div>
-                    </div>
-                    <Button className="w-full" variant="outline" onClick={() => { reset(); startListening(); }}>
-                      <Mic className="w-4 h-4 mr-2" /> Try again
-                    </Button>
+                    )}
+                    <Button variant="outline" className="w-full" onClick={handleClose}>Cancel</Button>
                   </div>
                 )}
 
-                {/* Add_expense — no split target yet */}
-                {mergedIntent.type === "add_expense" && !mergedIntent.friendId && !mergedIntent.groupId && (
+                {/* ── STEP: ask_description ── */}
+                {wizardStep === "ask_description" && voiceState !== "error" && (
                   <div className="space-y-3">
-                    <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 px-4 py-4 space-y-1">
-                      <p className="text-sm font-medium text-foreground">Who to split with?</p>
-                      <p className="text-xs text-muted-foreground">
-                        I heard "{mergedIntent.description}" — {mergedIntent.amount ? formatVoiceAmount(mergedIntent.amount, voiceCtx.defaultCurrency) : "unknown amount"}.
-                        Say a friend's name or group to split it.
-                      </p>
-                    </div>
-                    <Button className="w-full" variant="outline" onClick={() => { reset(); startListening(); }}>
-                      <Mic className="w-4 h-4 mr-2" /> Try again
-                    </Button>
+                    <ListenCard
+                      hint={isListening ? "Say what this expense is for" : "What was this for?"}
+                      subhint={!isListening && !isProcessing ? "e.g. \"dinner\", \"groceries\", \"Uber\"" : undefined}
+                    />
+                    <StopBtn />
+                    <Button variant="outline" className="w-full" onClick={handleClose}>Cancel</Button>
                   </div>
                 )}
 
-                {/* Balance query */}
-                {mergedIntent.type === "ask_balance" && (
+                {/* ── STEP: ask_amount ── */}
+                {wizardStep === "ask_amount" && voiceState !== "error" && (
                   <div className="space-y-3">
-                    <div className="rounded-2xl border border-border bg-muted/20 px-4 py-4 flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-                        <BarChart2 className="w-5 h-5 text-primary" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-foreground">View your balances</p>
-                        <p className="text-xs text-muted-foreground">Go to Dashboard to see who owes who</p>
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button variant="outline" className="flex-1" onClick={handleClose}>Cancel</Button>
-                      <Button className="flex-1" onClick={handleConfirm}>
-                        <Navigation className="w-4 h-4 mr-1.5" />
-                        Go to Dashboard
-                      </Button>
-                    </div>
+                    <ListenCard
+                      hint={isListening ? "Say the amount" : "How much did you pay?"}
+                      subhint={!isListening && !isProcessing ? "e.g. \"45 dollars\" or \"$120\"" : undefined}
+                    />
+                    <StopBtn />
+                    <Button variant="outline" className="w-full" onClick={handleClose}>Cancel</Button>
                   </div>
                 )}
 
-                {/* Expense confirmation card */}
-                {(mergedIntent.type === "split_friend" || mergedIntent.type === "split_group" || mergedIntent.groupId || mergedIntent.friendId) && mergedIntent.amount && (
+                {/* ── STEP: ask_split_type ── */}
+                {wizardStep === "ask_split_type" && voiceState !== "error" && (
+                  <div className="space-y-3">
+                    <ListenCard
+                      hint={isListening ? "Say equally or unequally" : "Split equally or unequally?"}
+                      subhint={!isListening && !isProcessing ? "\"Equally\" for same share · \"Unequally\" for custom amounts" : undefined}
+                    />
+                    <StopBtn />
+                    {/* Tap fallback: two buttons */}
+                    {!isListening && !isProcessing && (
+                      <div className="flex gap-2">
+                        <Button variant="outline" className="flex-1" onClick={() => {
+                          const d = dataRef.current;
+                          setData(prev => ({ ...prev, splitType: "equal" }));
+                          stopSpeaking(); reset();
+                          if (d.groupId) {
+                            const g = groups.find(gr => gr.id === d.groupId);
+                            if (g) setTapMemberIds(g.memberIds);
+                            setWizardStep("ask_members");
+                          } else {
+                            const ids = [user?.id ?? "", d.friendId!].filter(Boolean) as string[];
+                            setData(prev => ({ ...prev, splitAmongIds: ids }));
+                            setWizardStep(null);
+                          }
+                        }}>Equally</Button>
+                        <Button variant="outline" className="flex-1" onClick={() => {
+                          const d = dataRef.current;
+                          setData(prev => ({ ...prev, splitType: "unequal" }));
+                          stopSpeaking(); reset();
+                          if (d.groupId) {
+                            const g = groups.find(gr => gr.id === d.groupId);
+                            if (g) setTapMemberIds(g.memberIds);
+                            setWizardStep("ask_members");
+                          } else {
+                            const ids = [user?.id ?? "", d.friendId!].filter(Boolean) as string[];
+                            const initStrs: Record<string, string> = {};
+                            ids.forEach(id => { initStrs[id] = ""; });
+                            setData(prev => ({ ...prev, splitAmongIds: ids }));
+                            setUnequalStrs(initStrs);
+                            setWizardStep("unequal_amounts");
+                          }
+                        }}>Unequally</Button>
+                      </div>
+                    )}
+                    <Button variant="outline" className="w-full" onClick={handleClose}>Cancel</Button>
+                  </div>
+                )}
+
+                {/* ── STEP: ask_members ── */}
+                {wizardStep === "ask_members" && voiceState !== "error" && (() => {
+                  const currentGroup = voiceCtx.groups.find(g => g.id === data.groupId);
+                  const membersWithNames = (currentGroup?.memberIds ?? []).map(id => ({
+                    id, name: resolveName(id),
+                  }));
+                  return (
+                    <div className="space-y-3">
+                      <ListenCard
+                        hint={isListening ? "Say \"everyone\" or list names" : "Who should I split it between?"}
+                        subhint={!isListening && !isProcessing
+                          ? "\"Everyone\" · \"Everyone except Sarah\" · or specific names"
+                          : undefined}
+                      />
+                      <StopBtn />
+                      {/* Tap fallback: toggleable member list */}
+                      {!isListening && !isProcessing && membersWithNames.length > 0 && (
+                        <div className="space-y-1.5">
+                          <p className="text-[11px] text-muted-foreground text-center">or tap to select:</p>
+                          {membersWithNames.map(m => (
+                            <button key={m.id} onClick={() => handleToggleMember(m.id)}
+                              className="w-full flex items-center gap-3 px-3 py-2 rounded-xl border border-border bg-muted/10 hover:bg-muted/30 transition-colors text-left">
+                              <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
+                                tapMemberIds.includes(m.id) ? "bg-primary border-primary" : "border-muted-foreground/30"
+                              }`}>
+                                {tapMemberIds.includes(m.id) && <Check className="w-3 h-3 text-primary-foreground" />}
+                              </div>
+                              <span className="text-sm text-foreground">{m.name}</span>
+                            </button>
+                          ))}
+                          <Button
+                            className="w-full mt-1"
+                            onClick={handleConfirmMembers}
+                            disabled={tapMemberIds.length === 0}
+                          >
+                            <Check className="w-4 h-4 mr-1.5" />
+                            Split between {tapMemberIds.length} {tapMemberIds.length === 1 ? "person" : "people"}
+                          </Button>
+                        </div>
+                      )}
+                      <Button variant="outline" className="w-full" onClick={handleClose}>Cancel</Button>
+                    </div>
+                  );
+                })()}
+
+                {/* ── STEP: unequal_amounts — text form ── */}
+                {wizardStep === "unequal_amounts" && (() => {
+                  const members = data.splitAmongIds ?? [];
+                  const totalEntered = members.reduce(
+                    (s, id) => s + (parseFloat(unequalStrs[id] ?? "") || 0), 0
+                  );
+                  const totalMatch = data.amount
+                    ? Math.abs(totalEntered - data.amount) < 0.02
+                    : false;
+                  return (
+                    <div className="space-y-3">
+                      <div className="rounded-xl border border-border bg-muted/20 px-4 py-3 space-y-0.5">
+                        <p className="text-xs text-muted-foreground">Custom split</p>
+                        <p className="text-sm font-semibold text-foreground">
+                          {data.description ?? "Expense"} — {formatVoiceAmount(data.amount ?? 0, voiceCtx.defaultCurrency)}
+                        </p>
+                        {data.groupName && <p className="text-xs text-muted-foreground">in {data.groupName}</p>}
+                        {data.friendName && <p className="text-xs text-muted-foreground">with {data.friendName}</p>}
+                      </div>
+                      <p className="text-sm font-semibold text-foreground">Enter each person's share:</p>
+                      <div className="space-y-2">
+                        {members.map(uid => (
+                          <div key={uid} className="flex items-center gap-3">
+                            <span className="text-sm text-foreground flex-1 truncate">{resolveName(uid)}</span>
+                            <input
+                              type="number" inputMode="decimal" placeholder="0.00"
+                              value={unequalStrs[uid] ?? ""}
+                              onChange={e => setUnequalStrs(prev => ({ ...prev, [uid]: e.target.value }))}
+                              className="w-24 h-9 rounded-lg border border-border bg-background px-3 text-sm text-right text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex justify-between items-center text-xs px-1">
+                        <span className="text-muted-foreground">Total assigned</span>
+                        <span className={totalMatch ? "text-green-500 font-semibold" : "text-amber-500 font-semibold"}>
+                          {formatVoiceAmount(totalEntered, voiceCtx.defaultCurrency)} / {formatVoiceAmount(data.amount ?? 0, voiceCtx.defaultCurrency)}
+                        </span>
+                      </div>
+                      {!totalMatch && totalEntered > 0 && (
+                        <p className="text-[11px] text-amber-600 text-center">Amounts don't add up to the total yet</p>
+                      )}
+                      <div className="flex gap-2">
+                        <Button variant="outline" className="flex-1" onClick={handleClose}>Cancel</Button>
+                        <Button className="flex-1" onClick={handleUnequalConfirm} disabled={!totalMatch}>
+                          <Check className="w-4 h-4 mr-1.5" /> Confirm Split
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* ── CONFIRMATION CARD (wizardStep === null, data complete) ── */}
+                {wizardStep === null && data.amount && (data.groupId || data.friendId) && (
                   <div className="space-y-3">
                     <div className="rounded-2xl border border-border bg-card overflow-hidden">
                       <div className="px-4 py-3 border-b border-border bg-primary/5 flex items-center gap-2">
                         <DollarSign className="w-4 h-4 text-primary" />
                         <span className="text-sm font-semibold text-foreground">New Expense</span>
-                        {mergedIntent.unequalAmounts && (
+                        {data.splitType === "unequal" && (
                           <span className="ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 border border-amber-500/20">Custom split</span>
                         )}
                       </div>
                       <div className="px-4 py-3 space-y-2.5">
-                        <Row label="Description" value={mergedIntent.description ?? "Expense"} />
-                        <Row label="Amount" value={formatVoiceAmount(mergedIntent.amount, voiceCtx.defaultCurrency)} highlight />
+                        <Row label="Description" value={data.description ?? "Expense"} />
+                        <Row label="Amount" value={formatVoiceAmount(data.amount, voiceCtx.defaultCurrency)} highlight />
                         <Row label="Paid by" value="You" />
-                        {mergedIntent.friendName && <Row label="Split with" value={mergedIntent.unequalAmounts ? `${mergedIntent.friendName} (custom)` : `${mergedIntent.friendName} equally`} />}
-                        {mergedIntent.groupName && <Row label="Split in" value={mergedIntent.unequalAmounts ? `${mergedIntent.groupName} (custom amounts)` : `${mergedIntent.groupName} (${(mergedIntent.splitAmongIds ?? []).length} members equally)`} />}
-                        {mergedIntent.unequalAmounts && (
+                        {data.friendName && (
+                          <Row
+                            label="Split with"
+                            value={data.splitType === "unequal"
+                              ? `${data.friendName} (custom)`
+                              : `${data.friendName} equally`}
+                          />
+                        )}
+                        {data.groupName && (
+                          <Row
+                            label="Split in"
+                            value={data.splitType === "unequal"
+                              ? `${data.groupName} (custom amounts)`
+                              : `${data.groupName} — ${(data.splitAmongIds ?? []).length} member${(data.splitAmongIds ?? []).length !== 1 ? "s" : ""} equally`}
+                          />
+                        )}
+                        {data.unequalAmounts && (
                           <div className="pt-1 space-y-1">
-                            {Object.entries(mergedIntent.unequalAmounts).map(([uid, amt]) => (
+                            {Object.entries(data.unequalAmounts).map(([uid, amt]) => (
                               <div key={uid} className="flex justify-between text-xs text-muted-foreground">
                                 <span>{resolveName(uid)}</span>
                                 <span>{formatVoiceAmount(amt, voiceCtx.defaultCurrency)}</span>
@@ -821,25 +818,33 @@ export function VoiceMicButton() {
                           </div>
                         )}
                       </div>
-                      {mergedIntent.confidence === "low" && !mergedIntent.unequalAmounts && (
-                        <div className="px-4 py-2 border-t border-border bg-amber-500/5">
-                          <p className="text-[11px] text-amber-600">Double-check the details before confirming.</p>
-                        </div>
-                      )}
                     </div>
-                    <p className="text-[11px] text-muted-foreground text-center italic px-2">Heard: "{transcript}"</p>
                     <div className="flex gap-2">
-                      <Button variant="outline" className="flex-1" onClick={handleClose} disabled={submitting}>Cancel</Button>
+                      <Button variant="outline" className="flex-1" onClick={handleClose} disabled={submitting}>
+                        Cancel
+                      </Button>
                       <Button className="flex-1" onClick={handleConfirm} disabled={submitting}>
-                        {submitting ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Check className="w-4 h-4 mr-1.5" />}
+                        {submitting
+                          ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+                          : <Check className="w-4 h-4 mr-1.5" />}
                         {submitting ? "Adding…" : "Add Expense"}
                       </Button>
                     </div>
+                    <p className="text-[11px] text-muted-foreground text-center leading-relaxed px-3">
+                      🧪 <span className="font-medium">Early Access</span> — Voice Mode is still being trained and improved. As a premium member, you get it first!
+                    </p>
                   </div>
                 )}
-              </div>
+
+                {/* ── Initial idle state (sheet open but wizard not started yet) ── */}
+                {wizardStep === null && !data.amount && (
+                  <div className="text-center py-8 space-y-2">
+                    <p className="text-sm text-muted-foreground">Voice Mode will guide you step by step</p>
+                    <p className="text-[11px] text-muted-foreground">Tap the mic button to start</p>
+                  </div>
+                )}
+              </>
             )}
-            </>} {/* end isIOSSafariWeb ternary */}
           </div>
         </SheetContent>
       </Sheet>
@@ -850,7 +855,7 @@ export function VoiceMicButton() {
   );
 }
 
-// ─── Small helper ─────────────────────────────────────────────────────────────
+// ─── Small helper ──────────────────────────────────────────────────────────────
 
 function Row({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
   return (

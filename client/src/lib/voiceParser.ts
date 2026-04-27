@@ -242,6 +242,93 @@ export function parseVoiceIntent(
   return { type: "unknown", transcript, confidence: "low" };
 }
 
+// ─── Wizard parsing helpers ───────────────────────────────────────────────────
+// These are used by the step-by-step voice wizard in VoiceMicButton.
+
+/**
+ * Try to match a group or friend name from a transcript.
+ * Returns the first match found (groups checked before friends), or null.
+ */
+export function matchVoiceTarget(
+  transcript: string,
+  groups: VoiceGroup[],
+  friends: VoiceFriend[],
+): {
+  groupId?: string; groupName?: string; splitAmongIds?: string[];
+  friendId?: string; friendName?: string;
+} | null {
+  const t = transcript.toLowerCase().trim();
+  // Groups first (they're usually more specific)
+  for (const g of groups) {
+    if (t.includes(g.name.toLowerCase())) {
+      return { groupId: g.id, groupName: g.name, splitAmongIds: g.memberIds };
+    }
+  }
+  // Friends (full name, then first name if ≥ 3 chars)
+  const friend = findFriend(transcript, friends);
+  if (friend) return { friendId: friend.id, friendName: friend.name };
+  return null;
+}
+
+/** Extract a dollar amount from a transcript; returns null if none found. */
+export function parseVoiceAmountOnly(transcript: string): number | null {
+  return extractAmount(transcript) ?? null;
+}
+
+/**
+ * Extract a plain expense description from a transcript.
+ * In wizard context the transcript is ONLY the description answer,
+ * so we just clean up filler words.
+ */
+export function parseVoiceDescription(transcript: string): string {
+  const cleaned = transcript
+    .replace(/^(it('s| was| is)?|for|the|a|an)\s+/i, "")
+    .replace(/\s+(please|thanks|thank you)\.?$/i, "")
+    .trim();
+  if (!cleaned || cleaned.length < 2) return "Expense";
+  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+}
+
+/**
+ * Detect whether the user said "equally" or "unequally".
+ * Returns null if neither is clear (caller should re-ask).
+ */
+export function parseVoiceSplitType(transcript: string): "equal" | "unequal" | null {
+  const t = transcript.toLowerCase();
+  if (/\b(equal|equally|evenly?|same|fifty.fifty|half|halves?)\b/.test(t)) return "equal";
+  if (/\b(unequal|uneven|different|custom|split\s+different|not\s+equal|custom\s+amounts?)\b/.test(t)) return "unequal";
+  return null;
+}
+
+/**
+ * Parse who to split between from a group-member context.
+ * Understands "everyone", "everyone except [names]", or a list of names.
+ * Returns an array of member IDs, or null if nothing matched.
+ */
+export function parseVoiceMembers(
+  transcript: string,
+  members: { id: string; name: string }[],
+): string[] | null {
+  const t = transcript.toLowerCase();
+  const isEveryone = /\b(everyone|everybody|all|whole\s+group|all\s+of\s+(us|them))\b/.test(t);
+  const hasExcept = /\b(except|excluding|not|minus|without)\b/.test(t);
+
+  if (isEveryone && !hasExcept) {
+    return members.map(m => m.id);
+  }
+
+  if (isEveryone && hasExcept) {
+    // "everyone except Sarah" → all minus mentioned names
+    const excluded = members.filter(m => t.includes(m.name.toLowerCase()));
+    const remaining = members.filter(m => !excluded.find(e => e.id === m.id));
+    return remaining.length > 0 ? remaining.map(m => m.id) : null;
+  }
+
+  // Specific names mentioned
+  const matched = members.filter(m => t.includes(m.name.toLowerCase()));
+  return matched.length > 0 ? matched.map(m => m.id) : null;
+}
+
 // ─── Helpers used by VoiceMicButton ──────────────────────────────────────────
 
 /** Format an amount for display in voice confirmation cards */
