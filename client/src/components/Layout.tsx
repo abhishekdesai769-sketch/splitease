@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { UsersRound, Receipt, LayoutDashboard, Users2, Sun, Moon, LogOut, Shield } from "lucide-react";
+import { UsersRound, Receipt, LayoutDashboard, Users2, Sun, Moon, LogOut, Shield, Crown } from "lucide-react";
 import { useTheme } from "@/lib/theme";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
@@ -25,11 +25,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
   });
   const inviteCount = incomingInvites.length;
 
+  const isPremium = user?.isPremium && (user?.premiumUntil ? new Date(user.premiumUntil) > new Date() : true);
+
   const navItems = [
     { path: "/", icon: LayoutDashboard, label: "Dashboard" },
     { path: "/friends", icon: Users2, label: "Friends" },
     { path: "/groups", icon: UsersRound, label: "Groups" },
     { path: "/expenses", icon: Receipt, label: "Expenses" },
+    { path: "/upgrade", icon: Crown, label: isPremium ? "Premium" : "Upgrade" },
     ...(user?.isAdmin ? [{ path: "/admin", icon: Shield, label: "Admin" }] : []),
   ];
 
@@ -94,15 +97,25 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-background/90 backdrop-blur-md">
         <div className="max-w-3xl mx-auto flex items-center justify-around h-16">
           {navItems.map((item) => {
-            const isActive = location === item.path || 
+            const isActive = location === item.path ||
               (item.path !== "/" && location.startsWith(item.path));
+            const isUpgrade = item.path === "/upgrade";
+            // Crown glows amber for non-premium users to draw the eye,
+            // goes quiet once they're already subscribed
+            const upgradeColor = isActive
+              ? "text-amber-500"
+              : isPremium
+                ? "text-muted-foreground"
+                : "text-amber-400";
             return (
               <Link key={item.path} href={item.path}>
                 <button
                   className={`flex flex-col items-center gap-1 px-3 py-1.5 rounded-lg transition-colors ${
-                    isActive
-                      ? "text-primary"
-                      : "text-muted-foreground"
+                    isUpgrade
+                      ? upgradeColor
+                      : isActive
+                        ? "text-primary"
+                        : "text-muted-foreground"
                   }`}
                   data-testid={`nav-${item.label.toLowerCase()}`}
                 >
