@@ -59,7 +59,8 @@ async function sendEmail(
   subject: string,
   html: string,
   text: string,
-  attachments?: { content: Buffer; filename: string }[]
+  attachments?: { content: Buffer; filename: string }[],
+  replyTo: string = "noreply@klarityit.ca", // default: block replies on all automated emails
 ) {
   if (!resend) return;
   try {
@@ -69,6 +70,7 @@ async function sendEmail(
       subject,
       html,
       text,
+      replyTo,
       ...(attachments && attachments.length > 0
         ? { attachments: attachments.map((a) => ({ content: a.content, filename: a.filename })) }
         : {}),
@@ -360,8 +362,8 @@ export async function sendSupportEmail(opts: {
 
   const text = `Support request from ${fromName} <${fromEmail}>${userId ? ` (ID: ${userId})` : ""}\n\nSubject: ${subject}\n\n${message}\n\n— Spliiit Support System`;
 
-  // Send to support inbox with reply-to set to user's email
-  await sendEmail(SUPPORT_EMAIL, `[Support] ${subject}`, html, text);
+  // Reply-to is the user's email so you can reply directly from your inbox
+  await sendEmail(SUPPORT_EMAIL, `[Support] ${subject}`, html, text, undefined, fromEmail);
 }
 
 /**
@@ -570,13 +572,13 @@ export async function sendReminderEmail(opts: {
         </table>
       </td></tr>
       <tr><td style="border-top:1px solid #f3f4f6;padding-top:16px;font-size:12px;color:#9ca3af;">
-        ${EMAIL_FOOTER}
+        ${EMAIL_FOOTER} &middot; This is an automated message — please do not reply to this email.
       </td></tr>
     </table>
   </td></tr>
 </table>`;
 
-  const text = `${message}\n\nSettle up on Spliiit: ${appUrl}\n\n— Spliiit`;
+  const text = `${message}\n\nSettle up on Spliiit: ${appUrl}\n\nThis is an automated message — please do not reply to this email.\n— Spliiit`;
 
   sendEmail(to, subject, html, text);
 }
@@ -683,13 +685,13 @@ export async function sendAutoReminderEmail(opts: {
         </table>
       </td></tr>
       <tr><td style="border-top:1px solid #f3f4f6;padding-top:16px;font-size:12px;color:#9ca3af;">
-        ${EMAIL_FOOTER}
+        ${EMAIL_FOOTER} &middot; This is an automated message — please do not reply to this email.
       </td></tr>
     </table>
   </td></tr>
 </table>`;
 
-  const text = `${bodyText}\n\nSettle up on Spliiit: ${appUrl}\n\n---\nWhy did you get this?\n${owedToName} is a Spliiit Premium member. Spliiit sent this automatically on their behalf — they didn't personally nudge you.\n\nWant Spliiit to do the same for you? Get Premium: ${appUrl}/#/upgrade\n\n— Spliiit`;
+  const text = `${bodyText}\n\nSettle up on Spliiit: ${appUrl}\n\n---\nWhy did you get this?\n${owedToName} is a Spliiit Premium member. Spliiit sent this automatically on their behalf — they didn't personally nudge you.\n\nWant Spliiit to do the same for you? Get Premium: ${appUrl}/#/upgrade\n\nThis is an automated message — please do not reply to this email.\n— Spliiit`;
 
   sendEmail(to, subject, html, text);
 }
