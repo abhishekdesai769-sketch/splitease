@@ -12,7 +12,7 @@
  * Premium-gated: non-premium users see the upgrade sheet on tap.
  */
 
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import {
   Mic, MicOff, Check, Loader2, Crown, AlertCircle,
   DollarSign, Users, UsersRound, Navigation, BarChart2, ChevronRight, Square,
@@ -134,28 +134,97 @@ export function VoiceMicButton() {
     return { ...parsedIntent, ...supp };
   }, [parsedIntent, supp]);
 
-  // After a voice result, determine if clarification steps are needed
+  // Stable ref so the auto-listen effect never captures a stale startListening
+  const startListeningRef = useRef(startListening);
+  useEffect(() => { startListeningRef.current = startListening; }, [startListening]);
+
+  // Auto-start listening whenever we enter a voice clarification step
+  useEffect(() => {
+    if (clarifyStep === "pick_target" || clarifyStep === "get_amount") {
+      const t = setTimeout(() => startListeningRef.current(), 600);
+      return () => clearTimeout(t);
+    }
+  }, [clarifyStep]);
+
+  // Process every voice result — handles both initial parse and clarification re-listens
   useEffect(() => {
     if (voiceState !== "result" || !parsedIntent) return;
     if (parsedIntent.type === "navigate" || parsedIntent.type === "cancel") return;
+
+    // ── Clarification re-listen: pick_target ──────────────────────────────────
+    if (clarifyStep === "pick_target") {
+      const g = parsedIntent.groupId
+        ? voiceCtx.groups.find((grp) => grp.id === parsedIntent.groupId) : null;
+      if (g) {
+        setSupp((prev) => {
+          const updated = { ...prev, groupId: g.id, groupName: g.name, splitAmongIds: g.memberIds,
+            amount: parsedIntent.amount ?? prev.amount };
+          if (!updated.amount) { setClarifyStep("get_amount"); }
+          else if (updated.splitType === "unequal") {
+            const s: Record<string,string> = {};
+            g.memberIds.forEach((id) => { s[id] = ""; });
+            setUnequalStrs(s); setClarifyStep("unequal_amounts");
+          } else { setClarifyStep(null); }
+          return updated;
+        });
+        return;
+      }
+      const f = parsedIntent.friendId
+        ? voiceCtx.friends.find((fr) => fr.id === parsedIntent.friendId) : null;
+      if (f) {
+        const splitAmongIds = [voiceCtx.currentUserId, f.id];
+        setSupp((prev) => {
+          const updated = { ...prev, friendId: f.id, friendName: f.name, splitAmongIds,
+            amount: parsedIntent.amount ?? prev.amount };
+          if (!updated.amount) { setClarifyStep("get_amount"); }
+          else { setClarifyStep(null); }
+          return updated;
+        });
+      }
+      // nothing matched → stay in pick_target, user can try again or tap
+      return;
+    }
+
+    // ── Clarification re-listen: get_amount ───────────────────────────────────
+    if (clarifyStep === "get_amount") {
+      const amount = parsedIntent.amount;
+      if (amount && amount > 0) {
+        setSupp((prev) => {
+          const updated = { ...prev, amount };
+          if (updated.splitType === "unequal" && updated.splitAmongIds?.length) {
+            const s: Record<string,string> = {};
+            updated.splitAmongIds.forEach((id) => { s[id] = ""; });
+            setUnequalStrs(s); setClarifyStep("unequal_amounts");
+          } else { setClarifyStep(null); }
+          return updated;
+        });
+      }
+      // no amount → stay in get_amount
+      return;
+    }
+
+    // ── Initial parse ─────────────────────────────────────────────────────────
     const hasTarget = !!(parsedIntent.groupId || parsedIntent.friendId);
     const hasAmount = !!parsedIntent.amount;
     if (!hasTarget) {
       setSupp({ paidById: parsedIntent.paidById, description: parsedIntent.description, amount: parsedIntent.amount });
       setClarifyStep("pick_target");
     } else if (!hasAmount) {
-      setSupp({ groupId: parsedIntent.groupId, groupName: parsedIntent.groupName, friendId: parsedIntent.friendId, friendName: parsedIntent.friendName, splitAmongIds: parsedIntent.splitAmongIds, paidById: parsedIntent.paidById, description: parsedIntent.description, splitType: parsedIntent.splitType });
+      setSupp({ groupId: parsedIntent.groupId, groupName: parsedIntent.groupName,
+        friendId: parsedIntent.friendId, friendName: parsedIntent.friendName,
+        splitAmongIds: parsedIntent.splitAmongIds, paidById: parsedIntent.paidById,
+        description: parsedIntent.description, splitType: parsedIntent.splitType });
       setClarifyStep("get_amount");
     } else if (parsedIntent.splitType === "unequal") {
       const members = parsedIntent.splitAmongIds ?? [];
-      const initStrs: Record<string, string> = {};
-      members.forEach((id) => { initStrs[id] = ""; });
-      setUnequalStrs(initStrs);
+      const s: Record<string,string> = {};
+      members.forEach((id) => { s[id] = ""; });
+      setUnequalStrs(s);
       setSupp({ ...parsedIntent });
       setClarifyStep("unequal_amounts");
     }
-    // else: clarifyStep stays null → normal confirmation card shown
-  }, [voiceState, parsedIntent?.type, parsedIntent?.groupId, parsedIntent?.friendId, parsedIntent?.amount, parsedIntent?.splitType]);
+    // else: clarifyStep stays null → normal confirmation card
+  }, [voiceState, parsedIntent?.type, parsedIntent?.groupId, parsedIntent?.friendId, parsedIntent?.amount, parsedIntent?.splitType, clarifyStep, voiceCtx.groups, voiceCtx.friends, voiceCtx.currentUserId]);
 
   // ── Handlers ────────────────────────────────────────────────────────────────
 
@@ -387,6 +456,156 @@ export function VoiceMicButton() {
               </div>
             ) : <>
 
+            {/* ── CLARIFY: pick target (voice-first) ───────────────────── */}
+            {clarifyStep === "pick_target" && (
+              <div className="space-y-4">
+                <div className="rounded-xl border border-border bg-muted/20 px-4 py-3">
+                  <p className="text-xs text-muted-foreground mb-1">I heard:</p>
+                  <p className="text-sm italic text-foreground">"{transcript}"</p>
+                  {supp.amount && <p className="text-xs text-muted-foreground mt-1">Amount: {formatVoiceAmount(supp.amount, voiceCtx.defaultCurrency)}</p>}
+                </div>
+                <div className="rounded-2xl border border-border bg-muted/20 px-4 py-4 space-y-3">
+                  <VoiceWaveform active={voiceState === "listening"} />
+                  <div className="text-center space-y-0.5">
+                    {voiceState === "listening" ? (
+                      <><p className="text-sm font-medium text-primary">Listening…</p>
+                      <p className="text-xs text-muted-foreground">Say a group or friend name</p>
+                      {interimTranscript && <p className="text-xs text-muted-foreground italic mt-1">{interimTranscript}…</p>}</>
+                    ) : voiceState === "processing" ? (
+                      <p className="text-sm text-muted-foreground">Got it…</p>
+                    ) : (
+                      <><p className="text-sm font-medium text-muted-foreground">Say a group or friend name</p>
+                      <p className="text-xs text-muted-foreground">e.g. "Roommates" or "Sarah"</p></>
+                    )}
+                  </div>
+                </div>
+                {voiceState === "listening" && (
+                  <div className="flex justify-center">
+                    <button onClick={stopListening}
+                      className="w-14 h-14 rounded-full bg-red-500 text-white flex items-center justify-center shadow-lg hover:bg-red-600 active:scale-95 transition-all">
+                      <Square className="w-5 h-5 fill-current" />
+                    </button>
+                  </div>
+                )}
+                {voiceState !== "listening" && voiceState !== "processing" && (
+                  <div className="space-y-1.5">
+                    <p className="text-[11px] text-muted-foreground text-center">or tap to select:</p>
+                    {voiceCtx.groups.slice(0, 3).map((g) => (
+                      <button key={g.id} onClick={() => handlePickGroup(g)}
+                        className="w-full flex items-center gap-3 px-3 py-2 rounded-xl border border-border bg-muted/10 hover:bg-muted/30 transition-colors text-left">
+                        <UsersRound className="w-4 h-4 text-muted-foreground shrink-0" />
+                        <span className="text-sm text-foreground">{g.name}</span>
+                        <span className="text-xs text-muted-foreground ml-auto">{g.memberIds.length} members</span>
+                      </button>
+                    ))}
+                    {voiceCtx.friends.slice(0, 3).map((f) => (
+                      <button key={f.id} onClick={() => handlePickFriend(f)}
+                        className="w-full flex items-center gap-3 px-3 py-2 rounded-xl border border-border bg-muted/10 hover:bg-muted/30 transition-colors text-left">
+                        <Users className="w-4 h-4 text-muted-foreground shrink-0" />
+                        <span className="text-sm text-foreground">{f.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <Button variant="outline" className="w-full" onClick={handleClose}>Cancel</Button>
+              </div>
+            )}
+
+            {/* ── CLARIFY: get amount (voice-first) ────────────────────── */}
+            {clarifyStep === "get_amount" && (
+              <div className="space-y-4">
+                <div className="rounded-xl border border-border bg-muted/20 px-4 py-3 space-y-0.5">
+                  <p className="text-xs text-muted-foreground">Got so far:</p>
+                  {supp.groupName && <p className="text-sm font-medium text-foreground">Group: <span className="text-primary">{supp.groupName}</span></p>}
+                  {supp.friendName && <p className="text-sm font-medium text-foreground">With: <span className="text-primary">{supp.friendName}</span></p>}
+                  {supp.description && <p className="text-xs text-muted-foreground">For: {supp.description}</p>}
+                </div>
+                <div className="rounded-2xl border border-border bg-muted/20 px-4 py-4 space-y-3">
+                  <VoiceWaveform active={voiceState === "listening"} />
+                  <div className="text-center space-y-0.5">
+                    {voiceState === "listening" ? (
+                      <><p className="text-sm font-medium text-primary">Listening…</p>
+                      <p className="text-xs text-muted-foreground">Say the amount</p>
+                      {interimTranscript && <p className="text-xs text-muted-foreground italic mt-1">{interimTranscript}…</p>}</>
+                    ) : voiceState === "processing" ? (
+                      <p className="text-sm text-muted-foreground">Got it…</p>
+                    ) : (
+                      <><p className="text-sm font-medium text-muted-foreground">How much was it?</p>
+                      <p className="text-xs text-muted-foreground">e.g. "$45" or "120 dollars"</p></>
+                    )}
+                  </div>
+                </div>
+                {voiceState === "listening" && (
+                  <div className="flex justify-center">
+                    <button onClick={stopListening}
+                      className="w-14 h-14 rounded-full bg-red-500 text-white flex items-center justify-center shadow-lg hover:bg-red-600 active:scale-95 transition-all">
+                      <Square className="w-5 h-5 fill-current" />
+                    </button>
+                  </div>
+                )}
+                {voiceState !== "listening" && voiceState !== "processing" && (
+                  <div className="flex gap-2">
+                    <input type="number" inputMode="decimal" placeholder="0.00" value={amountStr}
+                      onChange={(e) => setAmountStr(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleAmountConfirm()}
+                      className="flex-1 h-10 rounded-xl border border-border bg-background px-4 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                    <Button onClick={handleAmountConfirm} disabled={!amountStr || parseFloat(amountStr) <= 0}>
+                      <Check className="w-4 h-4" />
+                    </Button>
+                  </div>
+                )}
+                <Button variant="outline" className="w-full" onClick={handleClose}>Cancel</Button>
+              </div>
+            )}
+
+            {/* ── CLARIFY: unequal amounts (text input, no mic) ────────── */}
+            {clarifyStep === "unequal_amounts" && (() => {
+              const members = supp.splitAmongIds ?? [];
+              const totalEntered = members.reduce((s, id) => s + (parseFloat(unequalStrs[id] ?? "") || 0), 0);
+              const totalMatch = Math.abs(totalEntered - (supp.amount ?? 0)) < 0.02;
+              return (
+                <div className="space-y-3">
+                  <div className="rounded-xl border border-border bg-muted/20 px-4 py-3 space-y-0.5">
+                    <p className="text-xs text-muted-foreground">Custom split</p>
+                    <p className="text-sm font-semibold text-foreground">{supp.description} — {formatVoiceAmount(supp.amount ?? 0, voiceCtx.defaultCurrency)}</p>
+                    {supp.groupName && <p className="text-xs text-muted-foreground">in {supp.groupName}</p>}
+                    {supp.friendName && <p className="text-xs text-muted-foreground">with {supp.friendName}</p>}
+                  </div>
+                  <p className="text-sm font-semibold text-foreground">Enter each person's share:</p>
+                  <div className="space-y-2">
+                    {members.map((uid) => (
+                      <div key={uid} className="flex items-center gap-3">
+                        <span className="text-sm text-foreground flex-1 truncate">{resolveName(uid)}</span>
+                        <input type="number" inputMode="decimal" placeholder="0.00"
+                          value={unequalStrs[uid] ?? ""}
+                          onChange={(e) => setUnequalStrs((prev) => ({ ...prev, [uid]: e.target.value }))}
+                          className="w-24 h-9 rounded-lg border border-border bg-background px-3 text-sm text-right text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex justify-between items-center text-xs px-1">
+                    <span className="text-muted-foreground">Total assigned</span>
+                    <span className={totalMatch ? "text-green-500 font-semibold" : "text-amber-500 font-semibold"}>
+                      {formatVoiceAmount(totalEntered, voiceCtx.defaultCurrency)} / {formatVoiceAmount(supp.amount ?? 0, voiceCtx.defaultCurrency)}
+                    </span>
+                  </div>
+                  {!totalMatch && totalEntered > 0 && (
+                    <p className="text-[11px] text-amber-600 text-center">Amounts don't add up to the total yet</p>
+                  )}
+                  <div className="flex gap-2">
+                    <Button variant="outline" className="flex-1" onClick={handleClose}>Cancel</Button>
+                    <Button className="flex-1" onClick={handleUnequalConfirm} disabled={!totalMatch}>
+                      <Check className="w-4 h-4 mr-1.5" /> Confirm Split
+                    </Button>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* ── Normal states (only when no clarification step active) ── */}
+            {clarifyStep === null && <>
+
             {/* ── LISTENING STATE ──────────────────────────────────────── */}
             {(voiceState === "listening" || voiceState === "idle") && (
               <div className="space-y-5">
@@ -495,234 +714,110 @@ export function VoiceMicButton() {
             )}
 
             {/* ── RESULT STATE ─────────────────────────────────────────── */}
-            {voiceState === "result" && parsedIntent && (
+            {voiceState === "result" && mergedIntent && (
               <div className="space-y-3">
 
-                {/* ── CLARIFY: pick target ─────────────────────────────── */}
-                {clarifyStep === "pick_target" && (
+                {/* Unknown intent */}
+                {mergedIntent.type === "unknown" && (
                   <div className="space-y-3">
-                    <div className="rounded-xl border border-border bg-muted/20 px-4 py-3">
-                      <p className="text-xs text-muted-foreground mb-1">I heard:</p>
-                      <p className="text-sm font-medium text-foreground italic">"{transcript}"</p>
-                      {supp.amount && <p className="text-xs text-muted-foreground mt-1">Amount: {formatVoiceAmount(supp.amount, voiceCtx.defaultCurrency)}</p>}
+                    <div className="rounded-2xl border border-border bg-muted/20 px-4 py-4">
+                      <p className="text-sm font-medium text-foreground mb-1">Didn't understand that</p>
+                      <p className="text-xs text-muted-foreground">"{transcript}"</p>
+                      <div className="mt-3 space-y-1">
+                        <p className="text-xs text-muted-foreground font-medium">Try saying:</p>
+                        {VOICE_EXAMPLES.slice(0, 3).map((ex) => (
+                          <p key={ex} className="text-xs text-muted-foreground">• "{ex}"</p>
+                        ))}
+                      </div>
                     </div>
-                    <p className="text-sm font-semibold text-foreground">Who to split it with?</p>
-                    {voiceCtx.groups.length > 0 && (
-                      <div className="space-y-1.5">
-                        <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wide px-1">Groups</p>
-                        {voiceCtx.groups.slice(0, 5).map((g) => (
-                          <button key={g.id} onClick={() => handlePickGroup(g)}
-                            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-border bg-muted/20 hover:bg-muted/40 transition-colors text-left">
-                            <UsersRound className="w-4 h-4 text-primary shrink-0" />
-                            <span className="text-sm font-medium text-foreground">{g.name}</span>
-                            <span className="text-xs text-muted-foreground ml-auto">{g.memberIds.length} members</span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    {voiceCtx.friends.length > 0 && (
-                      <div className="space-y-1.5">
-                        <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wide px-1">Friends</p>
-                        {voiceCtx.friends.slice(0, 5).map((f) => (
-                          <button key={f.id} onClick={() => handlePickFriend(f)}
-                            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-border bg-muted/20 hover:bg-muted/40 transition-colors text-left">
-                            <Users className="w-4 h-4 text-primary shrink-0" />
-                            <span className="text-sm font-medium text-foreground">{f.name}</span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    <Button variant="outline" className="w-full" onClick={handleClose}>Cancel</Button>
+                    <Button className="w-full" variant="outline" onClick={() => { reset(); startListening(); }}>
+                      <Mic className="w-4 h-4 mr-2" /> Try again
+                    </Button>
                   </div>
                 )}
 
-                {/* ── CLARIFY: get amount ──────────────────────────────── */}
-                {clarifyStep === "get_amount" && (
-                  <div className="space-y-4">
-                    <div className="rounded-xl border border-border bg-muted/20 px-4 py-3 space-y-1">
-                      <p className="text-xs text-muted-foreground">Got so far:</p>
-                      {supp.groupName && <p className="text-sm font-medium text-foreground">Group: <span className="text-primary">{supp.groupName}</span></p>}
-                      {supp.friendName && <p className="text-sm font-medium text-foreground">With: <span className="text-primary">{supp.friendName}</span></p>}
-                      {supp.description && <p className="text-xs text-muted-foreground">For: {supp.description}</p>}
+                {/* Add_expense — no split target yet */}
+                {mergedIntent.type === "add_expense" && !mergedIntent.friendId && !mergedIntent.groupId && (
+                  <div className="space-y-3">
+                    <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 px-4 py-4 space-y-1">
+                      <p className="text-sm font-medium text-foreground">Who to split with?</p>
+                      <p className="text-xs text-muted-foreground">
+                        I heard "{mergedIntent.description}" — {mergedIntent.amount ? formatVoiceAmount(mergedIntent.amount, voiceCtx.defaultCurrency) : "unknown amount"}.
+                        Say a friend's name or group to split it.
+                      </p>
                     </div>
-                    <p className="text-sm font-semibold text-foreground">How much was it?</p>
-                    <input
-                      type="number"
-                      inputMode="decimal"
-                      placeholder="0.00"
-                      value={amountStr}
-                      onChange={(e) => setAmountStr(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && handleAmountConfirm()}
-                      autoFocus
-                      className="w-full h-11 rounded-xl border border-border bg-background px-4 text-lg font-semibold text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
-                    />
+                    <Button className="w-full" variant="outline" onClick={() => { reset(); startListening(); }}>
+                      <Mic className="w-4 h-4 mr-2" /> Try again
+                    </Button>
+                  </div>
+                )}
+
+                {/* Balance query */}
+                {mergedIntent.type === "ask_balance" && (
+                  <div className="space-y-3">
+                    <div className="rounded-2xl border border-border bg-muted/20 px-4 py-4 flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                        <BarChart2 className="w-5 h-5 text-primary" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-foreground">View your balances</p>
+                        <p className="text-xs text-muted-foreground">Go to Dashboard to see who owes who</p>
+                      </div>
+                    </div>
                     <div className="flex gap-2">
                       <Button variant="outline" className="flex-1" onClick={handleClose}>Cancel</Button>
-                      <Button className="flex-1" onClick={handleAmountConfirm} disabled={!amountStr || parseFloat(amountStr) <= 0}>
-                        <Check className="w-4 h-4 mr-1.5" /> Got it
+                      <Button className="flex-1" onClick={handleConfirm}>
+                        <Navigation className="w-4 h-4 mr-1.5" />
+                        Go to Dashboard
                       </Button>
                     </div>
                   </div>
                 )}
 
-                {/* ── CLARIFY: unequal amounts ─────────────────────────── */}
-                {clarifyStep === "unequal_amounts" && (() => {
-                  const members = supp.splitAmongIds ?? [];
-                  const totalEntered = members.reduce((s, id) => s + (parseFloat(unequalStrs[id] ?? "") || 0), 0);
-                  const totalMatch = Math.abs(totalEntered - (supp.amount ?? 0)) < 0.02;
-                  return (
-                    <div className="space-y-3">
-                      <div className="rounded-xl border border-border bg-muted/20 px-4 py-3 space-y-0.5">
-                        <p className="text-xs text-muted-foreground">Custom split</p>
-                        <p className="text-sm font-semibold text-foreground">{supp.description} — {formatVoiceAmount(supp.amount ?? 0, voiceCtx.defaultCurrency)}</p>
-                        {supp.groupName && <p className="text-xs text-muted-foreground">in {supp.groupName}</p>}
-                        {supp.friendName && <p className="text-xs text-muted-foreground">with {supp.friendName}</p>}
+                {/* Expense confirmation card */}
+                {(mergedIntent.type === "split_friend" || mergedIntent.type === "split_group" || mergedIntent.groupId || mergedIntent.friendId) && mergedIntent.amount && (
+                  <div className="space-y-3">
+                    <div className="rounded-2xl border border-border bg-card overflow-hidden">
+                      <div className="px-4 py-3 border-b border-border bg-primary/5 flex items-center gap-2">
+                        <DollarSign className="w-4 h-4 text-primary" />
+                        <span className="text-sm font-semibold text-foreground">New Expense</span>
+                        {mergedIntent.unequalAmounts && (
+                          <span className="ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 border border-amber-500/20">Custom split</span>
+                        )}
                       </div>
-                      <p className="text-sm font-semibold text-foreground">Enter each person's share:</p>
-                      <div className="space-y-2">
-                        {members.map((uid) => (
-                          <div key={uid} className="flex items-center gap-3">
-                            <span className="text-sm text-foreground flex-1 truncate">{resolveName(uid)}</span>
-                            <input
-                              type="number"
-                              inputMode="decimal"
-                              placeholder="0.00"
-                              value={unequalStrs[uid] ?? ""}
-                              onChange={(e) => setUnequalStrs((prev) => ({ ...prev, [uid]: e.target.value }))}
-                              className="w-24 h-9 rounded-lg border border-border bg-background px-3 text-sm text-right text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
-                            />
-                          </div>
-                        ))}
-                      </div>
-                      <div className="flex justify-between items-center text-xs px-1">
-                        <span className="text-muted-foreground">Total assigned</span>
-                        <span className={totalMatch ? "text-green-500 font-semibold" : "text-amber-500 font-semibold"}>
-                          {formatVoiceAmount(totalEntered, voiceCtx.defaultCurrency)} / {formatVoiceAmount(supp.amount ?? 0, voiceCtx.defaultCurrency)}
-                        </span>
-                      </div>
-                      {!totalMatch && totalEntered > 0 && (
-                        <p className="text-[11px] text-amber-600 text-center">Amounts don't add up to the total yet</p>
-                      )}
-                      <div className="flex gap-2">
-                        <Button variant="outline" className="flex-1" onClick={handleClose}>Cancel</Button>
-                        <Button className="flex-1" onClick={handleUnequalConfirm} disabled={!totalMatch}>
-                          <Check className="w-4 h-4 mr-1.5" /> Confirm Split
-                        </Button>
-                      </div>
-                    </div>
-                  );
-                })()}
-
-                {/* ── Normal result (clarifyStep === null) ─────────────── */}
-                {clarifyStep === null && (() => {
-                  const intent = mergedIntent;
-                  if (!intent) return null;
-                  return (
-                    <>
-                      {/* Unknown intent */}
-                      {intent.type === "unknown" && (
-                        <div className="space-y-3">
-                          <div className="rounded-2xl border border-border bg-muted/20 px-4 py-4">
-                            <p className="text-sm font-medium text-foreground mb-1">Didn't understand that</p>
-                            <p className="text-xs text-muted-foreground">"{transcript}"</p>
-                            <div className="mt-3 space-y-1">
-                              <p className="text-xs text-muted-foreground font-medium">Try saying:</p>
-                              {VOICE_EXAMPLES.slice(0, 3).map((ex) => (
-                                <p key={ex} className="text-xs text-muted-foreground">• "{ex}"</p>
-                              ))}
-                            </div>
-                          </div>
-                          <Button className="w-full" variant="outline" onClick={() => { reset(); startListening(); }}>
-                            <Mic className="w-4 h-4 mr-2" /> Try again
-                          </Button>
-                        </div>
-                      )}
-
-                      {/* Add_expense — no split target */}
-                      {intent.type === "add_expense" && !intent.friendId && !intent.groupId && (
-                        <div className="space-y-3">
-                          <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 px-4 py-4 space-y-1">
-                            <p className="text-sm font-medium text-foreground">Who to split with?</p>
-                            <p className="text-xs text-muted-foreground">
-                              I heard "{intent.description}" — {intent.amount ? formatVoiceAmount(intent.amount, voiceCtx.defaultCurrency) : "unknown amount"}.
-                              Say a friend's name or group to split it.
-                            </p>
-                          </div>
-                          <Button className="w-full" variant="outline" onClick={() => { reset(); startListening(); }}>
-                            <Mic className="w-4 h-4 mr-2" /> Try again
-                          </Button>
-                        </div>
-                      )}
-
-                      {/* Balance query */}
-                      {intent.type === "ask_balance" && (
-                        <div className="space-y-3">
-                          <div className="rounded-2xl border border-border bg-muted/20 px-4 py-4 flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-                              <BarChart2 className="w-5 h-5 text-primary" />
-                            </div>
-                            <div>
-                              <p className="text-sm font-medium text-foreground">View your balances</p>
-                              <p className="text-xs text-muted-foreground">Go to Dashboard to see who owes who</p>
-                            </div>
-                          </div>
-                          <div className="flex gap-2">
-                            <Button variant="outline" className="flex-1" onClick={handleClose}>Cancel</Button>
-                            <Button className="flex-1" onClick={handleConfirm}>
-                              <Navigation className="w-4 h-4 mr-1.5" />
-                              Go to Dashboard
-                            </Button>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Expense confirmation card */}
-                      {(intent.type === "split_friend" || intent.type === "split_group" || intent.groupId || intent.friendId) && intent.amount && (
-                        <div className="space-y-3">
-                          <div className="rounded-2xl border border-border bg-card overflow-hidden">
-                            <div className="px-4 py-3 border-b border-border bg-primary/5 flex items-center gap-2">
-                              <DollarSign className="w-4 h-4 text-primary" />
-                              <span className="text-sm font-semibold text-foreground">New Expense</span>
-                              {intent.unequalAmounts && (
-                                <span className="ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 border border-amber-500/20">Custom split</span>
-                              )}
-                            </div>
-                            <div className="px-4 py-3 space-y-2.5">
-                              <Row label="Description" value={intent.description ?? "Expense"} />
-                              <Row label="Amount" value={formatVoiceAmount(intent.amount, voiceCtx.defaultCurrency)} highlight />
-                              <Row label="Paid by" value="You" />
-                              {intent.friendName && <Row label="Split with" value={intent.unequalAmounts ? `${intent.friendName} (custom)` : `${intent.friendName} equally`} />}
-                              {intent.groupName && <Row label="Split in" value={intent.unequalAmounts ? `${intent.groupName} (custom amounts)` : `${intent.groupName} (${(intent.splitAmongIds ?? []).length} members equally)`} />}
-                              {intent.unequalAmounts && (
-                                <div className="pt-1 space-y-1">
-                                  {Object.entries(intent.unequalAmounts).map(([uid, amt]) => (
-                                    <div key={uid} className="flex justify-between text-xs text-muted-foreground">
-                                      <span>{resolveName(uid)}</span>
-                                      <span>{formatVoiceAmount(amt, voiceCtx.defaultCurrency)}</span>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                            {intent.confidence === "low" && !intent.unequalAmounts && (
-                              <div className="px-4 py-2 border-t border-border bg-amber-500/5">
-                                <p className="text-[11px] text-amber-600">Double-check the details before confirming.</p>
+                      <div className="px-4 py-3 space-y-2.5">
+                        <Row label="Description" value={mergedIntent.description ?? "Expense"} />
+                        <Row label="Amount" value={formatVoiceAmount(mergedIntent.amount, voiceCtx.defaultCurrency)} highlight />
+                        <Row label="Paid by" value="You" />
+                        {mergedIntent.friendName && <Row label="Split with" value={mergedIntent.unequalAmounts ? `${mergedIntent.friendName} (custom)` : `${mergedIntent.friendName} equally`} />}
+                        {mergedIntent.groupName && <Row label="Split in" value={mergedIntent.unequalAmounts ? `${mergedIntent.groupName} (custom amounts)` : `${mergedIntent.groupName} (${(mergedIntent.splitAmongIds ?? []).length} members equally)`} />}
+                        {mergedIntent.unequalAmounts && (
+                          <div className="pt-1 space-y-1">
+                            {Object.entries(mergedIntent.unequalAmounts).map(([uid, amt]) => (
+                              <div key={uid} className="flex justify-between text-xs text-muted-foreground">
+                                <span>{resolveName(uid)}</span>
+                                <span>{formatVoiceAmount(amt, voiceCtx.defaultCurrency)}</span>
                               </div>
-                            )}
+                            ))}
                           </div>
-                          <p className="text-[11px] text-muted-foreground text-center italic px-2">Heard: "{transcript}"</p>
-                          <div className="flex gap-2">
-                            <Button variant="outline" className="flex-1" onClick={handleClose} disabled={submitting}>Cancel</Button>
-                            <Button className="flex-1" onClick={handleConfirm} disabled={submitting}>
-                              {submitting ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Check className="w-4 h-4 mr-1.5" />}
-                              {submitting ? "Adding…" : "Add Expense"}
-                            </Button>
-                          </div>
+                        )}
+                      </div>
+                      {mergedIntent.confidence === "low" && !mergedIntent.unequalAmounts && (
+                        <div className="px-4 py-2 border-t border-border bg-amber-500/5">
+                          <p className="text-[11px] text-amber-600">Double-check the details before confirming.</p>
                         </div>
                       )}
-                    </>
-                  );
-                })()}
+                    </div>
+                    <p className="text-[11px] text-muted-foreground text-center italic px-2">Heard: "{transcript}"</p>
+                    <div className="flex gap-2">
+                      <Button variant="outline" className="flex-1" onClick={handleClose} disabled={submitting}>Cancel</Button>
+                      <Button className="flex-1" onClick={handleConfirm} disabled={submitting}>
+                        {submitting ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Check className="w-4 h-4 mr-1.5" />}
+                        {submitting ? "Adding…" : "Add Expense"}
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
             </>} {/* end isIOSSafariWeb ternary */}
