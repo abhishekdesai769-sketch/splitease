@@ -14,7 +14,7 @@
 
 import { useState, useCallback } from "react";
 import {
-  Mic, MicOff, X, Check, Loader2, Crown, AlertCircle,
+  Mic, MicOff, Check, Loader2, Crown, AlertCircle,
   DollarSign, Users, Navigation, BarChart2, ChevronRight, Square,
 } from "lucide-react";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
@@ -251,20 +251,15 @@ export function VoiceMicButton() {
           style={{ maxHeight: "70vh", touchAction: "none" }}
         >
           <div className="pt-1 pb-6 px-1">
-            {/* Close button */}
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center">
-                  <Mic className="w-3.5 h-3.5 text-primary" />
-                </div>
-                <span className="text-sm font-semibold text-foreground">Voice Mode</span>
-                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 border border-amber-500/20 tracking-wide">
-                  BETA
-                </span>
+            {/* Header */}
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center">
+                <Mic className="w-3.5 h-3.5 text-primary" />
               </div>
-              <button onClick={handleClose} className="text-muted-foreground hover:text-foreground transition-colors p-1">
-                <X className="w-4 h-4" />
-              </button>
+              <span className="text-sm font-semibold text-foreground">Voice Mode</span>
+              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 border border-amber-500/20 tracking-wide">
+                BETA
+              </span>
             </div>
 
             {/* ── iOS: Voice Mode not yet supported ────────────────────── */}
