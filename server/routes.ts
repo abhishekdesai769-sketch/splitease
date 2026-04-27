@@ -510,6 +510,11 @@ setInterval(loadAll,30000);
     const utmCampaign = typeof req.body.utmCampaign === "string"
       ? req.body.utmCampaign.slice(0, 100)
       : null;
+    const referredByCode = typeof req.body.referredByCode === "string" && /^[A-F0-9]{8}$/.test(req.body.referredByCode.toUpperCase())
+      ? req.body.referredByCode.toUpperCase()
+      : null;
+    // Generate a unique referral code for this new user (8 hex chars, e.g. "A3F29BC1")
+    const newReferralCode = randomBytes(4).toString("hex").toUpperCase();
 
     // Verify OTP
     if (!otpCode) {
@@ -556,7 +561,9 @@ setInterval(loadAll,30000);
       isAdmin,
       isApproved,
       isEmailVerified: true,
+      referralCode: newReferralCode,
       ...(utmCampaign ? { utmCampaign } : {}),
+      ...(referredByCode ? { referredByCode } : {}),
     });
 
     (req.session as any).userId = user.id;
@@ -568,6 +575,30 @@ setInterval(loadAll,30000);
         await storage.mergeGhostUser(ghost.id, user.id);
       }
     } catch (e) { /* don't block signup if merge fails */ }
+
+    // ── Referral reward check (non-blocking) ─────────────────────────────────
+    // If this user signed up via a referral link, check if the referrer
+    // has now hit 5 referrals and hasn't yet claimed their free month.
+    if (referredByCode) {
+      try {
+        const referrer = await storage.getUserByReferralCode(referredByCode);
+        if (referrer && !referrer.referralRewardClaimed) {
+          const count = await storage.getReferralCount(referredByCode);
+          if (count >= 5) {
+            const premiumUntil = new Date();
+            premiumUntil.setMonth(premiumUntil.getMonth() + 1);
+            await storage.updateUserSubscription(referrer.id, {
+              isPremium: true,
+              premiumUntil: premiumUntil.toISOString(),
+            });
+            await storage.markReferralRewardClaimed(referrer.id);
+            console.log(`[referral] 🎉 granted 1 month premium to ${referrer.email} (5 referrals reached)`);
+          }
+        }
+      } catch (refErr) {
+        console.error("[referral] reward check failed (non-blocking):", refErr);
+      }
+    }
 
     const { password: _, ...safeUser } = user;
     res.status(201).json(safeUser);
@@ -2850,6 +2881,29 @@ setInterval(loadAll,30000);
     });
 
     res.json({ invited: true, email });
+  });
+
+  // ========== Referral Program ==========
+
+  // GET /api/referral/stats — returns this user's referral code, count, and reward status
+  app.get("/api/referral/stats", requireAuth, async (req, res) => {
+    const userId = (req.session as any).userId as string;
+    const user = await storage.getUser(userId);
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    // Lazily generate a referral code for existing users who signed up before this feature
+    let code = user.referralCode;
+    if (!code) {
+      code = randomBytes(4).toString("hex").toUpperCase();
+      await storage.setReferralCode(userId, code);
+    }
+
+    const referralCount = await storage.getReferralCount(code);
+    return res.json({
+      referralCode: code,
+      referralCount,
+      rewardClaimed: user.referralRewardClaimed,
+    });
   });
 
   // ========== Subscription / Stripe ==========

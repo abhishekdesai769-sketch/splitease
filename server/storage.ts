@@ -34,6 +34,11 @@ export interface IStorage {
   updateUserSubscription(id: string, data: { isPremium: boolean; stripeCustomerId?: string; stripeSubscriptionId?: string | null; premiumUntil?: string | null }): Promise<User | undefined>;
   getUserByStripeCustomerId(stripeCustomerId: string): Promise<User | undefined>;
   deleteUser(id: string): Promise<boolean>;
+  // Referral program
+  getUserByReferralCode(code: string): Promise<User | undefined>;
+  getReferralCount(referralCode: string): Promise<number>;
+  setReferralCode(userId: string, code: string): Promise<void>;
+  markReferralRewardClaimed(userId: string): Promise<void>;
 
   // OTP
   createOtp(data: { email: string; code: string; expiresAt: string }): Promise<void>;
@@ -208,6 +213,28 @@ export class PgStorage implements IStorage {
   async getUserByStripeCustomerId(stripeCustomerId: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.stripeCustomerId, stripeCustomerId));
     return user;
+  }
+
+  // ── Referral program ──────────────────────────────────────────────────────
+  async getUserByReferralCode(code: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.referralCode, code));
+    return user;
+  }
+
+  async getReferralCount(referralCode: string): Promise<number> {
+    const [row] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(users)
+      .where(eq(users.referredByCode, referralCode));
+    return row?.count ?? 0;
+  }
+
+  async setReferralCode(userId: string, code: string): Promise<void> {
+    await db.update(users).set({ referralCode: code }).where(eq(users.id, userId));
+  }
+
+  async markReferralRewardClaimed(userId: string): Promise<void> {
+    await db.update(users).set({ referralRewardClaimed: true }).where(eq(users.id, userId));
   }
 
   async deleteUser(id: string): Promise<boolean> {

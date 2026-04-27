@@ -30,8 +30,13 @@ export const users = pgTable("users", {
   themePreference: text("theme_preference").notNull().default("system"), // "dark"|"light"|"system"
   utmCampaign: text("utm_campaign"),   // WhatsApp / referral campaign tracking (nullable)
   adminNotes: text("admin_notes"),     // Private admin notes (deal info, outreach status, etc.)
+  // Referral program
+  referralCode: text("referral_code"),                                        // unique 8-char code, generated on signup
+  referredByCode: text("referred_by_code"),                                   // code of who referred this user
+  referralRewardClaimed: boolean("referral_reward_claimed").notNull().default(false), // one-time reward flag
 }, (table) => [
   uniqueIndex("users_email_idx").on(table.email),
+  uniqueIndex("users_referral_code_idx").on(table.referralCode),
 ]);
 
 // OTP codes for email verification

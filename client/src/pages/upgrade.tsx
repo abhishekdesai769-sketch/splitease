@@ -4,10 +4,108 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { Crown, Check, Loader2, ExternalLink, Repeat, Trash2, RotateCcw } from "lucide-react";
+import { Crown, Check, Loader2, ExternalLink, Repeat, Trash2, RotateCcw, Gift, Copy, Share2 } from "lucide-react";
 import { useHashLocation } from "wouter/use-hash-location";
 import type { RecurringExpense } from "@shared/schema";
 import { isIosNative, purchasePremium, restorePurchases, type IAPPlan } from "@/lib/iap";
+
+// ── Referral Card ─────────────────────────────────────────────────────────────
+function ReferralCard() {
+  const { toast } = useToast();
+  const [copied, setCopied] = useState(false);
+
+  const { data: stats } = useQuery<{ referralCode: string; referralCount: number; rewardClaimed: boolean }>({
+    queryKey: ["/api/referral/stats"],
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+
+  if (!stats?.referralCode) return null;
+
+  const referralLink = `https://spliiit.klarityit.ca/?ref=${stats.referralCode}`;
+  const progress = Math.min(stats.referralCount, 5);
+  const pct = (progress / 5) * 100;
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(referralLink).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+      toast({ title: "Link copied!", description: "Share it with friends to earn free premium." });
+    });
+  };
+
+  const handleShare = async () => {
+    if (navigator.share) {
+      await navigator.share({
+        title: "Try Spliiit — split expenses with friends",
+        text: "I've been using Spliiit to split bills with friends. Way simpler than Splitwise. Check it out!",
+        url: referralLink,
+      });
+    } else {
+      handleCopy();
+    }
+  };
+
+  return (
+    <Card className="p-4 space-y-4 border-primary/30 bg-primary/5">
+      <div className="flex items-center gap-2">
+        <Gift className="w-4 h-4 text-primary shrink-0" />
+        <p className="text-sm font-semibold">Get 1 month free — invite friends</p>
+      </div>
+
+      <p className="text-xs text-muted-foreground">
+        Refer 5 friends who sign up and get 1 month of premium absolutely free. One-time reward.
+      </p>
+
+      {/* Progress */}
+      <div className="space-y-1.5">
+        <div className="flex justify-between text-xs">
+          <span className="text-muted-foreground">Friends joined</span>
+          <span className="font-mono font-medium tabular-nums">
+            {stats.rewardClaimed ? "5/5 ✓" : `${progress}/5`}
+          </span>
+        </div>
+        <div className="h-2 rounded-full bg-muted overflow-hidden">
+          <div
+            className="h-full bg-primary rounded-full transition-all duration-500"
+            style={{ width: `${stats.rewardClaimed ? 100 : pct}%` }}
+          />
+        </div>
+        {stats.rewardClaimed && (
+          <p className="text-xs text-primary font-medium">
+            🎉 Reward claimed! Your free month has been activated.
+          </p>
+        )}
+        {!stats.rewardClaimed && progress > 0 && progress < 5 && (
+          <p className="text-xs text-muted-foreground">
+            {5 - progress} more friend{5 - progress !== 1 ? "s" : ""} to go!
+          </p>
+        )}
+      </div>
+
+      {/* Link + action buttons */}
+      <div className="flex gap-2">
+        <div className="flex-1 min-w-0 bg-muted rounded-lg px-3 py-2 text-xs font-mono truncate text-muted-foreground">
+          spliiit.klarityit.ca/?ref={stats.referralCode}
+        </div>
+        <button
+          onClick={handleCopy}
+          className="shrink-0 p-2 rounded-lg border border-border bg-background hover:bg-muted transition-colors"
+          title="Copy link"
+        >
+          {copied ? <Check className="w-3.5 h-3.5 text-primary" /> : <Copy className="w-3.5 h-3.5" />}
+        </button>
+        <button
+          onClick={handleShare}
+          className="shrink-0 p-2 rounded-lg border border-border bg-background hover:bg-muted transition-colors"
+          title="Share"
+        >
+          <Share2 className="w-3.5 h-3.5" />
+        </button>
+      </div>
+    </Card>
+  );
+}
 
 type Plan = "monthly" | "yearly";
 
@@ -103,6 +201,9 @@ function PremiumDashboard({ until, premiumFeatures, portalMutation }: {
         {portalMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ExternalLink className="w-4 h-4 mr-2" />}
         Manage Subscription
       </Button>
+
+      {/* Referral — show even for premium users so they can share with friends */}
+      <ReferralCard />
     </div>
   );
 }
@@ -323,6 +424,17 @@ export default function Upgrade() {
           {isIosNative ? "Billed via Apple App Store" : "Secure checkout via Stripe"}
         </p>
       </Card>
+
+      {/* Referral program — earn premium by inviting friends */}
+      <div className="relative">
+        <div className="absolute inset-0 flex items-center">
+          <span className="w-full border-t border-border" />
+        </div>
+        <div className="relative flex justify-center text-xs">
+          <span className="bg-background px-3 text-muted-foreground">or earn it free</span>
+        </div>
+      </div>
+      <ReferralCard />
     </div>
   );
 }
