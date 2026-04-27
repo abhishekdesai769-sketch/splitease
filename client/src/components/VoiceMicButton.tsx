@@ -26,6 +26,7 @@ import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { useVoiceMode } from "@/hooks/useVoiceMode";
 import { formatVoiceAmount, VOICE_EXAMPLES } from "@/lib/voiceParser";
+import { speak, stopSpeaking } from "@/lib/speech";
 import type { SafeUser, Group } from "@shared/schema";
 import { UpgradePromptSheet } from "./UpgradePromptSheet";
 import { track } from "@/lib/analytics";
@@ -138,11 +139,28 @@ export function VoiceMicButton() {
   const startListeningRef = useRef(startListening);
   useEffect(() => { startListeningRef.current = startListening; }, [startListening]);
 
-  // Auto-start listening whenever we enter a voice clarification step
+  // Speak the clarifying question, then auto-start the mic once speech ends.
+  // stopSpeaking() on cleanup ensures no leftover audio if the user cancels.
   useEffect(() => {
-    if (clarifyStep === "pick_target" || clarifyStep === "get_amount") {
-      const t = setTimeout(() => startListeningRef.current(), 600);
-      return () => clearTimeout(t);
+    if (clarifyStep === "pick_target") {
+      let cancelled = false;
+      speak("Who do you want to split this with?").then(() => {
+        if (!cancelled) startListeningRef.current();
+      });
+      return () => {
+        cancelled = true;
+        stopSpeaking();
+      };
+    }
+    if (clarifyStep === "get_amount") {
+      let cancelled = false;
+      speak("How much was it?").then(() => {
+        if (!cancelled) startListeningRef.current();
+      });
+      return () => {
+        cancelled = true;
+        stopSpeaking();
+      };
     }
   }, [clarifyStep]);
 
@@ -245,6 +263,7 @@ export function VoiceMicButton() {
   }, [user?.isPremium, voiceState, stopListening, startListening]);
 
   const handleClose = useCallback(() => {
+    stopSpeaking(); // cancel any in-flight TTS before closing
     reset();
     setSheetOpen(false);
     setShowExamples(false);
