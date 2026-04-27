@@ -258,6 +258,9 @@ export function VoiceMicButton() {
                   <Mic className="w-3.5 h-3.5 text-primary" />
                 </div>
                 <span className="text-sm font-semibold text-foreground">Voice Mode</span>
+                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 border border-amber-500/20 tracking-wide">
+                  BETA
+                </span>
               </div>
               <button onClick={handleClose} className="text-muted-foreground hover:text-foreground transition-colors p-1">
                 <X className="w-4 h-4" />
@@ -348,6 +351,11 @@ export function VoiceMicButton() {
                     </div>
                   )}
                 </div>
+
+                {/* Early access disclaimer */}
+                <p className="text-[11px] text-muted-foreground text-center leading-relaxed px-3">
+                  🧪 <span className="font-medium">Early Access</span> — Voice Mode is still being trained and improved. As a premium member, you get it first. It'll keep getting better!
+                </p>
               </div>
             )}
 
