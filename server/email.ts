@@ -734,18 +734,8 @@ export async function sendPremiumWelcomeEmail(
       </td></tr>
 
       <!-- What's in the app -->
-      <tr><td style="font-size:15px;color:#374151;padding-bottom:8px;line-height:1.6;">
+      <tr><td style="font-size:15px;color:#374151;padding-bottom:24px;line-height:1.6;">
         Everything included with Premium is already unlocked — just open the app and explore.
-      </td></tr>
-
-      <!-- Auto reminders tip -->
-      <tr><td style="padding-bottom:24px;">
-        <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="border:1px solid #e5e7eb;border-radius:10px;">
-          <tr><td style="padding:14px 16px;">
-            <p style="margin:0 0 4px 0;font-size:14px;font-weight:600;color:#111827;">🔔 Worth setting up first: Auto Reminders</p>
-            <p style="margin:0;font-size:13px;color:#6b7280;line-height:1.5;">Tap the Spliiit logo &rarr; Auto Reminders &rarr; pick a tone. We email the people who owe you so you don't have to. Zero awkwardness, 100% passive.</p>
-          </td></tr>
-        </table>
       </td></tr>
 
       <!-- CTA -->
@@ -761,19 +751,6 @@ export async function sendPremiumWelcomeEmail(
         </table>
       </td></tr>
 
-      <!-- Fun line -->
-      <tr><td style="font-size:13px;color:#6b7280;padding-bottom:24px;line-height:1.6;font-style:italic;">
-        Fun fact: you're now in a small group of people who care enough about shared expenses to pay for an app to track them. Either very organised, very petty, or both. We respect it.
-      </td></tr>
-
-      <!-- Sign off -->
-      <tr><td style="font-size:14px;color:#374151;padding-bottom:4px;">
-        — Abhishek
-      </td></tr>
-      <tr><td style="font-size:13px;color:#6b7280;padding-bottom:24px;">
-        Founder, Spliiit &nbsp;&middot;&nbsp; <a href="mailto:spliiit@klarityit.ca" style="color:#2dd4a8;text-decoration:none;">Reply to this email if anything's off</a>
-      </td></tr>
-
       <!-- Footer -->
       <tr><td style="border-top:1px solid #f3f4f6;padding-top:16px;font-size:12px;color:#9ca3af;">
         ${EMAIL_FOOTER}
@@ -782,7 +759,7 @@ export async function sendPremiumWelcomeEmail(
   </td></tr>
 </table>`;
 
-  const text = `Hey ${first}, you're in! 🎉\n\n${openingLine}\n\nPlan: ${planLabel}\nValid until: ${expiryFormatted ?? "Active"}\n\nEverything included with Premium is already unlocked — just open the app and explore.\n\nWorth setting up first: Auto Reminders\nTap the Spliiit logo → Auto Reminders → pick a tone. We email the people who owe you so you don't have to.\n\nOpen the app: ${APP_URL}\n\nFun fact: you're now in a small group of people who care enough about shared expenses to pay for an app to track them. Either very organised, very petty, or both. We respect it.\n\n— Abhishek\nFounder, Spliiit\n\nReply to this email if anything's off.`;
+  const text = `Hey ${first}, you're in! 🎉\n\n${openingLine}\n\nPlan: ${planLabel}\nValid until: ${expiryFormatted ?? "Active"}\n\nEverything included with Premium is already unlocked — just open the app and explore.\n\n${APP_URL}\n\n— Spliiit`;
 
-  sendEmail(to, subject, html, text, undefined, "spliiit@klarityit.ca");
+  sendEmail(to, subject, html, text);
 }
