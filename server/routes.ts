@@ -3,10 +3,13 @@ import { type Server } from "http";
 import session from "express-session";
 import pgSession from "connect-pg-simple";
 import { Pool } from "pg";
-import { randomBytes } from "crypto";
+import { randomBytes, createHash } from "crypto";
 import { OAuth2Client } from "google-auth-library";
 import appleSignin from "apple-signin-auth";
 import { storage } from "./storage";
+import { db } from "./db";
+import { referralClicks } from "@shared/schema";
+import { eq, and, gt, desc } from "drizzle-orm";
 import { signupSchema, loginSchema, forgotPasswordSchema, resetPasswordSchema } from "@shared/schema";
 import { notifyExpenseCreated, sendOtpEmail, sendResetPasswordEmail, sendExportEmail, sendSupportEmail, sendInviteToInviteeEmail, sendInviteToAdminEmail } from "./email";
 import { parseReceipt, RECEIPT_SCANNING_ENABLED } from "./receipt-parser";
@@ -2907,6 +2910,93 @@ setInterval(loadAll,30000);
       referralCount,
       rewardClaimed: user.referralRewardClaimed,
     });
+  });
+
+  // POST /api/referral/click — called on web when a ?ref=CODE link is clicked.
+  // Records a fingerprint so native app installs can be attributed later.
+  app.post("/api/referral/click", async (req, res) => {
+    try {
+      const { referralCode } = req.body;
+
+      // Validate code format (8-char uppercase hex)
+      if (!referralCode || !/^[A-F0-9]{8}$/i.test(referralCode)) {
+        return res.status(400).json({ error: "Invalid referral code" });
+      }
+      const code = (referralCode as string).toUpperCase();
+
+      // Make sure the code actually belongs to a real user
+      const referrer = await storage.getUserByReferralCode(code);
+      if (!referrer) return res.status(404).json({ error: "Referral code not found" });
+
+      // Hash the IP — we never store the raw IP here (only the SHA-256 digest)
+      const rawIp = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim()
+        || req.socket.remoteAddress
+        || "";
+      const ipHash = createHash("sha256").update(rawIp).digest("hex");
+
+      // Extract OS from user agent (browser name differs between web and WKWebView, OS doesn't)
+      const ua = req.headers["user-agent"] || "";
+      const osMatch = ua.match(/(iPhone OS [\d_]+|iPad OS [\d_]+|Android [\d.]+|Windows NT [\d.]+|Mac OS X [\d_.]+)/i);
+      const userAgentOs = osMatch?.[0] ?? null;
+
+      const now = new Date();
+      const expiresAt = new Date(now.getTime() + 48 * 60 * 60 * 1000); // 48h window
+
+      await db.insert(referralClicks).values({
+        referralCode: code,
+        ipHash,
+        userAgentOs,
+        createdAt: now.toISOString(),
+        expiresAt: expiresAt.toISOString(),
+      });
+
+      return res.json({ ok: true });
+    } catch (err) {
+      console.error("[referral/click]", err);
+      return res.status(500).json({ error: "Internal error" });
+    }
+  });
+
+  // POST /api/referral/match — called by the native app on very first open.
+  // Matches IP fingerprint against recent clicks and returns the referral code if found.
+  app.post("/api/referral/match", async (req, res) => {
+    try {
+      const rawIp = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim()
+        || req.socket.remoteAddress
+        || "";
+      const ipHash = createHash("sha256").update(rawIp).digest("hex");
+      const now = new Date().toISOString();
+
+      // Find the most recent unclaimed click from the same IP within the 48h window
+      const matches = await db
+        .select()
+        .from(referralClicks)
+        .where(
+          and(
+            eq(referralClicks.ipHash, ipHash),
+            eq(referralClicks.claimed, false),
+            gt(referralClicks.expiresAt, now),
+          )
+        )
+        .orderBy(desc(referralClicks.createdAt))
+        .limit(1);
+
+      if (!matches[0]) {
+        return res.json({ referralCode: null });
+      }
+
+      // Mark claimed so we don't double-attribute
+      await db
+        .update(referralClicks)
+        .set({ claimed: true })
+        .where(eq(referralClicks.id, matches[0].id));
+
+      console.log(`[referral/match] ✅ matched code ${matches[0].referralCode} via IP fingerprint`);
+      return res.json({ referralCode: matches[0].referralCode });
+    } catch (err) {
+      console.error("[referral/match]", err);
+      return res.status(500).json({ error: "Internal error" });
+    }
   });
 
   // ========== Subscription / Stripe ==========

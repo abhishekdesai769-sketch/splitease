@@ -195,6 +195,23 @@ export const sentReminders = pgTable("sent_reminders", {
 
 export type SentReminder = typeof sentReminders.$inferSelect;
 
+// Referral Clicks — deferred deep link attribution (custom fingerprinting, no 3rd party)
+// Recorded when a referral link is clicked on web; matched when app opens for first time.
+export const referralClicks = pgTable("referral_clicks", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  referralCode: text("referral_code").notNull(),     // the ?ref=CODE that was in the link
+  ipHash: text("ip_hash").notNull(),                 // SHA-256(IP) — never store raw IPs
+  userAgentOs: text("user_agent_os"),                // e.g. "iPhone OS 17_4" — browser-agnostic
+  createdAt: text("created_at").notNull(),
+  expiresAt: text("expires_at").notNull(),           // createdAt + 48h
+  claimed: boolean("claimed").notNull().default(false), // true once matched by native app
+}, (table) => [
+  index("referral_clicks_ip_hash_idx").on(table.ipHash),
+  index("referral_clicks_expires_idx").on(table.expiresAt),
+]);
+
+export type ReferralClick = typeof referralClicks.$inferSelect;
+
 // Signup/Login schemas (for validation)
 export const signupSchema = z.object({
   name: z.string().min(1, "Name is required").max(100, "Name too long"),

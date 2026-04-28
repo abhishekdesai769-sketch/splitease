@@ -9,6 +9,7 @@ import { ThemeProvider } from "@/lib/theme";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { useTheme } from "@/lib/theme";
 import { trackPageView } from "@/lib/analytics";
+import { recordReferralClick, matchReferralClick, isNativeApp } from "@/lib/referralFingerprint";
 import { Layout } from "@/components/Layout";
 import Dashboard from "@/pages/dashboard";
 import Friends from "@/pages/friends";
@@ -32,12 +33,22 @@ function AppRouter() {
 
   // Capture UTM params and referral codes from URL on first load.
   // Both survive the OTP step because they're stored in localStorage.
+  // Also handles deferred deep-link attribution for native app installs.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const campaign = params.get("utm_campaign");
     if (campaign) localStorage.setItem("spliiit_utm_campaign", campaign);
+
     const ref = params.get("ref");
-    if (ref) localStorage.setItem("spliiit_referral_code", ref);
+    if (ref) {
+      localStorage.setItem("spliiit_referral_code", ref);
+      // Record a fingerprint snapshot so this click can be matched after an App Store install
+      recordReferralClick(ref);
+    } else if (isNativeApp()) {
+      // Native app opened with no ?ref= param — try to match a deferred click fingerprint.
+      // If the user clicked a referral link on web before installing, this will find it.
+      matchReferralClick();
+    }
   }, []);
 
   // Sync theme from DB when user loads (cross-device consistency)
