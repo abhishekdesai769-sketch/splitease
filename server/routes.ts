@@ -11,7 +11,7 @@ import { db } from "./db";
 import { referralClicks } from "@shared/schema";
 import { eq, and, gt, desc } from "drizzle-orm";
 import { signupSchema, loginSchema, forgotPasswordSchema, resetPasswordSchema } from "@shared/schema";
-import { notifyExpenseCreated, sendOtpEmail, sendResetPasswordEmail, sendExportEmail, sendSupportEmail, sendInviteToInviteeEmail, sendInviteToAdminEmail } from "./email";
+import { notifyExpenseCreated, sendOtpEmail, sendResetPasswordEmail, sendExportEmail, sendSupportEmail, sendInviteToInviteeEmail, sendInviteToAdminEmail, sendPremiumWelcomeEmail } from "./email";
 import { parseReceipt, RECEIPT_SCANNING_ENABLED } from "./receipt-parser";
 import { stripe, STRIPE_PRICE_MONTHLY, STRIPE_PRICE_YEARLY, STRIPE_ENABLED } from "./stripe";
 import {
@@ -599,6 +599,7 @@ setInterval(loadAll,30000);
             });
             await storage.markReferralRewardClaimed(referrer.id);
             console.log(`[referral] 🎉 granted 1 month premium to ${referrer.email} (5 referrals reached)`);
+            sendPremiumWelcomeEmail(referrer.email, referrer.name, premiumUntil.toISOString(), "referral");
           }
         }
       } catch (refErr) {
@@ -3128,6 +3129,10 @@ setInterval(loadAll,30000);
             premiumUntil: periodEnd,
           });
           console.log(`[stripe] user ${userId} upgraded to premium until ${periodEnd}`);
+          // Send welcome email (non-blocking)
+          storage.getUser(userId).then((u) => {
+            if (u) sendPremiumWelcomeEmail(u.email, u.name, periodEnd, "purchase");
+          }).catch(() => {});
           break;
         }
 
@@ -3257,6 +3262,13 @@ setInterval(loadAll,30000);
             premiumUntil,
           });
           console.log(`[iap] webhook ${eventType}: user ${userId} → premium until ${premiumUntil}`);
+
+          // Only send welcome email on first purchase, not renewals
+          if (eventType === "INITIAL_PURCHASE") {
+            storage.getUser(userId).then((u) => {
+              if (u) sendPremiumWelcomeEmail(u.email, u.name, premiumUntil, "purchase");
+            }).catch(() => {});
+          }
           break;
         }
 

@@ -6,43 +6,12 @@ const resend = process.env.RESEND_API_KEY
 
 const FROM_ADDRESS = "Spliiit <spliiit@klarityit.ca>";
 
-// Inline logo for email templates — HTML table-based since email clients don't support SVG.
-// Renders the icon (three lines split by a dashed line) + "Spliiit" text.
+// Inline logo for email templates — uses the hosted app icon (PNG) for consistent rendering.
 const EMAIL_LOGO = `
 <table cellpadding="0" cellspacing="0" border="0" style="margin-bottom:20px;">
   <tr>
     <td style="vertical-align:middle;padding-right:10px;">
-      <table cellpadding="0" cellspacing="0" border="0" style="width:36px;height:36px;border-radius:8px;background-color:rgba(45,212,168,0.12);" role="img" aria-label="Spliiit logo">
-        <tr><td style="padding:6px 5px;position:relative;">
-          <table cellpadding="0" cellspacing="0" border="0" style="width:100%;">
-            <tr>
-              <td style="width:48%;height:0;border-top:2px solid #2dd4a8;font-size:0;line-height:0;">&nbsp;</td>
-              <td style="width:2px;background-color:#2dd4a8;font-size:0;line-height:0;">&nbsp;</td>
-              <td style="height:0;border-top:2px solid #2dd4a8;font-size:0;line-height:0;">&nbsp;</td>
-            </tr>
-            <tr>
-              <td style="height:3px;font-size:0;line-height:0;">&nbsp;</td>
-              <td style="width:2px;background-color:#2dd4a8;font-size:0;line-height:0;">&nbsp;</td>
-              <td style="height:3px;font-size:0;line-height:0;">&nbsp;</td>
-            </tr>
-            <tr>
-              <td style="height:0;border-top:2px solid #2dd4a8;font-size:0;line-height:0;">&nbsp;</td>
-              <td style="width:2px;background-color:#2dd4a8;font-size:0;line-height:0;">&nbsp;</td>
-              <td style="height:0;border-top:2px solid #2dd4a8;font-size:0;line-height:0;">&nbsp;</td>
-            </tr>
-            <tr>
-              <td style="height:3px;font-size:0;line-height:0;">&nbsp;</td>
-              <td style="width:2px;background-color:#2dd4a8;font-size:0;line-height:0;">&nbsp;</td>
-              <td style="height:3px;font-size:0;line-height:0;">&nbsp;</td>
-            </tr>
-            <tr>
-              <td style="height:0;border-top:2px solid #2dd4a8;font-size:0;line-height:0;">&nbsp;</td>
-              <td style="width:2px;background-color:#2dd4a8;font-size:0;line-height:0;">&nbsp;</td>
-              <td style="height:0;border-top:2px solid #2dd4a8;font-size:0;line-height:0;">&nbsp;</td>
-            </tr>
-          </table>
-        </td></tr>
-      </table>
+      <img src="https://spliiit.klarityit.ca/icon-192.png" width="36" height="36" alt="Spliiit" style="display:block;border-radius:8px;" />
     </td>
     <td style="vertical-align:middle;">
       <span style="font-size:18px;font-weight:700;color:#1a1a1a;letter-spacing:-0.3px;">Spl</span><span style="font-size:18px;font-weight:700;color:#2dd4a8;letter-spacing:-0.3px;">iii</span><span style="font-size:18px;font-weight:700;color:#1a1a1a;letter-spacing:-0.3px;">t</span>
@@ -694,4 +663,101 @@ export async function sendAutoReminderEmail(opts: {
   const text = `${bodyText}\n\nSettle up on Spliiit: ${appUrl}\n\n---\nWhy did you get this?\n${owedToName} is a Spliiit Premium member. Spliiit sent this automatically on their behalf — they didn't personally nudge you.\n\nWant Spliiit to do the same for you? Get Premium: ${appUrl}/#/upgrade\n\nThis is an automated message — please do not reply to this email.\n— Spliiit`;
 
   sendEmail(to, subject, html, text);
+}
+
+/**
+ * Welcome a user to Spliiit Premium.
+ * Sent once when they first upgrade — via Stripe, RevenueCat (iOS), or referral reward.
+ */
+export async function sendPremiumWelcomeEmail(
+  to: string,
+  name: string,
+  premiumUntil: string | null,
+  source: "purchase" | "referral" = "purchase",
+) {
+  if (!resend) return;
+
+  const APP_URL = "https://spliiit.klarityit.ca";
+  const first = name.split(" ")[0];
+
+  const expiryLine = premiumUntil
+    ? `Your premium access is active until <strong>${new Date(premiumUntil).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}</strong>.`
+    : `Your premium access is active.`;
+
+  const openingLine = source === "referral"
+    ? `You earned it — 5 friends joined Spliiit through your link, so we're giving you a free month of Premium. No catch, no credit card needed.`
+    : `Your payment went through and Premium is now active on your account.`;
+
+  const subject = source === "referral"
+    ? `You earned Spliiit Premium 🎉`
+    : `Welcome to Spliiit Premium 🎉`;
+
+  const html = `
+<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <tr><td align="center" style="padding:24px 16px;">
+    <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="max-width:520px;">
+      <tr><td>${EMAIL_LOGO}</td></tr>
+      <tr><td style="font-size:15px;color:#374151;padding-bottom:16px;">Hey ${first},</td></tr>
+      <tr><td style="font-size:15px;color:#374151;padding-bottom:20px;line-height:1.6;">${openingLine}</td></tr>
+      <tr><td style="padding-bottom:20px;">
+        <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="border:1px solid #e5e7eb;border-radius:10px;">
+          <tr><td style="padding:16px;">
+            <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+              <tr><td style="font-size:13px;font-weight:600;color:#6b7280;padding-bottom:12px;text-transform:uppercase;letter-spacing:0.5px;">What just unlocked</td></tr>
+              <tr><td style="padding-bottom:12px;">
+                <table cellpadding="0" cellspacing="0" role="presentation">
+                  <tr>
+                    <td style="width:28px;vertical-align:top;padding-top:1px;"><span style="font-size:16px;">🔔</span></td>
+                    <td>
+                      <p style="margin:0 0 2px 0;font-size:14px;font-weight:600;color:#111827;">Auto Reminders</p>
+                      <p style="margin:0;font-size:13px;color:#6b7280;line-height:1.5;">Spliiit automatically emails people who owe you — from our account, not yours. No awkward follow-ups. Set it and forget it.</p>
+                    </td>
+                  </tr>
+                </table>
+              </td></tr>
+              <tr><td style="border-top:1px solid #f3f4f6;padding-top:12px;">
+                <table cellpadding="0" cellspacing="0" role="presentation">
+                  <tr>
+                    <td style="width:28px;vertical-align:top;padding-top:1px;"><span style="font-size:16px;">⚡</span></td>
+                    <td>
+                      <p style="margin:0 0 2px 0;font-size:14px;font-weight:600;color:#111827;">More features coming</p>
+                      <p style="margin:0;font-size:13px;color:#6b7280;line-height:1.5;">We're adding more premium features regularly. You'll get them automatically.</p>
+                    </td>
+                  </tr>
+                </table>
+              </td></tr>
+            </table>
+          </td></tr>
+        </table>
+      </td></tr>
+      <tr><td style="font-size:14px;color:#374151;padding-bottom:20px;line-height:1.6;">
+        To turn on Auto Reminders: tap the <strong>Spliiit logo</strong> (top left) &rarr; <strong>Auto Reminders</strong> &rarr; pick your tone and timeframe &rarr; save.
+      </td></tr>
+      <tr><td style="font-size:13px;color:#6b7280;padding-bottom:20px;">${expiryLine}</td></tr>
+      <tr><td style="padding-bottom:24px;">
+        <a href="${APP_URL}" style="font-size:14px;color:#2dd4a8;text-decoration:none;font-weight:500;">Open Spliiit &rarr;</a>
+      </td></tr>
+      <tr><td style="font-size:14px;color:#374151;padding-bottom:16px;line-height:1.6;">
+        Thanks for supporting an app built by one person who was genuinely tired of paying to split a pizza. It means a lot.<br><br>
+        If anything doesn't work the way you expect, just reply to this email — I read every one.
+      </td></tr>
+      <tr><td style="font-size:14px;color:#374151;padding-bottom:24px;">
+        — Abhishek<br><span style="font-size:13px;color:#6b7280;">Founder, Spliiit</span>
+      </td></tr>
+      <tr><td style="border-top:1px solid #f3f4f6;padding-top:16px;font-size:12px;color:#9ca3af;">${EMAIL_FOOTER}</td></tr>
+    </table>
+  </td></tr>
+</table>`;
+
+  const expiryText = premiumUntil
+    ? `Your premium access is active until ${new Date(premiumUntil).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}.`
+    : `Your premium access is active.`;
+
+  const bodyText = source === "referral"
+    ? `You earned it — 5 friends joined Spliiit through your link, so we're giving you a free month of Premium.`
+    : `Your payment went through and Spliiit Premium is now active.`;
+
+  const text = `Hey ${first},\n\n${bodyText}\n\nWhat's unlocked:\n🔔 Auto Reminders — Spliiit emails people who owe you from our account, not yours. No awkward follow-ups.\n\nTo turn it on: tap the Spliiit logo → Auto Reminders → set your tone and timeframe → save.\n\n${expiryText}\n\nThanks for supporting an indie app — it genuinely means a lot.\n\nIf anything doesn't work as expected, just reply to this email.\n\n— Abhishek\nFounder, Spliiit`;
+
+  sendEmail(to, subject, html, text, undefined, "spliiit@klarityit.ca");
 }
