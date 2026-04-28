@@ -322,6 +322,23 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
               </div>
             </button>
 
+            {/* Upgrade to Premium — only shown to non-premium users, softly */}
+            {!user?.isPremium && (
+              <button
+                onClick={() => { setOpen(false); setLocation("/upgrade"); }}
+                className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-amber-500/5 transition-colors text-left group"
+                data-testid="menu-upgrade"
+              >
+                <div className="w-9 h-9 rounded-lg bg-amber-500/10 flex items-center justify-center flex-shrink-0">
+                  <Crown className="w-4.5 h-4.5 text-amber-500" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-amber-500">Upgrade to Premium</p>
+                  <p className="text-xs text-muted-foreground">Unlock all features</p>
+                </div>
+              </button>
+            )}
+
             {/* Delete Account */}
             <button
               onClick={() => { setDeleteStep(1); setView("delete"); }}
