@@ -599,7 +599,7 @@ setInterval(loadAll,30000);
             });
             await storage.markReferralRewardClaimed(referrer.id);
             console.log(`[referral] 🎉 granted 1 month premium to ${referrer.email} (5 referrals reached)`);
-            sendPremiumWelcomeEmail(referrer.email, referrer.name, premiumUntil.toISOString(), "referral");
+            sendPremiumWelcomeEmail(referrer.email, referrer.name, premiumUntil.toISOString(), "free");
           }
         }
       } catch (refErr) {
@@ -3122,6 +3122,14 @@ setInterval(loadAll,30000);
             periodEnd = new Date(Date.now() + 31 * 24 * 60 * 60 * 1000).toISOString();
           }
 
+          // Detect monthly vs yearly from subscription price ID
+          let stripePlanType: "monthly" | "yearly" = "monthly";
+          try {
+            const sub2 = await stripe.subscriptions.retrieve(session.subscription as string);
+            const priceId = (sub2 as any).items?.data?.[0]?.price?.id;
+            if (priceId === STRIPE_PRICE_YEARLY) stripePlanType = "yearly";
+          } catch {}
+
           await storage.updateUserSubscription(userId, {
             isPremium: true,
             stripeCustomerId: session.customer as string,
@@ -3131,7 +3139,7 @@ setInterval(loadAll,30000);
           console.log(`[stripe] user ${userId} upgraded to premium until ${periodEnd}`);
           // Send welcome email (non-blocking)
           storage.getUser(userId).then((u) => {
-            if (u) sendPremiumWelcomeEmail(u.email, u.name, periodEnd, "purchase");
+            if (u) sendPremiumWelcomeEmail(u.email, u.name, periodEnd, stripePlanType);
           }).catch(() => {});
           break;
         }
@@ -3265,8 +3273,12 @@ setInterval(loadAll,30000);
 
           // Only send welcome email on first purchase, not renewals
           if (eventType === "INITIAL_PURCHASE") {
+            const daysUntil = premiumUntil
+              ? (new Date(premiumUntil).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+              : 30;
+            const iapPlanType: "monthly" | "yearly" = daysUntil > 300 ? "yearly" : "monthly";
             storage.getUser(userId).then((u) => {
-              if (u) sendPremiumWelcomeEmail(u.email, u.name, premiumUntil, "purchase");
+              if (u) sendPremiumWelcomeEmail(u.email, u.name, premiumUntil, iapPlanType);
             }).catch(() => {});
           }
           break;
