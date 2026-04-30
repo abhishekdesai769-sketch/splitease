@@ -1378,18 +1378,19 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
             </div>
           );
         })}
+        {/* Invite avatar — opens the shareable invite-link dialog (same as three-dots → "Invite link").
+            Previously opened an email-invite dialog; that flow is kept inert below for now. */}
+        <button
+          className="flex flex-col items-center gap-1 shrink-0"
+          data-testid="invite-member-btn"
+          onClick={() => setShareLinkOpen(true)}
+        >
+          <div className="w-9 h-9 rounded-full border-2 border-dashed border-muted-foreground/30 flex items-center justify-center">
+            <UserPlus className="w-4 h-4 text-muted-foreground" />
+          </div>
+          <span className="text-xs text-muted-foreground">Invite</span>
+        </button>
         <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
-          <DialogTrigger asChild>
-            <button
-              className="flex flex-col items-center gap-1 shrink-0"
-              data-testid="invite-member-btn"
-            >
-              <div className="w-9 h-9 rounded-full border-2 border-dashed border-muted-foreground/30 flex items-center justify-center">
-                <UserPlus className="w-4 h-4 text-muted-foreground" />
-              </div>
-              <span className="text-xs text-muted-foreground">Invite</span>
-            </button>
-          </DialogTrigger>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Invite a Friend</DialogTitle>
