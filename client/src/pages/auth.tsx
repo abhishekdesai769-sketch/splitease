@@ -255,8 +255,8 @@ export default function AuthPage() {
                 creating a clean exclusion zone around the logo + tagline */}
             <div
               aria-hidden="true"
-              className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[340px] h-[180px] -z-10 pointer-events-none"
-              style={{ background: "radial-gradient(ellipse, hsl(var(--background)) 35%, transparent 75%)" }}
+              className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[420px] h-[220px] -z-10 pointer-events-none"
+              style={{ background: "radial-gradient(ellipse, hsl(var(--background)) 45%, transparent 80%)" }}
             />
             <Logo />
             <p className="text-sm text-muted-foreground">Expense splitting made easy</p>
