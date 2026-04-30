@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { Eye, EyeOff, ArrowLeft, Mail } from "lucide-react";
+import { AuthDoodleBackground } from "@/components/AuthDoodleBackground";
 
 type AuthView = "login" | "signup" | "otp" | "forgot" | "forgot-sent";
 
@@ -246,8 +247,9 @@ export default function AuthPage() {
   if (view === "login" || view === "signup") {
     const isLogin = view === "login";
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <div className="w-full max-w-sm space-y-6">
+      <div className="min-h-screen bg-background flex items-center justify-center p-4 relative overflow-hidden">
+        <AuthDoodleBackground />
+        <div className="w-full max-w-sm space-y-6 relative z-10">
           <div className="text-center space-y-1">
             <Logo />
             <p className="text-sm text-muted-foreground">Expense splitting made easy</p>
@@ -480,8 +482,9 @@ export default function AuthPage() {
   // ===== OTP VERIFICATION =====
   if (view === "otp") {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <div className="w-full max-w-sm space-y-6">
+      <div className="min-h-screen bg-background flex items-center justify-center p-4 relative overflow-hidden">
+        <AuthDoodleBackground />
+        <div className="w-full max-w-sm space-y-6 relative z-10">
           <Logo />
           <p className="text-sm text-muted-foreground text-center">Verify your email</p>
 
@@ -549,8 +552,9 @@ export default function AuthPage() {
   // ===== FORGOT PASSWORD =====
   if (view === "forgot") {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <div className="w-full max-w-sm space-y-6">
+      <div className="min-h-screen bg-background flex items-center justify-center p-4 relative overflow-hidden">
+        <AuthDoodleBackground />
+        <div className="w-full max-w-sm space-y-6 relative z-10">
           <Logo />
           <p className="text-sm text-muted-foreground text-center">Reset your password</p>
 
@@ -590,8 +594,9 @@ export default function AuthPage() {
   // ===== FORGOT PASSWORD - SENT =====
   if (view === "forgot-sent") {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <div className="w-full max-w-sm space-y-6">
+      <div className="min-h-screen bg-background flex items-center justify-center p-4 relative overflow-hidden">
+        <AuthDoodleBackground />
+        <div className="w-full max-w-sm space-y-6 relative z-10">
           <Logo />
 
           <Card className="p-6 text-center space-y-4">
