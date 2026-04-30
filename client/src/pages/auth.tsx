@@ -7,7 +7,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { Eye, EyeOff, ArrowLeft, Mail } from "lucide-react";
-import { AuthDoodleBackground } from "@/components/AuthDoodleBackground";
 
 type AuthView = "login" | "signup" | "otp" | "forgot" | "forgot-sent";
 
@@ -247,17 +246,9 @@ export default function AuthPage() {
   if (view === "login" || view === "signup") {
     const isLogin = view === "login";
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4 relative overflow-hidden">
-        <AuthDoodleBackground />
-        <div className="w-full max-w-sm space-y-6 relative z-10">
-          <div className="text-center space-y-1 relative">
-            {/* Soft halo: matches the page background and sits above the doodle pattern,
-                creating a clean exclusion zone around the logo + tagline */}
-            <div
-              aria-hidden="true"
-              className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[420px] h-[220px] -z-10 pointer-events-none"
-              style={{ background: "radial-gradient(ellipse, hsl(var(--background)) 45%, transparent 80%)" }}
-            />
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="w-full max-w-sm space-y-6">
+          <div className="text-center space-y-1">
             <Logo />
             <p className="text-sm text-muted-foreground">Expense splitting made easy</p>
           </div>
@@ -489,9 +480,8 @@ export default function AuthPage() {
   // ===== OTP VERIFICATION =====
   if (view === "otp") {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4 relative overflow-hidden">
-        <AuthDoodleBackground />
-        <div className="w-full max-w-sm space-y-6 relative z-10">
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="w-full max-w-sm space-y-6">
           <Logo />
           <p className="text-sm text-muted-foreground text-center">Verify your email</p>
 
@@ -559,9 +549,8 @@ export default function AuthPage() {
   // ===== FORGOT PASSWORD =====
   if (view === "forgot") {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4 relative overflow-hidden">
-        <AuthDoodleBackground />
-        <div className="w-full max-w-sm space-y-6 relative z-10">
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="w-full max-w-sm space-y-6">
           <Logo />
           <p className="text-sm text-muted-foreground text-center">Reset your password</p>
 
@@ -601,9 +590,8 @@ export default function AuthPage() {
   // ===== FORGOT PASSWORD - SENT =====
   if (view === "forgot-sent") {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4 relative overflow-hidden">
-        <AuthDoodleBackground />
-        <div className="w-full max-w-sm space-y-6 relative z-10">
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="w-full max-w-sm space-y-6">
           <Logo />
 
           <Card className="p-6 text-center space-y-4">
