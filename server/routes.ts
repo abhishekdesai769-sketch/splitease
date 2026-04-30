@@ -1757,6 +1757,151 @@ setInterval(loadAll,30000);
     res.json(updated);
   });
 
+  // ========== Group Invite Links (V1: shareable links) ==========
+  // Behavior:
+  // - Any group member can generate a link (auto-revokes the previous active one)
+  // - Default expiry: 7 days
+  // - Public preview endpoint (no auth) shows group name + member count
+  // - Authenticated users join instantly via link
+  // - Owner / group admin / global admin can revoke
+
+  // GET /api/groups/:id/invite-link — get the current active link (members only)
+  app.get("/api/groups/:id/invite-link", requireAuth, async (req, res) => {
+    const userId = (req.session as any).userId;
+    const group = await storage.getGroup(req.params.id);
+    if (!group) return res.status(404).json({ error: "Group not found" });
+    if (!group.memberIds.includes(userId)) {
+      return res.status(403).json({ error: "Only group members can view invite links" });
+    }
+
+    const link = await storage.getActiveInviteLinkForGroup(group.id);
+    if (!link) return res.json({ link: null });
+
+    // Treat expired links as if no active link exists
+    if (new Date(link.expiresAt) < new Date()) {
+      return res.json({ link: null, expired: true });
+    }
+
+    res.json({ link });
+  });
+
+  // POST /api/groups/:id/invite-link — any member generates a new link
+  app.post("/api/groups/:id/invite-link", requireAuth, async (req, res) => {
+    const userId = (req.session as any).userId;
+    const group = await storage.getGroup(req.params.id);
+    if (!group) return res.status(404).json({ error: "Group not found" });
+    if (!group.memberIds.includes(userId)) {
+      return res.status(403).json({ error: "Only group members can generate invite links" });
+    }
+
+    // Generate unique 8-char code (retry on collision; 32^8 = 1T combos so collisions are vanishingly rare)
+    let code = "";
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const candidate = randomBytes(4).toString("hex").toUpperCase();
+      const existing = await storage.getGroupInviteLinkByCode(candidate);
+      if (!existing) {
+        code = candidate;
+        break;
+      }
+    }
+    if (!code) return res.status(500).json({ error: "Failed to generate invite code, please try again" });
+
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000); // +7 days
+
+    const link = await storage.createGroupInviteLink({
+      groupId: group.id,
+      code,
+      createdById: userId,
+      createdAt: now.toISOString(),
+      expiresAt: expiresAt.toISOString(),
+      maxUses: null,
+      currentUses: 0,
+      isActive: true,
+    });
+
+    res.status(201).json(link);
+  });
+
+  // GET /api/invite/:code — public preview (no auth required)
+  // Returns minimal info so the recipient can see what they'd be joining before signing up
+  app.get("/api/invite/:code", async (req, res) => {
+    const link = await storage.getGroupInviteLinkByCode(req.params.code);
+    if (!link) return res.status(404).json({ error: "Invite link not found" });
+    if (!link.isActive) return res.status(410).json({ error: "This invite link has been revoked" });
+    if (new Date(link.expiresAt) < new Date()) {
+      return res.status(410).json({ error: "This invite link has expired" });
+    }
+
+    const group = await storage.getGroup(link.groupId);
+    if (!group || group.deletedAt) return res.status(404).json({ error: "Group not found" });
+
+    res.json({
+      groupName: group.name,
+      memberCount: group.memberIds.length,
+      expiresAt: link.expiresAt,
+    });
+  });
+
+  // POST /api/invite/:code/accept — authenticated user joins via link
+  app.post("/api/invite/:code/accept", requireAuth, async (req, res) => {
+    const userId = (req.session as any).userId;
+    const link = await storage.getGroupInviteLinkByCode(req.params.code);
+    if (!link) return res.status(404).json({ error: "Invite link not found" });
+    if (!link.isActive) return res.status(410).json({ error: "This invite link has been revoked" });
+    if (new Date(link.expiresAt) < new Date()) {
+      return res.status(410).json({ error: "This invite link has expired" });
+    }
+
+    const group = await storage.getGroup(link.groupId);
+    if (!group || group.deletedAt) return res.status(404).json({ error: "Group not found" });
+
+    // Idempotent: if already a member, return success without duplicating
+    if (group.memberIds.includes(userId)) {
+      return res.json({ groupId: group.id, alreadyMember: true });
+    }
+
+    // Add user to group + bump link usage counter
+    await storage.updateGroupMembers(group.id, [...group.memberIds, userId]);
+    await storage.incrementInviteLinkUses(link.id);
+
+    // Activity log entry
+    const user = await storage.getUser(userId);
+    if (user) {
+      await storage.createActivity({
+        groupId: group.id,
+        userId,
+        userName: user.name,
+        action: "member_joined",
+        description: "joined via invite link",
+      });
+    }
+
+    res.json({ groupId: group.id, alreadyMember: false });
+  });
+
+  // DELETE /api/groups/:id/invite-link/:linkId — owner/admin/global admin can revoke
+  app.delete("/api/groups/:id/invite-link/:linkId", requireAuth, async (req, res) => {
+    const userId = (req.session as any).userId;
+    const user = await storage.getUser(userId);
+    if (!user) return res.status(401).json({ error: "User not found" });
+
+    const group = await storage.getGroup(req.params.id);
+    if (!group) return res.status(404).json({ error: "Group not found" });
+
+    const adminIds = group.adminIds || [];
+    const isOwner = group.createdById === userId;
+    const isGroupAdmin = adminIds.includes(userId);
+    const isGlobalAdmin = user.isAdmin;
+
+    if (!isOwner && !isGroupAdmin && !isGlobalAdmin) {
+      return res.status(403).json({ error: "Only the group owner or an admin can revoke invite links" });
+    }
+
+    await storage.revokeInviteLink(req.params.linkId);
+    res.json({ ok: true });
+  });
+
   app.delete("/api/groups/:id/members/:memberId", requireAuth, async (req, res) => {
     const userId = (req.session as any).userId;
     const user = await storage.getUser(userId);

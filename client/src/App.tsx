@@ -24,6 +24,7 @@ import NotFound from "@/pages/not-found";
 import Import from "@/pages/import";
 import Upgrade from "@/pages/upgrade";
 import OnboardingPreferences from "@/pages/onboarding";
+import InvitePage from "@/pages/invite";
 import { ReviewPromptSheet } from "@/components/ReviewPromptSheet";
 import { ForceUpdateGate } from "@/components/ForceUpdateGate";
 
@@ -59,6 +60,20 @@ function AppRouter() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
+  // Pending invite redirect — if a logged-out user clicked an invite link and then signed up,
+  // we stashed the code in localStorage. Once they're authenticated AND past onboarding,
+  // bounce them back to the invite page so they can complete the join.
+  useEffect(() => {
+    if (!user || !user.defaultCurrency) return;
+    const pending = localStorage.getItem("spliiit_pending_invite");
+    if (!pending) return;
+    // Don't redirect if they're already on the right invite page
+    if (window.location.hash.startsWith(`#/invite/${pending}`)) return;
+    localStorage.removeItem("spliiit_pending_invite");
+    window.location.hash = `#/invite/${pending}`;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, user?.defaultCurrency]);
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -79,6 +94,11 @@ function AppRouter() {
     const hash = window.location.hash;
     if (hash.startsWith("#/reset-password")) {
       return <ResetPassword />;
+    }
+    // Public invite preview — logged-out users can see the group they were invited to
+    // before being asked to sign up. The InvitePage handles the "Sign up to join" CTA itself.
+    if (hash.startsWith("#/invite/")) {
+      return <InvitePage />;
     }
     return <AuthPage />;
   }
@@ -101,6 +121,7 @@ function AppRouter() {
           {(params) => <GroupDetail groupId={params.id} />}
         </Route>
         <Route path="/expenses" component={Expenses} />
+        <Route path="/invite/:code" component={InvitePage} />
         <Route path="/import" component={Import} />
         <Route path="/upgrade" component={Upgrade} />
         {user.isAdmin ? (

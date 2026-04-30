@@ -164,6 +164,29 @@ export const insertGroupInviteSchema = createInsertSchema(groupInvites).omit({ i
 export type InsertGroupInvite = z.infer<typeof insertGroupInviteSchema>;
 export type GroupInvite = typeof groupInvites.$inferSelect;
 
+// Group Invite Links — shareable links for joining groups (V1: open-join, any member can generate)
+// Behavior: when a new link is generated, the previous active link for that group is auto-revoked.
+// Default expiry: 7 days. Admin can revoke at any time. Members join instantly via link.
+export const groupInviteLinks = pgTable("group_invite_links", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  groupId: varchar("group_id").notNull(),
+  code: text("code").notNull(),                       // 8-char unique random code (URL-safe)
+  createdById: varchar("created_by_id").notNull(),    // who generated the link
+  createdAt: text("created_at").notNull(),            // ISO timestamp
+  expiresAt: text("expires_at").notNull(),            // ISO timestamp — default createdAt + 7 days
+  maxUses: integer("max_uses"),                       // null = unlimited (forward-compat for V2)
+  currentUses: integer("current_uses").notNull().default(0),
+  isActive: boolean("is_active").notNull().default(true), // false = revoked or superseded
+}, (table) => [
+  uniqueIndex("group_invite_links_code_idx").on(table.code),
+  index("group_invite_links_group_id_idx").on(table.groupId),
+  index("group_invite_links_active_idx").on(table.groupId, table.isActive),
+]);
+
+export const insertGroupInviteLinkSchema = createInsertSchema(groupInviteLinks).omit({ id: true });
+export type InsertGroupInviteLink = z.infer<typeof insertGroupInviteLinkSchema>;
+export type GroupInviteLink = typeof groupInviteLinks.$inferSelect;
+
 // Recurring Expenses (premium feature — auto-create on a schedule)
 export const recurringExpenses = pgTable("recurring_expenses", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

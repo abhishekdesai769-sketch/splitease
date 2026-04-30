@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Plus, ArrowLeft, Trash2, Shuffle, Receipt, UserPlus, X, HandCoins, CheckCircle2, AlertTriangle, Camera, Mail, Loader2, Crown, Shield, LogOut, UserMinus, Clock, Check, Ghost, FileText, Pencil, MoreVertical, Upload, Download, Repeat, ChevronDown, Copy, MessageCircle } from "lucide-react";
+import { Plus, ArrowLeft, Trash2, Shuffle, Receipt, UserPlus, X, HandCoins, CheckCircle2, AlertTriangle, Camera, Mail, Loader2, Crown, Shield, LogOut, UserMinus, Clock, Check, Ghost, FileText, Pencil, MoreVertical, Upload, Download, Repeat, ChevronDown, Copy, MessageCircle, Share2 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { UpgradePromptSheet } from "@/components/UpgradePromptSheet";
 import { ScanReceiptButton } from "@/components/ScanReceiptButton";
@@ -27,6 +27,9 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
   const [addOpen, setAddOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteLinkCopied, setInviteLinkCopied] = useState(false);
+  // Shareable invite link (V1 — open join, one active link per group)
+  const [shareLinkOpen, setShareLinkOpen] = useState(false);
+  const [shareLinkCopied, setShareLinkCopied] = useState(false);
   // simplifyDebts is now a persistent group setting, read from group?.simplifyDebts
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
@@ -520,6 +523,61 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
     },
   });
 
+  // ===== Shareable invite link (V1) =====
+  // Fetch the active invite link only when the dialog is open (avoids unnecessary requests)
+  const { data: activeInviteLinkData } = useQuery<{ link: { id: string; code: string; expiresAt: string } | null }>({
+    queryKey: [`/api/groups/${groupId}/invite-link`],
+    enabled: shareLinkOpen,
+  });
+  const activeInviteLink = activeInviteLinkData?.link ?? null;
+  const inviteLinkUrl = activeInviteLink
+    ? `${window.location.origin}/#/invite/${activeInviteLink.code}`
+    : null;
+
+  const generateInviteLinkMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/groups/${groupId}/invite-link`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/groups/${groupId}/invite-link`] });
+      setShareLinkCopied(false);
+      toast({ title: "Invite link generated" });
+    },
+    onError: (err: Error) => {
+      let msg = err.message;
+      try { msg = JSON.parse(msg.split(": ").slice(1).join(": ")).error; } catch {}
+      toast({ title: "Failed to generate link", description: msg, variant: "destructive" });
+    },
+  });
+
+  const revokeInviteLinkMutation = useMutation({
+    mutationFn: async (linkId: string) => {
+      await apiRequest("DELETE", `/api/groups/${groupId}/invite-link/${linkId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/groups/${groupId}/invite-link`] });
+      setShareLinkCopied(false);
+      toast({ title: "Invite link revoked" });
+    },
+    onError: (err: Error) => {
+      let msg = err.message;
+      try { msg = JSON.parse(msg.split(": ").slice(1).join(": ")).error; } catch {}
+      toast({ title: "Failed to revoke link", description: msg, variant: "destructive" });
+    },
+  });
+
+  const handleCopyShareLink = async () => {
+    if (!inviteLinkUrl) return;
+    try {
+      await navigator.clipboard.writeText(inviteLinkUrl);
+      setShareLinkCopied(true);
+      setTimeout(() => setShareLinkCopied(false), 2000);
+    } catch {
+      toast({ title: "Couldn't copy", description: "Long-press the link to copy manually.", variant: "destructive" });
+    }
+  };
+
   // Computed final amount: base + tax + tip (used for splitting and submission)
   const _baseAmount = parseFloat(amount) || 0;
   const _taxAmt = _baseAmount * (parseFloat(taxPercent) || 0) / 100;
@@ -692,6 +750,10 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                 <Pencil className="w-4 h-4 mr-2" /> Rename Group
               </DropdownMenuItem>
             )}
+            {/* Invite link — V1: any group member can generate (auto-revokes prior link) */}
+            <DropdownMenuItem onClick={() => setShareLinkOpen(true)} data-testid="menu-invite-link">
+              <Share2 className="w-4 h-4 mr-2" /> Invite link
+            </DropdownMenuItem>
             {(isMeOwner || isMeAdmin || isMeGlobalAdmin) && (
               <DropdownMenuItem onClick={() => { setImportStep("upload"); setImportFile(null); setImportResult(null); setImportOpen(true); }}>
                 <Upload className="w-4 h-4 mr-2" /> Import from Splitwise
@@ -732,6 +794,92 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
             )}
           </DropdownMenuContent>
         </DropdownMenu>
+
+        {/* Shareable invite link dialog (V1) */}
+        <Dialog open={shareLinkOpen} onOpenChange={setShareLinkOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Group invite link</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              {!activeInviteLink ? (
+                <>
+                  <p className="text-sm text-muted-foreground">
+                    No active invite link for this group yet. Generate one to share with people you want to add.
+                  </p>
+                  <Button
+                    className="w-full"
+                    onClick={() => generateInviteLinkMutation.mutate()}
+                    disabled={generateInviteLinkMutation.isPending}
+                    data-testid="btn-generate-invite-link"
+                  >
+                    {generateInviteLinkMutation.isPending ? (
+                      <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Generating...</>
+                    ) : (
+                      <><Share2 className="w-4 h-4 mr-2" /> Generate invite link</>
+                    )}
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm text-muted-foreground">
+                    Anyone with this link can join <span className="font-medium text-foreground">{group.name}</span>. Expires{" "}
+                    {new Date(activeInviteLink.expiresAt).toLocaleDateString("en-US", {
+                      year: "numeric", month: "long", day: "numeric"
+                    })}.
+                  </p>
+                  <div className="flex items-center gap-2 p-3 bg-muted rounded-lg">
+                    <code className="flex-1 text-xs font-mono break-all" data-testid="invite-link-url">
+                      {inviteLinkUrl}
+                    </code>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={handleCopyShareLink}
+                      data-testid="btn-copy-invite-link"
+                      className="shrink-0"
+                    >
+                      {shareLinkCopied ? (
+                        <><Check className="w-3.5 h-3.5 mr-1.5" /> Copied</>
+                      ) : (
+                        <><Copy className="w-3.5 h-3.5 mr-1.5" /> Copy</>
+                      )}
+                    </Button>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      className="flex-1"
+                      onClick={() => generateInviteLinkMutation.mutate()}
+                      disabled={generateInviteLinkMutation.isPending}
+                      data-testid="btn-regenerate-invite-link"
+                    >
+                      {generateInviteLinkMutation.isPending ? (
+                        <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Generating...</>
+                      ) : (
+                        "Generate new link"
+                      )}
+                    </Button>
+                    {(isMeOwner || isMeAdmin || isMeGlobalAdmin) && (
+                      <Button
+                        variant="ghost"
+                        className="text-destructive hover:text-destructive"
+                        onClick={() => revokeInviteLinkMutation.mutate(activeInviteLink.id)}
+                        disabled={revokeInviteLinkMutation.isPending}
+                        data-testid="btn-revoke-invite-link"
+                      >
+                        Revoke
+                      </Button>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Generating a new link will revoke this one. Revoking is permanent — anyone with the old link won't be able to join.
+                  </p>
+                </>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
 
         <Dialog open={addOpen} onOpenChange={setAddOpen}>
           <DialogTrigger asChild>

@@ -1,12 +1,13 @@
 import { eq, and, or, ilike, inArray, ne, isNull, isNotNull, lt, sql, sum } from "drizzle-orm";
 import { db } from "./db";
 import {
-  users, friends, groups, expenses, otpCodes, resetTokens, groupInvites, recurringExpenses, sentReminders, activityLog,
+  users, friends, groups, expenses, otpCodes, resetTokens, groupInvites, groupInviteLinks, recurringExpenses, sentReminders, activityLog,
   type User, type InsertUser, type SafeUser,
   type Friend, type InsertFriend,
   type Group, type InsertGroup,
   type Expense, type InsertExpense,
   type GroupInvite, type InsertGroupInvite,
+  type GroupInviteLink, type InsertGroupInviteLink,
   type RecurringExpense, type InsertRecurringExpense,
   type SentReminder,
   type ActivityLog,
@@ -89,6 +90,13 @@ export interface IStorage {
   getPendingInvitesForGroup(groupId: string): Promise<GroupInvite[]>;
   getPendingInvitesForUser(userId: string): Promise<GroupInvite[]>;
   updateGroupInvite(id: string, data: Partial<GroupInvite>): Promise<GroupInvite | undefined>;
+
+  // Group Invite Links (V1: shareable links, one active per group)
+  createGroupInviteLink(data: InsertGroupInviteLink): Promise<GroupInviteLink>;
+  getGroupInviteLinkByCode(code: string): Promise<GroupInviteLink | undefined>;
+  getActiveInviteLinkForGroup(groupId: string): Promise<GroupInviteLink | undefined>;
+  incrementInviteLinkUses(id: string): Promise<void>;
+  revokeInviteLink(id: string): Promise<void>;
 
   // Ghost users
   createGhostUser(name: string): Promise<User>;
@@ -545,6 +553,40 @@ export class PgStorage implements IStorage {
   async updateGroupInvite(id: string, data: Partial<GroupInvite>): Promise<GroupInvite | undefined> {
     const [updated] = await db.update(groupInvites).set(data).where(eq(groupInvites.id, id)).returning();
     return updated;
+  }
+
+  // Group Invite Links (V1: shareable links — one active link per group)
+  // When creating a new link, all previous active links for that group are auto-revoked first.
+  async createGroupInviteLink(data: InsertGroupInviteLink): Promise<GroupInviteLink> {
+    // Step 1: Revoke any existing active links for this group (one-active-per-group rule)
+    await db.update(groupInviteLinks)
+      .set({ isActive: false })
+      .where(and(eq(groupInviteLinks.groupId, data.groupId), eq(groupInviteLinks.isActive, true)));
+    // Step 2: Insert the new link
+    const [created] = await db.insert(groupInviteLinks).values(data).returning();
+    return created;
+  }
+
+  async getGroupInviteLinkByCode(code: string): Promise<GroupInviteLink | undefined> {
+    const [link] = await db.select().from(groupInviteLinks).where(eq(groupInviteLinks.code, code));
+    return link;
+  }
+
+  async getActiveInviteLinkForGroup(groupId: string): Promise<GroupInviteLink | undefined> {
+    const [link] = await db.select().from(groupInviteLinks).where(
+      and(eq(groupInviteLinks.groupId, groupId), eq(groupInviteLinks.isActive, true))
+    );
+    return link;
+  }
+
+  async incrementInviteLinkUses(id: string): Promise<void> {
+    await db.update(groupInviteLinks)
+      .set({ currentUses: sql`${groupInviteLinks.currentUses} + 1` })
+      .where(eq(groupInviteLinks.id, id));
+  }
+
+  async revokeInviteLink(id: string): Promise<void> {
+    await db.update(groupInviteLinks).set({ isActive: false }).where(eq(groupInviteLinks.id, id));
   }
 
   // Purge: permanently delete soft-deleted items older than N days
