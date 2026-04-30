@@ -31,6 +31,11 @@ import { ForceUpdateGate } from "@/components/ForceUpdateGate";
 function AppRouter() {
   const { user, isLoading } = useAuth();
   const { syncFromDb } = useTheme();
+  // Subscribe to hash changes so this component re-renders on navigation.
+  // The body below reads window.location.hash directly, but without this
+  // subscription AppRouter wouldn't re-run when the hash changes (e.g. when
+  // the invite page sets hash="#/" to send a logged-out user to AuthPage).
+  useHashLocation();
 
   // Capture UTM params and referral codes from URL on first load.
   // Both survive the OTP step because they're stored in localStorage.
