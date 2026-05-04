@@ -1197,7 +1197,11 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                 />
               </div>
 
-              {/* Repeat toggle (Premium) */}
+              {/* Repeat toggle (Premium) — hidden entirely in the Android TWA
+                  when the user isn't premium (Google Play policy: no premium
+                  teaser UI). Web/iOS render normally. Premium users (paid via
+                  web Stripe) still see + use the toggle. */}
+              {!(isInTWA && !user?.isPremium) && (
               <div className="rounded-lg border border-border p-3 space-y-2.5">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -1209,8 +1213,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                   </div>
                   {user?.isPremium ? (
                     <Switch checked={isRecurring} onCheckedChange={setIsRecurring} />
-                  ) : !isInTWA ? (
-                    // No upgrade CTA inside the Android TWA (Google Play policy).
+                  ) : (
                     <button
                       type="button"
                       onClick={() => setUpgradeSheetOpen(true)}
@@ -1218,7 +1221,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                     >
                       <Crown className="w-3 h-3" /> Premium
                     </button>
-                  ) : null}
+                  )}
                 </div>
                 {isRecurring && user?.isPremium && (
                   <div className="grid grid-cols-2 gap-1.5 pt-1">
@@ -1239,6 +1242,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                   </div>
                 )}
               </div>
+              )}
               <UpgradePromptSheet open={upgradeSheetOpen} onClose={() => setUpgradeSheetOpen(false)} />
 
               {/* Receipt: scan with AI (Premium) or plain attach */}
