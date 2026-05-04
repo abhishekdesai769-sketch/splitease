@@ -8,10 +8,11 @@ import { OAuth2Client } from "google-auth-library";
 import appleSignin from "apple-signin-auth";
 import { storage } from "./storage";
 import { db } from "./db";
-import { referralClicks } from "@shared/schema";
-import { eq, and, gt, desc } from "drizzle-orm";
+import { referralClicks, deviceTokens } from "@shared/schema";
+import { eq, and, gt, desc, sql } from "drizzle-orm";
 import { signupSchema, loginSchema, forgotPasswordSchema, resetPasswordSchema } from "@shared/schema";
 import { notifyExpenseCreated, sendOtpEmail, sendResetPasswordEmail, sendExportEmail, sendSupportEmail, sendInviteToInviteeEmail, sendInviteToAdminEmail, sendPremiumWelcomeEmail } from "./email";
+import { pushExpenseCreated, deleteDeviceToken as deleteDeviceTokenRow } from "./push";
 import { parseReceipt, RECEIPT_SCANNING_ENABLED } from "./receipt-parser";
 import { stripe, STRIPE_PRICE_MONTHLY, STRIPE_PRICE_YEARLY, STRIPE_ENABLED } from "./stripe";
 import {
@@ -1254,6 +1255,15 @@ setInterval(loadAll,30000);
           receiptBuffer: receiptFile?.buffer,
           receiptFilename: receiptFile?.originalname,
         });
+        // iOS push notifications (fire-and-forget; never throws)
+        pushExpenseCreated({
+          description: sanitize(description, 200),
+          amount: parsedAmount,
+          paidByName: payer.name,
+          paidByUserId: paidById,
+          splitAmongUserIds: splitAmongIds,
+          isSettlement: !!isSettlement,
+        }).catch((err) => console.error("[push] friend-expense:", err));
       }
     } catch (e) { /* ignore email errors */ }
 
@@ -1326,6 +1336,15 @@ setInterval(loadAll,30000);
           splitAmong: [{ name: receiver.name, email: receiver.email, share: parsedAmount }],
           isSettlement: true,
         });
+        // iOS push notifications (fire-and-forget; never throws)
+        pushExpenseCreated({
+          description: "Settlement payment",
+          amount: parsedAmount,
+          paidByName: payer.name,
+          paidByUserId: userId,
+          splitAmongUserIds: [friendId],
+          isSettlement: true,
+        }).catch((err) => console.error("[push] settle-up:", err));
       }
     } catch (e) { /* ignore email errors */ }
   });
@@ -2160,6 +2179,16 @@ setInterval(loadAll,30000);
           receiptBuffer: receiptFile?.buffer,
           receiptFilename: receiptFile?.originalname,
         });
+        // iOS push notifications (fire-and-forget; never throws)
+        pushExpenseCreated({
+          description: sanitize(description, 200),
+          amount: parsedAmount,
+          paidByName: payer.name,
+          paidByUserId: paidById,
+          splitAmongUserIds: splitAmongIds,
+          groupName,
+          isSettlement: !!isSettlement,
+        }).catch((err) => console.error("[push] group-expense:", err));
       }
     } catch (e) { /* ignore email errors */ }
 
@@ -3234,6 +3263,61 @@ setInterval(loadAll,30000);
       console.error("[stripe] portal error:", err.message);
       res.status(500).json({ error: "Failed to open billing portal" });
     }
+  });
+
+  // ========== Device Tokens (iOS push notifications) ==========
+  // Register a device token after the iOS app receives one from APNs.
+  // Idempotent on (token) — re-registering updates the userId + lastUsedAt.
+  // Web and Android clients should not call this; only iOS Capacitor app does.
+  app.post("/api/device-tokens", requireAuth, async (req, res) => {
+    const userId = (req.session as any).userId;
+    const { token, platform, bundleId, environment, appVersion } = req.body ?? {};
+
+    if (!token || typeof token !== "string" || token.length < 32 || token.length > 256) {
+      return res.status(400).json({ error: "Invalid device token" });
+    }
+    if (platform !== "ios") {
+      return res.status(400).json({ error: "Unsupported platform" });
+    }
+    const env = environment === "sandbox" ? "sandbox" : "production";
+
+    try {
+      await db
+        .insert(deviceTokens)
+        .values({
+          userId,
+          token,
+          platform: "ios",
+          bundleId: typeof bundleId === "string" && bundleId.length < 200 ? bundleId : "ca.klarityit.spliiit",
+          environment: env,
+          appVersion: typeof appVersion === "string" && appVersion.length < 32 ? appVersion : null,
+        })
+        .onConflictDoUpdate({
+          target: deviceTokens.token,
+          set: {
+            userId,
+            environment: env,
+            lastUsedAt: sql`now()`,
+            ...(typeof appVersion === "string" && appVersion.length < 32 ? { appVersion } : {}),
+          },
+        });
+      res.json({ ok: true });
+    } catch (err: any) {
+      console.error("[push] register device token failed:", err?.message || err);
+      res.status(500).json({ error: "Failed to register device token" });
+    }
+  });
+
+  // Deregister on logout / token invalidation. Scoped to the requesting user
+  // so a stolen token can't unregister someone else's device.
+  app.delete("/api/device-tokens/:token", requireAuth, async (req, res) => {
+    const userId = (req.session as any).userId;
+    const { token } = req.params;
+    if (!token || typeof token !== "string") {
+      return res.status(400).json({ error: "Invalid token" });
+    }
+    await deleteDeviceTokenRow(token, userId);
+    res.json({ ok: true });
   });
 
   // POST /api/webhooks/stripe — Stripe sends events here

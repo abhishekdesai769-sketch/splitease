@@ -235,6 +235,30 @@ export const referralClicks = pgTable("referral_clicks", {
 
 export type ReferralClick = typeof referralClicks.$inferSelect;
 
+// Device Tokens — for iOS push notifications via APNs.
+// One row per (token) — token is globally unique. userId is a foreign key to users.
+// On token refresh, the same token can be re-associated with a different user
+// (rare, but possible if the device is shared). On logout, we DELETE the token.
+// On APNs returning Unregistered/BadDeviceToken, we DELETE the token (auto-cleanup).
+export const deviceTokens = pgTable("device_tokens", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  token: text("token").notNull(),                                       // APNs hex token
+  platform: text("platform").notNull(),                                 // "ios" (Android added in v2)
+  bundleId: text("bundle_id").notNull(),                                // "ca.klarityit.spliiit"
+  environment: text("environment").notNull().default("production"),     // "production" | "sandbox"
+  appVersion: text("app_version"),                                      // optional, e.g. "1.2.0"
+  createdAt: text("created_at").notNull().default(sql`now()`),
+  lastUsedAt: text("last_used_at").notNull().default(sql`now()`),
+}, (table) => [
+  uniqueIndex("device_tokens_token_idx").on(table.token),
+  index("device_tokens_user_id_idx").on(table.userId),
+]);
+
+export const insertDeviceTokenSchema = createInsertSchema(deviceTokens).omit({ id: true, createdAt: true, lastUsedAt: true });
+export type InsertDeviceToken = z.infer<typeof insertDeviceTokenSchema>;
+export type DeviceToken = typeof deviceTokens.$inferSelect;
+
 // Signup/Login schemas (for validation)
 export const signupSchema = z.object({
   name: z.string().min(1, "Name is required").max(100, "Name too long"),

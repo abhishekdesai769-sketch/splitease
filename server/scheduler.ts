@@ -1,5 +1,6 @@
 import { storage } from "./storage";
 import { sendAutoReminderEmail } from "./email";
+import { pushExpenseCreated } from "./push";
 
 async function processRecurringExpenses() {
   const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
@@ -26,6 +27,28 @@ async function processRecurringExpenses() {
           splitAmounts: null,
           deletedAt: null,
         });
+
+        // iOS push notifications for the new recurring expense
+        // (fire-and-forget; wrapped in try so it never aborts the cron loop)
+        try {
+          const payer = await storage.getUser(rec.paidById);
+          let groupName: string | undefined;
+          if (rec.groupId) {
+            const g = await storage.getGroup(rec.groupId);
+            groupName = g?.name;
+          }
+          if (payer) {
+            pushExpenseCreated({
+              description: rec.description,
+              amount: rec.amount,
+              paidByName: payer.name,
+              paidByUserId: rec.paidById,
+              splitAmongUserIds: rec.splitAmongIds,
+              groupName,
+              isRecurring: true,
+            }).catch((err) => console.error("[push] recurring:", err));
+          }
+        } catch (e) { /* ignore push setup errors */ }
 
         // Advance nextRunDate by the frequency
         const next = new Date(rec.nextRunDate + "T12:00:00Z"); // noon UTC avoids DST edge cases
