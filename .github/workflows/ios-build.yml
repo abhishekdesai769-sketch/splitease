@@ -32,7 +32,11 @@ on:
 jobs:
   build:
     name: Build iOS & Upload to TestFlight
-    runs-on: macos-15
+    # macos-latest gives us the newest GitHub-provided runner image with
+    # the latest Xcode. Required because Apple mandates Xcode 26+ / iOS
+    # 26 SDK for all App Store uploads — older runners ship Xcode 16.x
+    # and get rejected at upload time with STATE_ERROR.VALIDATION_ERROR.
+    runs-on: macos-latest
     timeout-minutes: 60
 
     steps:
@@ -44,6 +48,23 @@ jobs:
         with:
           node-version: "20"
           cache: "npm"
+
+      # Apple requires Xcode 26+ for App Store submission as of 2026.
+      # GitHub runners often have several Xcode versions installed; pick
+      # the highest one so we don't accidentally get an older default.
+      - name: Select latest Xcode
+        run: |
+          XCODE_PATH=$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)
+          if [ -z "$XCODE_PATH" ]; then
+            echo "ERROR: No Xcode installation found on runner!"
+            ls -d /Applications/Xcode* 2>/dev/null || echo "(no Xcode in /Applications)"
+            exit 1
+          fi
+          echo "Selecting Xcode at: $XCODE_PATH"
+          sudo xcode-select -s "$XCODE_PATH/Contents/Developer"
+          echo "Active Xcode after selection:"
+          xcode-select -p
+          xcodebuild -version
 
       - name: Install Node dependencies
         run: npm install
