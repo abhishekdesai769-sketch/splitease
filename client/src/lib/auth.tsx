@@ -3,6 +3,7 @@ import type { SafeUser } from "@shared/schema";
 import { apiRequest, queryClient } from "./queryClient";
 import { identifyUser, resetIdentity, track } from "./analytics";
 import { initRevenueCat } from "./iap";
+import { initPushNotifications, deregisterPushToken } from "./push";
 
 interface AuthContextType {
   user: SafeUser | null;
@@ -36,6 +37,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // initRevenueCat is a no-op on web/Android and idempotent (runs once per session).
   useEffect(() => {
     if (user?.id) initRevenueCat(user.id);
+  }, [user?.id]);
+
+  // Register iOS push notifications when a user is logged in.
+  // initPushNotifications is a no-op on web/Android. Asks for permission
+  // on first run; subsequent runs reuse the existing token.
+  useEffect(() => {
+    if (user?.id) initPushNotifications(user.id);
   }, [user?.id]);
 
   // Check if user is logged in on mount
@@ -114,6 +122,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
+    // Deregister the iOS push token BEFORE logging out so the server-side
+    // delete is authenticated. No-op on web/Android. Wrapped in try so a
+    // network blip can't block the actual logout.
+    try {
+      await deregisterPushToken();
+    } catch { /* never block logout on push deregister */ }
+
     await apiRequest("POST", "/api/auth/logout");
     setUser(null);
     resetIdentity();

@@ -37,6 +37,14 @@ const config: CapacitorConfig = {
       style: "dark",
       backgroundColor: "#0a0f0d",
     },
+    // iOS Push Notifications.
+    // presentationOptions controls what shows when a push arrives while
+    // the app is in the FOREGROUND. Without this, iOS silences foreground
+    // pushes by default. With ['badge', 'sound', 'alert'] the user sees
+    // a banner + hears the sound + the badge count updates even mid-use.
+    PushNotifications: {
+      presentationOptions: ["badge", "sound", "alert"],
+    },
   },
 };
 
