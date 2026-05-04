@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Crown, Check, Loader2, RotateCcw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { isIosNative, purchasePremium, restorePurchases, type IAPPlan } from "@/lib/iap";
+import { isInTWA } from "@/lib/platform";
 
 type Plan = "monthly" | "yearly";
 
@@ -98,6 +99,10 @@ export function UpgradePromptSheet({
       setIsRestoring(false);
     }
   };
+
+  // Google Play policy: no upgrade/payment UI allowed inside the Android TWA.
+  // Web + iOS render the sheet normally. (See lib/platform.ts.)
+  if (isInTWA) return null;
 
   const isPending = isIosNative ? iapMutation.isPending : stripeMutation.isPending;
 

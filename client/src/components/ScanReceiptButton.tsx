@@ -4,6 +4,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { ReceiptReviewSheet, type Member, type ItemSplit } from "@/components/ReceiptReviewSheet";
 import { triggerReview } from "@/lib/reviewPrompt";
+import { isInTWA } from "@/lib/platform";
 
 interface ReceiptItem {
   name: string;
@@ -93,6 +94,9 @@ export function ScanReceiptButton({ isPremium, onUpgrade, members, onItemSplit, 
   };
 
   if (!isPremium) {
+    // In the Android TWA, hide the entire feature (Google Play policy:
+    // no premium teaser UI). Web + iOS still see the upgrade card.
+    if (isInTWA) return null;
     return (
       <button
         type="button"

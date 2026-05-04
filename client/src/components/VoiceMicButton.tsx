@@ -38,6 +38,7 @@ import { UpgradePromptSheet } from "./UpgradePromptSheet";
 import { track } from "@/lib/analytics";
 import { recordExpenseAndCheck, triggerReview } from "@/lib/reviewPrompt";
 import { isIosNative } from "@/lib/iap";
+import { isInTWA } from "@/lib/platform";
 import { speak, stopSpeaking } from "@/lib/speech";
 
 // iOS browsers block microphone access in web views — only the native Capacitor app can use it.
@@ -410,6 +411,11 @@ export function VoiceMicButton() {
   }, [submitting, handleClose, toast, voiceCtx.defaultCurrency]);
 
   if (!user) return null;
+
+  // In the Android TWA, hide the voice mic entirely for non-premium users
+  // (Google Play policy: no premium teaser UI). Premium users — including
+  // those who paid via web Stripe — still see the button and use voice.
+  if (isInTWA && !user.isPremium) return null;
 
   const isPremium = !!user.isPremium;
   const isListening = voiceState === "listening";

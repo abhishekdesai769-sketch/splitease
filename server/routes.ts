@@ -3161,6 +3161,16 @@ setInterval(loadAll,30000);
 
   // POST /api/subscription/checkout — creates a Stripe Checkout session
   app.post("/api/subscription/checkout", requireAuth, async (req, res) => {
+    // Defense-in-depth: reject TWA-originated checkout attempts. The Android
+    // app's UI never exposes upgrade flows (Google Play policy compliance);
+    // this guard ensures even a manually-crafted request from inside the TWA
+    // can't kick off Stripe checkout. Web + iOS pass through unchanged.
+    const referer = String(req.headers.referer || "");
+    if (referer.startsWith("android-app://")) {
+      return res.status(403).json({
+        error: "Subscriptions are managed on the web. Please visit spliiit.klarityit.ca on a browser."
+      });
+    }
     if (!STRIPE_ENABLED) return res.status(503).json({ error: "Payments not configured" });
     const userId = (req.session as any).userId;
     const user = await storage.getUser(userId);

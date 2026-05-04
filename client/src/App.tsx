@@ -27,6 +27,7 @@ import OnboardingPreferences from "@/pages/onboarding";
 import InvitePage from "@/pages/invite";
 import { ReviewPromptSheet } from "@/components/ReviewPromptSheet";
 import { ForceUpdateGate } from "@/components/ForceUpdateGate";
+import { isInTWA } from "@/lib/platform";
 
 function AppRouter() {
   const { user, isLoading } = useAuth();
@@ -128,7 +129,12 @@ function AppRouter() {
         <Route path="/expenses" component={Expenses} />
         <Route path="/invite/:code" component={InvitePage} />
         <Route path="/import" component={Import} />
-        <Route path="/upgrade" component={Upgrade} />
+        {/* /upgrade route is hidden inside the Android TWA — Google Play policy
+            forbids non-Play payment UI in apps. Users see clean free product;
+            payments happen on the web. (See lib/platform.ts.) */}
+        <Route path="/upgrade">
+          {() => (isInTWA ? <Redirect to="/" /> : <Upgrade />)}
+        </Route>
         {user.isAdmin ? (
           <Route path="/admin" component={Admin} />
         ) : (

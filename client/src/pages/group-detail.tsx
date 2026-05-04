@@ -13,6 +13,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Plus, ArrowLeft, Trash2, Shuffle, Receipt, UserPlus, X, HandCoins, CheckCircle2, AlertTriangle, Camera, Mail, Loader2, Crown, Shield, LogOut, UserMinus, Clock, Check, Ghost, FileText, Pencil, MoreVertical, Upload, Download, Repeat, ChevronDown, Copy, MessageCircle, Share2 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { UpgradePromptSheet } from "@/components/UpgradePromptSheet";
+import { isInTWA } from "@/lib/platform";
 import { ScanReceiptButton } from "@/components/ScanReceiptButton";
 import { CurrencySelector, formatExpenseAmount } from "@/components/CurrencySelector";
 import { useToast } from "@/hooks/use-toast";
@@ -1208,7 +1209,8 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                   </div>
                   {user?.isPremium ? (
                     <Switch checked={isRecurring} onCheckedChange={setIsRecurring} />
-                  ) : (
+                  ) : !isInTWA ? (
+                    // No upgrade CTA inside the Android TWA (Google Play policy).
                     <button
                       type="button"
                       onClick={() => setUpgradeSheetOpen(true)}
@@ -1216,7 +1218,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                     >
                       <Crown className="w-3 h-3" /> Premium
                     </button>
-                  )}
+                  ) : null}
                 </div>
                 {isRecurring && user?.isPremium && (
                   <div className="grid grid-cols-2 gap-1.5 pt-1">

@@ -16,6 +16,7 @@ import { useTheme, type ThemePref } from "@/lib/theme";
 import { CURRENCIES } from "@/components/CurrencySelector";
 import { useLocation } from "wouter";
 import { UpgradePromptSheet } from "@/components/UpgradePromptSheet";
+import { isInTWA } from "@/lib/platform";
 
 // ─── Email preview generator ─────────────────────────────────────────────────
 // Mirrors the exact wording in server/email.ts sendAutoReminderEmail()
@@ -270,7 +271,10 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
               </div>
             </button>
 
-            {/* Auto Reminders */}
+            {/* Auto Reminders — hidden for non-premium users inside the
+                Android TWA (Google Play policy: no premium teaser UI).
+                Web + iOS continue showing the locked entrypoint. */}
+            {!(isInTWA && !user?.isPremium) && (
             <button
               onClick={() => setView("reminders")}
               className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-muted/50 transition-colors text-left group"
@@ -291,6 +295,7 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
                 <p className="text-xs text-muted-foreground">Auto-email people who owe you</p>
               </div>
             </button>
+            )}
 
             {/* Preferences */}
             <button
@@ -322,8 +327,9 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
               </div>
             </button>
 
-            {/* Upgrade to Premium — only shown to non-premium users, softly */}
-            {!user?.isPremium && (
+            {/* Upgrade to Premium — only shown to non-premium users, softly.
+                Hidden inside the Android TWA (Google Play policy). */}
+            {!isInTWA && !user?.isPremium && (
               <button
                 onClick={() => { setOpen(false); setLocation("/upgrade"); }}
                 className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-amber-500/5 transition-colors text-left group"
@@ -626,8 +632,10 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
                 Spliiit automatically emails people who owe you — from Spliiit's account, not yours.
               </p>
 
-              {/* Non-premium banner */}
-              {!isPremium && (
+              {/* Non-premium banner — never shown inside the Android TWA
+                  (Google Play policy: no upgrade CTA / pricing). Defense-in-
+                  depth; the menu entrypoint above is also hidden in TWA. */}
+              {!isPremium && !isInTWA && (
                 <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 mb-4 flex items-start gap-2 flex-shrink-0">
                   <Crown className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
                   <div>

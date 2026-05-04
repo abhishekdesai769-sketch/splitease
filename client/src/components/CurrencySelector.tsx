@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Crown, ChevronDown, Check } from "lucide-react";
+import { isInTWA } from "@/lib/platform";
 
 export interface CurrencyInfo {
   code: string;
@@ -32,6 +33,11 @@ interface Props {
 
 export function CurrencySelector({ value, onChange, isPremium, onUpgrade }: Props) {
   const [open, setOpen] = useState(false);
+
+  // In the Android TWA, hide the currency selector entirely for non-premium
+  // users — it's a premium feature and we can't show upgrade UI on Android.
+  // Premium users (paid via web) still see the full selector.
+  if (isInTWA && !isPremium) return null;
 
   const handleClick = () => {
     if (!isPremium) { onUpgrade?.(); return; }
