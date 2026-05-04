@@ -80,6 +80,32 @@ jobs:
         run: |
           rm -rf ios
           npx cap add ios || true
+          # Run cap sync explicitly so all installed Capacitor plugins
+          # (including @capacitor/push-notifications) get registered into
+          # the freshly-generated iOS project. Without this, plugins added
+          # to package.json after the first cap add may not be picked up.
+          npx cap sync ios || true
+
+      - name: Verify @capacitor/push-notifications is wired into the build
+        run: |
+          # Step 1: plugin in node_modules?
+          if [ -d "node_modules/@capacitor/push-notifications" ]; then
+            VER=$(node -p "require('./node_modules/@capacitor/push-notifications/package.json').version")
+            echo "✅ @capacitor/push-notifications v${VER} present in node_modules"
+          else
+            echo "❌ @capacitor/push-notifications NOT in node_modules"
+            ls node_modules/@capacitor/ 2>&1
+            exit 1
+          fi
+          # Step 2: plugin in the Podfile?
+          if grep -q "CapacitorPushNotifications" ios/App/Podfile; then
+            echo "✅ CapacitorPushNotifications referenced in Podfile"
+          else
+            echo "❌ CapacitorPushNotifications missing from Podfile"
+            echo "--- Full Podfile ---"
+            cat ios/App/Podfile
+            exit 1
+          fi
 
       - name: Fix deployment target and install pods
         run: |
@@ -89,8 +115,18 @@ jobs:
           ruby ../../scripts/patch_podfile_signing.rb Podfile
 
           echo "Podfile tail:"
-          tail -20 Podfile
+          tail -30 Podfile
           pod install
+
+          echo "=== Verify CapacitorPushNotifications pod is installed ==="
+          if [ -d "Pods/CapacitorPushNotifications" ]; then
+            echo "✅ CapacitorPushNotifications pod compiled into Pods/"
+          else
+            echo "❌ CapacitorPushNotifications pod NOT in Pods/"
+            ls Pods/ | grep -i capacitor || echo "(no Capacitor pods found)"
+            exit 1
+          fi
+
           cd ../..
           npx cap copy ios
 
@@ -246,7 +282,7 @@ jobs:
             -authenticationKeyIssuerID $ASC_ISSUER_ID \
             OTHER_CODE_SIGN_FLAGS="--keychain $HOME/Library/Keychains/build.keychain-db" \
             CURRENT_PROJECT_VERSION=$BUILD_NUMBER \
-            MARKETING_VERSION=1.2.3 \
+            MARKETING_VERSION=1.2.4 \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="Apple Distribution" \
             PROVISIONING_PROFILE_SPECIFIER="$PROFILE_UUID" \
