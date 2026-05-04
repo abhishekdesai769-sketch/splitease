@@ -282,6 +282,14 @@ jobs:
             echo "   Fix: Enable 'Sign in with Apple' in Apple Developer Portal for App ID ca.klarityit.spliiit"
             exit 1
           fi
+          echo "=== Checking for APNs (Push Notifications) entitlement ==="
+          if codesign -d --entitlements :- "$APP_PATH" 2>/dev/null | grep -q "aps-environment"; then
+            echo "✅ aps-environment entitlement is present"
+          else
+            echo "❌ ERROR: aps-environment entitlement NOT found in signed binary!"
+            echo "   Fix: Enable 'Push Notifications' in Apple Developer Portal for App ID ca.klarityit.spliiit"
+            exit 1
+          fi
 
       - name: Export IPA
         env:
