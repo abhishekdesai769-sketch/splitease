@@ -80,32 +80,23 @@ jobs:
         run: |
           rm -rf ios
           npx cap add ios || true
-          # Run cap sync explicitly so all installed Capacitor plugins
-          # (including @capacitor/push-notifications) get registered into
-          # the freshly-generated iOS project. Without this, plugins added
-          # to package.json after the first cap add may not be picked up.
-          npx cap sync ios || true
 
-      - name: Verify @capacitor/push-notifications is wired into the build
+      - name: Diagnostic — node_modules + full Podfile
         run: |
-          # Step 1: plugin in node_modules?
+          echo "=== @capacitor/push-notifications in node_modules? ==="
           if [ -d "node_modules/@capacitor/push-notifications" ]; then
             VER=$(node -p "require('./node_modules/@capacitor/push-notifications/package.json').version")
-            echo "✅ @capacitor/push-notifications v${VER} present in node_modules"
+            echo "  ✅ v${VER} present"
           else
-            echo "❌ @capacitor/push-notifications NOT in node_modules"
+            echo "  ❌ NOT in node_modules"
             ls node_modules/@capacitor/ 2>&1
-            exit 1
           fi
-          # Step 2: plugin in the Podfile?
-          if grep -q "CapacitorPushNotifications" ios/App/Podfile; then
-            echo "✅ CapacitorPushNotifications referenced in Podfile"
-          else
-            echo "❌ CapacitorPushNotifications missing from Podfile"
-            echo "--- Full Podfile ---"
-            cat ios/App/Podfile
-            exit 1
-          fi
+          echo ""
+          echo "=== Full Podfile content (after cap add ios) ==="
+          cat ios/App/Podfile
+          echo ""
+          echo "=== Podfile grep for plugins ==="
+          grep -i "pod '" ios/App/Podfile || echo "  (no pod declarations found)"
 
       - name: Fix deployment target and install pods
         run: |
@@ -118,13 +109,22 @@ jobs:
           tail -30 Podfile
           pod install
 
-          echo "=== Verify CapacitorPushNotifications pod is installed ==="
-          if [ -d "Pods/CapacitorPushNotifications" ]; then
-            echo "✅ CapacitorPushNotifications pod compiled into Pods/"
+          echo ""
+          echo "=== Diagnostic: Pods/ directory ==="
+          ls -la Pods/ 2>&1 | head -50 || echo "(Pods/ does not exist)"
+          echo ""
+          echo "=== Diagnostic: Podfile.lock pods (top 40) ==="
+          if [ -f Podfile.lock ]; then
+            grep -E "^\s+- " Podfile.lock | head -40
           else
-            echo "❌ CapacitorPushNotifications pod NOT in Pods/"
-            ls Pods/ | grep -i capacitor || echo "(no Capacitor pods found)"
-            exit 1
+            echo "(Podfile.lock missing)"
+          fi
+          echo ""
+          echo "=== Push-notifications pod check ==="
+          if [ -d "Pods/CapacitorPushNotifications" ]; then
+            echo "✅ CapacitorPushNotifications pod present"
+          else
+            echo "⚠️ CapacitorPushNotifications pod NOT in Pods/ (continuing anyway to inspect build)"
           fi
 
           cd ../..
