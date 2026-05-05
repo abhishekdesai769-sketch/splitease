@@ -3265,21 +3265,6 @@ setInterval(loadAll,30000);
     }
   });
 
-  // ========== Push diagnostics (TEMPORARY) ==========
-  // The iOS client (lib/push.ts) GETs this endpoint at each step of
-  // push notification initialization with `?step=...` query params.
-  // Each call shows up in Render logs prefixed with `[pushdebug]`,
-  // letting us see exactly where the iOS push flow succeeds or breaks
-  // without needing a Mac to inspect WebKit console output.
-  // Remove this endpoint once push is confirmed reliable in production.
-  app.get("/api/_pushdebug", (req, res) => {
-    try {
-      const params = JSON.stringify(req.query);
-      console.log(`[pushdebug] ${params}`);
-    } catch { /* logging never breaks the response */ }
-    res.json({ ok: true });
-  });
-
   // ========== Device Tokens (iOS push notifications) ==========
   // Register a device token after the iOS app receives one from APNs.
   // Idempotent on (token) — re-registering updates the userId + lastUsedAt.
