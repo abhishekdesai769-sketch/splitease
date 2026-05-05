@@ -81,6 +81,17 @@ jobs:
           rm -rf ios
           npx cap add ios || true
 
+      - name: Inject push notification handlers into AppDelegate.swift
+        run: |
+          # The default AppDelegate.swift from `cap add ios` doesn't forward
+          # APNs token callbacks to Capacitor. Without these handlers, the
+          # @capacitor/push-notifications plugin can never deliver a device
+          # token to JavaScript even when everything else is wired correctly.
+          ruby scripts/inject_push_appdelegate.rb ios/App/App/AppDelegate.swift
+          echo ""
+          echo "=== AppDelegate.swift after injection ==="
+          cat ios/App/App/AppDelegate.swift
+
       - name: Diagnostic — node_modules + full Podfile
         run: |
           echo "=== @capacitor/push-notifications in node_modules? ==="
@@ -282,7 +293,7 @@ jobs:
             -authenticationKeyIssuerID $ASC_ISSUER_ID \
             OTHER_CODE_SIGN_FLAGS="--keychain $HOME/Library/Keychains/build.keychain-db" \
             CURRENT_PROJECT_VERSION=$BUILD_NUMBER \
-            MARKETING_VERSION=1.2.4 \
+            MARKETING_VERSION=1.2.5 \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="Apple Distribution" \
             PROVISIONING_PROFILE_SPECIFIER="$PROFILE_UUID" \
