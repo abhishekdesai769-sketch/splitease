@@ -28,6 +28,7 @@ import InvitePage from "@/pages/invite";
 import { ReviewPromptSheet } from "@/components/ReviewPromptSheet";
 import { ForceUpdateGate } from "@/components/ForceUpdateGate";
 import { isInTWA } from "@/lib/platform";
+import { initDeepLinkHandling } from "@/lib/deeplink";
 
 function AppRouter() {
   const { user, isLoading } = useAuth();
@@ -156,6 +157,13 @@ function PageViewTracker() {
 }
 
 function App() {
+  // iOS Universal Links — register the Capacitor appUrlOpen listener once,
+  // as early as possible in the app lifecycle. No-op on web/Android.
+  // Mirrors the lib/iap.ts and lib/push.ts native-only init pattern.
+  useEffect(() => {
+    initDeepLinkHandling();
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>

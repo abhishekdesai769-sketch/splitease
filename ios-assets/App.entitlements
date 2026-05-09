@@ -14,5 +14,20 @@
 	-->
 	<key>aps-environment</key>
 	<string>production</string>
+	<!--
+	  Associated Domains — iOS Universal Links.
+	  Pairs with the AASA file served at
+	    https://spliiit.klarityit.ca/.well-known/apple-app-site-association
+	  (defined in server/routes.ts).
+	  When a user taps any https://spliiit.klarityit.ca/... link AND the Spliiit
+	  app is installed, iOS routes the URL to the app instead of Safari. The
+	  Capacitor App plugin's appUrlOpen listener (see client/src/lib/deeplink.ts)
+	  receives the URL and navigates the WebView to the corresponding path —
+	  user keeps their session, no re-login.
+	-->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:spliiit.klarityit.ca</string>
+	</array>
 </dict>
 </plist>

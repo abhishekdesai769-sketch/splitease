@@ -84,6 +84,30 @@ export async function registerRoutes(
     ]);
   });
 
+  // Apple App Site Association — iOS Universal Links.
+  // Apple fetches this from /.well-known/apple-app-site-association (NO file extension)
+  // with Content-Type: application/json over HTTPS, no redirects.
+  //   Team ID:   7JUGQ64AX4 (from Apple Developer account)
+  //   Bundle ID: ca.klarityit.spliiit
+  //   paths: ["*"] = every URL on this domain can deep-link into the iOS app.
+  // Once iOS validates this file (happens on app install + periodically), tapping any
+  // https://spliiit.klarityit.ca/... link will open the Spliiit app instead of Safari
+  // — provided the app's Associated Domains entitlement (in ios-assets/App.entitlements)
+  // declares applinks:spliiit.klarityit.ca.
+  app.get("/.well-known/apple-app-site-association", (_req, res) => {
+    res.type("application/json").json({
+      applinks: {
+        apps: [],
+        details: [
+          {
+            appID: "7JUGQ64AX4.ca.klarityit.spliiit",
+            paths: ["*"],
+          },
+        ],
+      },
+    });
+  });
+
   // Privacy Policy page (public, no auth required)
   app.get("/privacy", (_req, res) => {
     res.send(`<!DOCTYPE html>
