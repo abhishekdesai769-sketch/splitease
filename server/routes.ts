@@ -1278,6 +1278,9 @@ setInterval(loadAll,30000);
           isSettlement: !!isSettlement,
           receiptBuffer: receiptFile?.buffer,
           receiptFilename: receiptFile?.originalname,
+          // Deep-link target: friend page of the payer (so the recipient lands
+          // on /friends/{payerId} when they tap the email link).
+          paidByUserId: paidById,
         });
         // iOS push notifications (fire-and-forget; never throws)
         pushExpenseCreated({
@@ -1359,6 +1362,10 @@ setInterval(loadAll,30000);
           paidByEmail: payer.email,
           splitAmong: [{ name: receiver.name, email: receiver.email, share: parsedAmount }],
           isSettlement: true,
+          // Deep-link: if settlement was within a group, link there; otherwise
+          // link to the friend page (paidByUserId = payer's id).
+          groupId: groupId || undefined,
+          paidByUserId: userId,
         });
         // iOS push notifications (fire-and-forget; never throws)
         pushExpenseCreated({
@@ -2202,6 +2209,9 @@ setInterval(loadAll,30000);
           isSettlement: !!isSettlement,
           receiptBuffer: receiptFile?.buffer,
           receiptFilename: receiptFile?.originalname,
+          // Deep-link target: the group's detail page.
+          groupId,
+          paidByUserId: paidById,
         });
         // iOS push notifications (fire-and-forget; never throws)
         pushExpenseCreated({

@@ -188,10 +188,30 @@ export async function notifyExpenseCreated(opts: {
   isSettlement?: boolean;
   receiptBuffer?: Buffer;
   receiptFilename?: string;
+  // Deep-link targets — used to build the "View on Spliiit" URL in the email.
+  // When set, the link points to the specific group or friend page instead of
+  // the homepage. Combined with iOS Universal Links + Android App Links, this
+  // means tapping the email link opens the app directly to the relevant
+  // expense context. Both optional + backwards-compatible — if neither is
+  // provided, the email falls back to the homepage URL (current behavior).
+  groupId?: string;
+  paidByUserId?: string;
 }) {
   if (!resend) return;
 
-  const { description, amount, paidByName, splitAmong, groupName, isSettlement, receiptBuffer, receiptFilename } = opts;
+  const { description, amount, paidByName, splitAmong, groupName, isSettlement, receiptBuffer, receiptFilename, groupId, paidByUserId } = opts;
+
+  // Build the deep-link target URL.
+  // Priority: groupId > paidByUserId > homepage fallback.
+  // Uses hash routing (/#/...) because the SPA uses wouter's useHashLocation.
+  // iOS / Android Universal Links pass the FULL URL (including hash) to the
+  // app's deeplink handler, which routes the WebView to the right screen.
+  const APP_BASE = "https://spliiit.klarityit.ca";
+  const viewUrl = groupId
+    ? `${APP_BASE}/#/groups/${groupId}`
+    : paidByUserId
+      ? `${APP_BASE}/#/friends/${paidByUserId}`
+      : APP_BASE;
 
   const hasReceipt = receiptBuffer && receiptFilename;
 
@@ -252,7 +272,7 @@ export async function notifyExpenseCreated(opts: {
       </td></tr>
       <!-- Link -->
       <tr><td style="padding-bottom:24px;">
-        <a href="https://spliiit.klarityit.ca" style="font-size:14px;color:#2dd4a8;text-decoration:none;font-weight:500;">View on Spliiit &rarr;</a>
+        <a href="${viewUrl}" style="font-size:14px;color:#2dd4a8;text-decoration:none;font-weight:500;">View on Spliiit &rarr;</a>
       </td></tr>
       <!-- Footer -->
       <tr><td style="border-top:1px solid #f3f4f6;padding-top:16px;font-size:12px;color:#9ca3af;">
@@ -268,8 +288,8 @@ export async function notifyExpenseCreated(opts: {
 
     // Plain text version — helps avoid Gmail Promotions filter
     const text = isSettlement
-      ? `Hi ${person.name},\n\n${paidByName} has settled up $${amount.toFixed(2)} with you${groupName ? ` in ${groupName}` : ""}.\n\nView details at https://spliiit.klarityit.ca\n\n— Spliiit`
-      : `Hi ${person.name},\n\n${paidByName} paid $${amount.toFixed(2)} for ${description}${groupName ? ` in ${groupName}` : ""}.\nYour share: $${person.share.toFixed(2)}${hasReceipt ? "\n\nReceipt is attached to this email." : ""}\n\nView details at https://spliiit.klarityit.ca\n\n— Spliiit`;
+      ? `Hi ${person.name},\n\n${paidByName} has settled up $${amount.toFixed(2)} with you${groupName ? ` in ${groupName}` : ""}.\n\nView details at ${viewUrl}\n\n— Spliiit`
+      : `Hi ${person.name},\n\n${paidByName} paid $${amount.toFixed(2)} for ${description}${groupName ? ` in ${groupName}` : ""}.\nYour share: $${person.share.toFixed(2)}${hasReceipt ? "\n\nReceipt is attached to this email." : ""}\n\nView details at ${viewUrl}\n\n— Spliiit`;
 
     // Fire-and-forget — don't block the API response
     sendEmail(person.email, subject, html, text, attachments);
