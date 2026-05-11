@@ -28,6 +28,7 @@ import OnboardingPreferences from "@/pages/onboarding";
 import InvitePage from "@/pages/invite";
 import { ReviewPromptSheet } from "@/components/ReviewPromptSheet";
 import { ForceUpdateGate } from "@/components/ForceUpdateGate";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { isInTWA } from "@/lib/platform";
 import { initDeepLinkHandling } from "@/lib/deeplink";
 
@@ -182,7 +183,9 @@ function App() {
               <ReviewPromptSheet />
               <Router hook={useHashLocation}>
                 <PageViewTracker />
-                <AppRouter />
+                <ErrorBoundary>
+                  <AppRouter />
+                </ErrorBoundary>
               </Router>
             </ForceUpdateGate>
           </AuthProvider>
