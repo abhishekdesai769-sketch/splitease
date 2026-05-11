@@ -26,10 +26,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
   });
   const inviteCount = incomingInvites.length;
 
-  // Money tab — Premium-only, hidden inside Android TWA (same Google Play
-  // payment-policy rule we apply to /upgrade). Defense-in-depth: the /money
-  // page also gates internally so manual navigation can't bypass.
-  const showMoneyTab = !!user?.isPremium && !isInTWA;
+  // Money tab — visible to every logged-in user EXCEPT Android TWA.
+  // Premium users see the early-access roadmap; non-Premium users see the
+  // upgrade teaser (FOMO + CTA). TWA stays hidden (Google Play payment-
+  // policy compliance — same rule we apply to /upgrade). Defense-in-depth:
+  // the /money page also gates internally so manual nav can't bypass.
+  const showMoneyTab = !!user && !isInTWA;
 
   const navItems = [
     { path: "/", icon: LayoutDashboard, label: "Dashboard" },
