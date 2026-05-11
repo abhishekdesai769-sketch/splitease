@@ -138,12 +138,12 @@ function AppRouter() {
         <Route path="/upgrade">
           {() => (isInTWA ? <Redirect to="/" /> : <Upgrade />)}
         </Route>
-        {/* /money — Premium-gated. Hidden in TWA (same as /upgrade rule).
-            Defense-in-depth: the page itself also checks isPremium + !isInTWA. */}
+        {/* /money — visible to all logged-in users EXCEPT Android TWA.
+            The page itself renders two variants: Premium users see the
+            early-access roadmap, non-Premium see the upgrade teaser.
+            Defense-in-depth: money.tsx also checks isInTWA internally. */}
         <Route path="/money">
-          {() =>
-            isInTWA || !user.isPremium ? <Redirect to="/" /> : <Money />
-          }
+          {() => (isInTWA ? <Redirect to="/" /> : <Money />)}
         </Route>
         {user.isAdmin ? (
           <Route path="/admin" component={Admin} />
