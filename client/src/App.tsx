@@ -23,6 +23,7 @@ import ResetPassword from "@/pages/reset-password";
 import NotFound from "@/pages/not-found";
 import Import from "@/pages/import";
 import Upgrade from "@/pages/upgrade";
+import Money from "@/pages/money";
 import OnboardingPreferences from "@/pages/onboarding";
 import InvitePage from "@/pages/invite";
 import { ReviewPromptSheet } from "@/components/ReviewPromptSheet";
@@ -135,6 +136,13 @@ function AppRouter() {
             payments happen on the web. (See lib/platform.ts.) */}
         <Route path="/upgrade">
           {() => (isInTWA ? <Redirect to="/" /> : <Upgrade />)}
+        </Route>
+        {/* /money — Premium-gated. Hidden in TWA (same as /upgrade rule).
+            Defense-in-depth: the page itself also checks isPremium + !isInTWA. */}
+        <Route path="/money">
+          {() =>
+            isInTWA || !user.isPremium ? <Redirect to="/" /> : <Money />
+          }
         </Route>
         {user.isAdmin ? (
           <Route path="/admin" component={Admin} />

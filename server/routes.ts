@@ -84,6 +84,49 @@ export async function registerRoutes(
     ]);
   });
 
+  // ─────────────────────────────────────────────────────────────────────
+  // MONEY (a.k.a. Spliiit Insights) — bank-connected personal finance
+  //
+  // v0: placeholder/beta. Returns a "status" doc consumed by the client's
+  // /money page. Premium-gated (mirrors the client's nav + page gates).
+  //
+  // Roadmap (each becomes a real endpoint as we build):
+  //   - POST   /api/money/plaid-link-token      (Plaid Link Token create)
+  //   - POST   /api/money/plaid-exchange         (public_token → access_token)
+  //   - GET    /api/money/accounts               (list connected banks)
+  //   - DELETE /api/money/accounts/:id          (disconnect)
+  //   - GET    /api/money/transactions           (paginated tx feed)
+  //   - POST   /api/money/transactions/:id/review (Personal/Split/Ignore)
+  //   - POST   /api/money/transactions/:id/split (→ Spliiit expense)
+  //   - GET    /api/money/summary?month=YYYY-MM (dashboard data)
+  //   - POST   /api/money/ask                    (Claude Q&A)
+  //   - POST   /api/money/webhook/plaid          (Plaid sync webhook)
+  //
+  // v0 only exposes /status so the placeholder page can show beta info
+  // without 404s on missing endpoints.
+  // ─────────────────────────────────────────────────────────────────────
+  app.get("/api/money/status", requireAuth, async (req: any, res) => {
+    const user = await storage.getUser(req.session.userId);
+    if (!user) return res.status(401).json({ error: "unauthorized" });
+    if (!user.isPremium) {
+      return res.status(403).json({ error: "premium_required" });
+    }
+    res.json({
+      enabled: false,
+      stage: "beta_preview",
+      version: "v0",
+      message: "Money is in early-access beta. We'll notify you when bank connections are live.",
+      roadmap: [
+        { id: "backend",       label: "Backend infrastructure", status: "in_progress" },
+        { id: "bank_connect",  label: "Bank connection",         status: "next" },
+        { id: "tx_feed",       label: "Transaction feed",        status: "next" },
+        { id: "split_one_tap", label: "One-tap split",           status: "later" },
+        { id: "summary",       label: "Monthly summary",         status: "later" },
+        { id: "ai_qa",         label: "Ask anything (AI)",       status: "later" },
+      ],
+    });
+  });
+
   // Apple App Site Association — iOS Universal Links.
   // Apple fetches this from /.well-known/apple-app-site-association (NO file extension)
   // with Content-Type: application/json over HTTPS, no redirects.

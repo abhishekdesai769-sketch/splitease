@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { UsersRound, Receipt, LayoutDashboard, Users2, Sun, Moon, LogOut, Shield } from "lucide-react";
+import { UsersRound, Receipt, LayoutDashboard, Users2, Sun, Moon, LogOut, Shield, Wallet } from "lucide-react";
 import { useTheme } from "@/lib/theme";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
@@ -7,6 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { SupportDrawer } from "@/components/SupportDrawer";
 import { VoiceMicButton } from "@/components/VoiceMicButton";
+import { isInTWA } from "@/lib/platform";
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
@@ -25,10 +26,16 @@ export function Layout({ children }: { children: React.ReactNode }) {
   });
   const inviteCount = incomingInvites.length;
 
+  // Money tab — Premium-only, hidden inside Android TWA (same Google Play
+  // payment-policy rule we apply to /upgrade). Defense-in-depth: the /money
+  // page also gates internally so manual navigation can't bypass.
+  const showMoneyTab = !!user?.isPremium && !isInTWA();
+
   const navItems = [
     { path: "/", icon: LayoutDashboard, label: "Dashboard" },
     { path: "/friends", icon: Users2, label: "Friends" },
     { path: "/groups", icon: UsersRound, label: "Groups" },
+    ...(showMoneyTab ? [{ path: "/money", icon: Wallet, label: "Money" }] : []),
     { path: "/expenses", icon: Receipt, label: "Expenses" },
     ...(user?.isAdmin ? [{ path: "/admin", icon: Shield, label: "Admin" }] : []),
   ];
