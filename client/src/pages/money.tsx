@@ -173,9 +173,9 @@ export default function MoneyPage() {
             </>
           ) : (
             <>
-              Premium members get this the moment it ships — no waitlist, no
-              extra charge. Free users will follow later. Upgrade to Premium
-              to skip the line and be among the first to use it.
+              Money is a Premium-only feature — it won't be available on the
+              free plan. Premium members get it the moment it ships, no
+              waitlist, no extra charge. Upgrade to unlock it.
             </>
           )}
         </p>
@@ -225,8 +225,8 @@ export default function MoneyPage() {
             💎 This is a Premium feature
           </p>
           <p className="text-xs text-muted-foreground max-w-sm mx-auto leading-relaxed">
-            Money will launch as a Premium-only feature. Upgrade now to be
-            among the first to use it when it ships.
+            Money is exclusive to Premium members. Upgrade to unlock it the
+            moment it ships.
           </p>
           <button
             onClick={() => setLocation("/upgrade")}
