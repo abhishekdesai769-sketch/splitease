@@ -29,7 +29,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   // Money tab — Premium-only, hidden inside Android TWA (same Google Play
   // payment-policy rule we apply to /upgrade). Defense-in-depth: the /money
   // page also gates internally so manual navigation can't bypass.
-  const showMoneyTab = !!user?.isPremium && !isInTWA();
+  const showMoneyTab = !!user?.isPremium && !isInTWA;
 
   const navItems = [
     { path: "/", icon: LayoutDashboard, label: "Dashboard" },

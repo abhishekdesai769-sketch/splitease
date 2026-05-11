@@ -77,12 +77,12 @@ export default function MoneyPage() {
   // navigating to /money without Premium gets bounced back to dashboard.
   useEffect(() => {
     if (!user) return;
-    if (!user.isPremium || isInTWA()) {
+    if (!user.isPremium || isInTWA) {
       setLocation("/");
     }
   }, [user, setLocation]);
 
-  if (!user || !user.isPremium || isInTWA()) {
+  if (!user || !user.isPremium || isInTWA) {
     return null;
   }
 
