@@ -16,6 +16,11 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    // Enable source maps so production error stack traces map back to our
+    // source files (e.g. `client/src/pages/dashboard.tsx:42`) instead of
+    // minified `bn`/`M4`/`Cf` symbols. Map files are served on-demand only
+    // and have zero runtime impact — bundle size and behavior unchanged.
+    sourcemap: true,
   },
   server: {
     fs: {
