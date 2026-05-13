@@ -461,15 +461,20 @@ export default function AuthPage() {
               </div>
             </a>
 
-            <div className="flex items-center justify-center gap-3 w-full py-3 px-4 rounded-xl border border-border bg-muted/30 text-muted-foreground cursor-default select-none">
+            <a
+              href="https://play.google.com/store/apps/details?id=ca.klarityit.spliiit&pcampaignid=web_share"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center gap-3 w-full py-3 px-4 rounded-xl border border-border bg-foreground text-background hover:opacity-90 transition-opacity"
+            >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                 <path d="M3.18 23.76c.3.17.64.22.99.14l12.47-7.18-2.61-2.62-10.85 9.66zM.48 2.05C.18 2.4 0 2.93 0 3.61v16.78c0 .68.18 1.21.48 1.56l.08.08 9.4-9.4v-.22L.56 1.97l-.08.08zM20.49 10.27l-2.68-1.54-2.93 2.93 2.93 2.93 2.7-1.56c.77-.44.77-1.16-.02-1.76zM3.18.24L15.65 7.42l-2.61 2.61L2.19.37C2.5.2 2.88.07 3.18.24z" />
               </svg>
               <div className="text-left">
-                <div className="text-xs opacity-75">Coming soon to</div>
+                <div className="text-xs opacity-75">Get it on</div>
                 <div className="text-sm font-semibold leading-tight">Google Play</div>
               </div>
-            </div>
+            </a>
           </div>}
 
         </div>
