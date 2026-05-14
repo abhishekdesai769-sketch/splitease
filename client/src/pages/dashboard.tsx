@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import type { Group, Expense, SafeUser, RecurringExpense } from "@shared/schema";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { UsersRound, Receipt, Users2, TrendingDown, TrendingUp, MailPlus, Check, X, Repeat, Trash2 } from "lucide-react";
+import { UsersRound, Receipt, Users2, TrendingDown, TrendingUp, MailPlus, Check, X, Repeat, Trash2, Sparkles } from "lucide-react";
 import { Link } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { calculateGroupBalances, calculatePairwiseBalances, simplifyDebts } from "@/lib/simplify";
@@ -242,12 +242,17 @@ export default function Dashboard() {
         <p className="text-sm text-muted-foreground mt-1">Here's your expense overview</p>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <StatCard icon={Users2} label="Friends" value={String(friendsList.length)} href="/friends" />
-        <StatCard icon={UsersRound} label="Groups" value={String(groups.length)} href="/groups" />
-        <StatCard icon={TrendingDown} label="You Owe" value={`$${youOwe.toFixed(2)}`} color="text-destructive" />
-        <StatCard icon={TrendingUp} label="You're Owed" value={`$${youAreOwed.toFixed(2)}`} color="text-primary" />
-      </div>
+      {/* Hide the 4-zero-card grid when the user has nothing yet — it's a wall
+          of meaningless zeros that obscures the actual call to action. The big
+          empty-state card below replaces it for these users. */}
+      {!(expenses.length === 0 && groups.length === 0 && friendsList.length === 0) && (
+        <div className="grid grid-cols-2 gap-3">
+          <StatCard icon={Users2} label="Friends" value={String(friendsList.length)} href="/friends" />
+          <StatCard icon={UsersRound} label="Groups" value={String(groups.length)} href="/groups" />
+          <StatCard icon={TrendingDown} label="You Owe" value={`$${youOwe.toFixed(2)}`} color="text-destructive" />
+          <StatCard icon={TrendingUp} label="You're Owed" value={`$${youAreOwed.toFixed(2)}`} color="text-primary" />
+        </div>
+      )}
 
       {/* Your settlements */}
       {mySettlements.length > 0 && (
@@ -334,24 +339,33 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Empty state */}
+      {/* Empty state — the only thing a brand-new user should see on dashboard.
+          The 4-stat grid above is hidden when everything is zero (deliberate:
+          a wall of zeros buries the actual call to action). Single primary CTA
+          drives ~all activation; "Add a friend" is a secondary path for users
+          who only want 1-on-1 splits. */}
       {expenses.length === 0 && groups.length === 0 && friendsList.length === 0 && (
-        <Card className="p-8 text-center">
-          <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
-            <Receipt className="w-6 h-6 text-primary" />
+        <Card className="p-8 text-center space-y-4">
+          <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto">
+            <Sparkles className="w-7 h-7 text-primary" />
           </div>
-          <h3 className="text-base font-semibold mb-1">Welcome to Spliiit</h3>
-          <p className="text-sm text-muted-foreground mb-4">
-            Add friends for 1-on-1 splits or create a group for trips and shared expenses.
-          </p>
-          <div className="flex items-center justify-center gap-4">
-            <Link href="/friends">
-              <span className="text-sm text-primary font-medium cursor-pointer">Add Friends →</span>
-            </Link>
-            <Link href="/groups">
-              <span className="text-sm text-primary font-medium cursor-pointer">Create Group →</span>
-            </Link>
+          <div className="space-y-1.5">
+            <h3 className="text-base font-semibold">Let's get you splitting</h3>
+            <p className="text-sm text-muted-foreground max-w-xs mx-auto leading-relaxed">
+              Create a group for a trip, your apartment, or a recurring crew. You can invite people right after.
+            </p>
           </div>
+          <Link href="/groups">
+            <Button size="lg" className="w-full max-w-xs" data-testid="dashboard-empty-create-group">
+              <UsersRound className="w-4 h-4 mr-1.5" />
+              Create your first group
+            </Button>
+          </Link>
+          <Link href="/friends">
+            <span className="text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer block">
+              Or add a friend for a 1-on-1 split →
+            </span>
+          </Link>
         </Card>
       )}
     </div>

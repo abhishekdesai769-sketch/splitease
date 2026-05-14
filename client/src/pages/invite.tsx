@@ -6,6 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2, Users, AlertCircle } from "lucide-react";
+import { track } from "@/lib/analytics";
 
 interface InvitePreview {
   groupName: string;
@@ -45,6 +46,14 @@ export default function InvitePage() {
       localStorage.removeItem("spliiit_pending_invite");
       queryClient.invalidateQueries({ queryKey: ["/api/groups"] });
       queryClient.invalidateQueries({ queryKey: [`/api/groups/${data.groupId}`] });
+      // Track the join — this closes the loop from first_invite_sent and is the
+      // key signal for the new AARRR activation event in PostHog.
+      if (!data.alreadyMember) {
+        track("group_invite_accepted", {
+          groupId: data.groupId,
+          groupName: preview?.groupName,
+        });
+      }
       toast({
         title: data.alreadyMember ? "You're already in this group" : `Joined ${preview?.groupName}!`,
         description: data.alreadyMember
