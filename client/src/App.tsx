@@ -25,6 +25,7 @@ import Import from "@/pages/import";
 import Upgrade from "@/pages/upgrade";
 import Money from "@/pages/money";
 import OnboardingPreferences from "@/pages/onboarding";
+import FirstRunWizard from "@/pages/first-run";
 import InvitePage from "@/pages/invite";
 import { ReviewPromptSheet } from "@/components/ReviewPromptSheet";
 import { ForceUpdateGate } from "@/components/ForceUpdateGate";
@@ -115,6 +116,14 @@ function AppRouter() {
   // Onboarding gate — show once for new users (and legacy users with no currency set)
   if (!user.defaultCurrency) {
     return <OnboardingPreferences />;
+  }
+
+  // First-run wizard gate — shown once between onboarding and dashboard, drives the
+  // empty-app → real-group activation. Existing users were backfilled on startup
+  // migration so they skip this. Wizard itself POSTs /api/user/first-run + refreshes
+  // user, which falls back through to the routed Layout below.
+  if (!user.firstRunCompletedAt) {
+    return <FirstRunWizard />;
   }
 
   return (
