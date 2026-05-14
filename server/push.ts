@@ -174,6 +174,42 @@ export async function pushGroupMemberJoined(opts: {
 }
 
 /**
+ * Notify a user that they were just added to a group by an admin/owner.
+ * Used by the "instant add by email" flow — distinct from pushGroupMemberJoined
+ * (which fires to existing members when someone accepts an invite link).
+ *
+ * Recipient: only the user who was added. No fan-out.
+ * Fire-and-forget. Never throws.
+ */
+export async function pushAddedToGroup(opts: {
+  addedUserId: string;
+  addedByName: string;
+  groupId: string;
+  groupName: string;
+}): Promise<void> {
+  if (!APNS_ENABLED) return;
+
+  const tokens = await getTokensForUsers([opts.addedUserId]);
+  if (tokens.length === 0) return;
+
+  const result = await sendApnsBatch(tokens, {
+    title: `${opts.addedByName} added you to ${opts.groupName}`,
+    body: "Tap to view the group and start splitting.",
+    threadId: `group:${opts.groupName}`,
+    data: {
+      type: "added_to_group",
+      groupId: opts.groupId,
+      groupName: opts.groupName,
+      addedByName: opts.addedByName,
+    },
+  });
+
+  if (result.invalidTokens.length > 0) {
+    await purgeInvalidTokens(result.invalidTokens);
+  }
+}
+
+/**
  * Weekly digest push — nudges a single user about their outstanding balance.
  * Only sent when net is POSITIVE (they're owed money) so the message stays
  * positive ("go collect") instead of guilt-trippy ("you owe…").

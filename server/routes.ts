@@ -12,7 +12,7 @@ import { referralClicks, deviceTokens } from "@shared/schema";
 import { eq, and, gt, desc, sql } from "drizzle-orm";
 import { signupSchema, loginSchema, forgotPasswordSchema, resetPasswordSchema } from "@shared/schema";
 import { notifyExpenseCreated, sendOtpEmail, sendResetPasswordEmail, sendExportEmail, sendSupportEmail, sendInviteToInviteeEmail, sendInviteToAdminEmail, sendPremiumWelcomeEmail } from "./email";
-import { pushExpenseCreated, pushGroupMemberJoined, deleteDeviceToken as deleteDeviceTokenRow } from "./push";
+import { pushExpenseCreated, pushGroupMemberJoined, pushAddedToGroup, deleteDeviceToken as deleteDeviceTokenRow } from "./push";
 import { parseReceipt, RECEIPT_SCANNING_ENABLED } from "./receipt-parser";
 import { stripe, STRIPE_PRICE_MONTHLY, STRIPE_PRICE_YEARLY, STRIPE_ENABLED } from "./stripe";
 import {
@@ -1983,6 +1983,68 @@ setInterval(loadAll,30000);
     }
 
     res.json({ groupId: group.id, alreadyMember: false });
+  });
+
+  // POST /api/groups/:id/members/add-by-email — instant-add an EXISTING Spliiit user
+  // to a group, bypassing the invite link / accept dance. Restricted to group owner
+  // / group admin / global admin (consent guardrail — random members can't bulk-add
+  // strangers). Mirrors Splitwise's "add by email" behavior. The added user gets
+  // a push so they know what happened.
+  app.post("/api/groups/:id/members/add-by-email", requireAuth, async (req, res) => {
+    const userId = (req.session as any).userId;
+    const inviter = await storage.getUser(userId);
+    if (!inviter) return res.status(401).json({ error: "Unauthorized" });
+
+    const group = await storage.getGroup(req.params.id);
+    if (!group || group.deletedAt) return res.status(404).json({ error: "Group not found" });
+    if (!group.memberIds.includes(userId)) {
+      return res.status(403).json({ error: "Not a member" });
+    }
+
+    const adminIds = group.adminIds || [];
+    const isOwner = group.createdById === userId;
+    const isGroupAdmin = adminIds.includes(userId);
+    const isGlobalAdmin = inviter.isAdmin;
+    if (!isOwner && !isGroupAdmin && !isGlobalAdmin) {
+      return res.status(403).json({ error: "Only group admins can add members directly. Share the invite link instead." });
+    }
+
+    const email = sanitize((req.body.email || "").toLowerCase(), 255);
+    if (!email) return res.status(400).json({ error: "Email is required" });
+
+    const targetUser = await storage.getUserByEmail(email);
+    if (!targetUser) {
+      return res.status(404).json({ error: "No Spliiit user found with that email. Send them the invite link above." });
+    }
+
+    if (targetUser.id === userId) {
+      return res.status(400).json({ error: "You're already in this group." });
+    }
+    if (group.memberIds.includes(targetUser.id)) {
+      return res.status(409).json({ error: `${targetUser.name} is already in this group.` });
+    }
+
+    // Add to group + activity log
+    const newMemberIds = [...group.memberIds, targetUser.id];
+    await storage.updateGroupMembers(group.id, newMemberIds);
+    await storage.createActivity({
+      groupId: group.id,
+      userId: targetUser.id,
+      userName: targetUser.name,
+      action: "member_added",
+      description: `added by ${inviter.name}`,
+    });
+
+    // Push to the added user — they need to know they were added
+    pushAddedToGroup({
+      addedUserId: targetUser.id,
+      addedByName: inviter.name,
+      groupId: group.id,
+      groupName: group.name,
+    }).catch((err) => console.error("[push] pushAddedToGroup failed:", err));
+
+    const { password: _, ...safeUser } = targetUser;
+    res.json({ ok: true, addedUser: safeUser, groupId: group.id });
   });
 
   // DELETE /api/groups/:id/invite-link/:linkId — owner/admin/global admin can revoke

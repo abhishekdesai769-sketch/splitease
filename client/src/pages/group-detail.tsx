@@ -21,6 +21,7 @@ import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { calculateGroupBalances, simplifyDebts, calculatePairwiseBalances } from "@/lib/simplify";
 import { recordExpenseAndCheck, triggerReview } from "@/lib/reviewPrompt";
+import { track } from "@/lib/analytics";
 
 export default function GroupDetail({ groupId }: { groupId: string }) {
   const { user } = useAuth();
@@ -31,6 +32,8 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
   // Shareable invite link (V1 — open join, one active link per group)
   const [shareLinkOpen, setShareLinkOpen] = useState(false);
   const [shareLinkCopied, setShareLinkCopied] = useState(false);
+  // Instant-add by email (existing Spliiit users) — lives inside the share-link dialog
+  const [quickAddEmail, setQuickAddEmail] = useState("");
   // simplifyDebts is now a persistent group setting, read from group?.simplifyDebts
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
@@ -579,6 +582,34 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
     }
   };
 
+  // Instant-add an existing Spliiit user by email. Server enforces owner/admin
+  // permission and pushes a notification to the added user.
+  const quickAddMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/groups/${groupId}/members/add-by-email`, {
+        email: quickAddEmail.trim().toLowerCase(),
+      });
+      return res.json();
+    },
+    onSuccess: (data: { addedUser: { name: string } }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/groups", groupId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/groups", groupId, "members"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/members/all"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/groups"] });
+      track("group_member_added_by_email", { groupId });
+      toast({
+        title: `${data.addedUser.name} added`,
+        description: "They've been notified.",
+      });
+      setQuickAddEmail("");
+    },
+    onError: (err: Error) => {
+      let msg = err.message;
+      try { msg = JSON.parse(msg.split(": ").slice(1).join(": ")).error; } catch {}
+      toast({ title: "Couldn't add", description: msg, variant: "destructive" });
+    },
+  });
+
   // Computed final amount: base + tax + tip (used for splitting and submission)
   const _baseAmount = parseFloat(amount) || 0;
   const _taxAmt = _baseAmount * (parseFloat(taxPercent) || 0) / 100;
@@ -877,6 +908,48 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                     Generating a new link will revoke this one. Revoking is permanent — anyone with the old link won't be able to join.
                   </p>
                 </>
+              )}
+
+              {/* Quick-add by email — for friends who already have Spliiit accounts.
+                  Skips the link + accept dance entirely. Restricted server-side
+                  to group owner/admin/global admin (consent guardrail). */}
+              {(isMeOwner || isMeAdmin || isMeGlobalAdmin) && (
+                <div className="pt-4 mt-2 border-t border-border space-y-3">
+                  <div>
+                    <p className="text-sm font-semibold">Already on Spliiit?</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Add them by email — no link needed. They'll get a notification.
+                    </p>
+                  </div>
+                  <form
+                    className="flex gap-2"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      if (quickAddEmail.trim()) quickAddMutation.mutate();
+                    }}
+                  >
+                    <Input
+                      type="email"
+                      placeholder="friend@example.com"
+                      value={quickAddEmail}
+                      onChange={(e) => setQuickAddEmail(e.target.value)}
+                      className="flex-1"
+                      disabled={quickAddMutation.isPending}
+                      data-testid="input-quick-add-email"
+                    />
+                    <Button
+                      type="submit"
+                      disabled={!quickAddEmail.trim() || quickAddMutation.isPending}
+                      data-testid="btn-quick-add-member"
+                    >
+                      {quickAddMutation.isPending ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <><UserPlus className="w-4 h-4 mr-1.5" /> Add</>
+                      )}
+                    </Button>
+                  </form>
+                </div>
               )}
             </div>
           </DialogContent>
