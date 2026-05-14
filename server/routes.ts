@@ -1980,6 +1980,16 @@ setInterval(loadAll,30000);
         groupName: group.name,
         groupMemberIds: newMemberIds,
       }).catch((err) => console.error("[push] pushGroupMemberJoined failed:", err));
+
+      // Auto-complete first-run for users who signed up via an invite link.
+      // Their "first group" action IS this acceptance — making them sit through
+      // the "Create your first group" wizard afterwards would be a redundant
+      // nag. Idempotent: only sets if not already set, so existing users joining
+      // additional groups via link are untouched.
+      if (!user.firstRunCompletedAt) {
+        storage.updateUser(userId, { firstRunCompletedAt: new Date().toISOString() })
+          .catch((err) => console.error("[invite-accept] auto-mark first-run failed:", err));
+      }
     }
 
     res.json({ groupId: group.id, alreadyMember: false });

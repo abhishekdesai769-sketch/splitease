@@ -122,7 +122,14 @@ function AppRouter() {
   // empty-app → real-group activation. Existing users were backfilled on startup
   // migration so they skip this. Wizard itself POSTs /api/user/first-run + refreshes
   // user, which falls back through to the routed Layout below.
-  if (!user.firstRunCompletedAt) {
+  //
+  // Exception: users who signed up via an invite link already have a "first group"
+  // waiting for them on the next screen — showing them the "Create your first group"
+  // wizard would be redundant and confusing. Skip the wizard; the invite acceptance
+  // endpoint will flip firstRunCompletedAt for them server-side. The pending-invite
+  // useEffect above is about to redirect them to #/invite/<code> anyway.
+  const hasPendingInvite = !!localStorage.getItem("spliiit_pending_invite");
+  if (!user.firstRunCompletedAt && !hasPendingInvite) {
     return <FirstRunWizard />;
   }
 
