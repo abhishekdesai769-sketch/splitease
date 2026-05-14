@@ -130,6 +130,88 @@ export async function pushExpenseCreated(opts: {
   }
 }
 
+/**
+ * Notify existing group members when someone accepts an invite link and joins.
+ * This is the retention engine for first-run: a new user invites a friend →
+ * friend joins → first user gets a push → they come back to the app.
+ *
+ * Recipients: all current group members EXCLUDING the new joiner.
+ * Fire-and-forget. Never throws.
+ */
+export async function pushGroupMemberJoined(opts: {
+  joinerUserId: string;
+  joinerName: string;
+  groupId: string;
+  groupName: string;
+  /** All current member ids of the group AFTER the joiner was added. */
+  groupMemberIds: string[];
+}): Promise<void> {
+  if (!APNS_ENABLED) return;
+
+  const recipientIds = Array.from(new Set(opts.groupMemberIds)).filter(
+    (id) => id && id !== opts.joinerUserId,
+  );
+  if (recipientIds.length === 0) return;
+
+  const tokens = await getTokensForUsers(recipientIds);
+  if (tokens.length === 0) return;
+
+  const result = await sendApnsBatch(tokens, {
+    title: `${opts.joinerName} joined ${opts.groupName}`,
+    body: "Add an expense to start splitting.",
+    threadId: `group:${opts.groupName}`,
+    data: {
+      type: "group_member_joined",
+      groupId: opts.groupId,
+      groupName: opts.groupName,
+      joinerName: opts.joinerName,
+    },
+  });
+
+  if (result.invalidTokens.length > 0) {
+    await purgeInvalidTokens(result.invalidTokens);
+  }
+}
+
+/**
+ * Weekly digest push — nudges a single user about their outstanding balance.
+ * Only sent when net is POSITIVE (they're owed money) so the message stays
+ * positive ("go collect") instead of guilt-trippy ("you owe…").
+ *
+ * Recipient: the user themselves. No fan-out.
+ * Fire-and-forget. Never throws.
+ */
+export async function pushWeeklyDigest(opts: {
+  userId: string;
+  amountOwed: number;        // always positive
+  counterpartyCount: number; // distinct people who owe them
+  currency?: string;
+}): Promise<void> {
+  if (!APNS_ENABLED) return;
+  if (opts.amountOwed <= 0) return;
+
+  const tokens = await getTokensForUsers([opts.userId]);
+  if (tokens.length === 0) return;
+
+  const formatted = formatAmount(opts.amountOwed, opts.currency ?? "CAD");
+  const peopleLabel = opts.counterpartyCount === 1 ? "friend" : "friends";
+
+  const result = await sendApnsBatch(tokens, {
+    title: "Open balances on Spliiit",
+    body: `You're owed ${formatted} across ${opts.counterpartyCount} ${peopleLabel} — tap to settle up.`,
+    threadId: "spliiit:digest",
+    data: {
+      type: "weekly_digest",
+      amountOwed: opts.amountOwed,
+      counterpartyCount: opts.counterpartyCount,
+    },
+  });
+
+  if (result.invalidTokens.length > 0) {
+    await purgeInvalidTokens(result.invalidTokens);
+  }
+}
+
 /** Delete a device token by exact match — used on logout / deregister. */
 export async function deleteDeviceToken(token: string, userId: string): Promise<void> {
   try {

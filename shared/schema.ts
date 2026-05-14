@@ -27,6 +27,8 @@ export const users = pgTable("users", {
   // User preferences
   defaultCurrency: text("default_currency"),              // e.g. "CAD" — locked after first set
   currencyLockedAt: text("currency_locked_at"),           // ISO timestamp — null = not yet set
+  firstRunCompletedAt: text("first_run_completed_at"),    // ISO timestamp — null = user hasn't finished/skipped first-run wizard yet
+  lastWeeklyDigestPushAt: text("last_weekly_digest_push_at"), // ISO timestamp — throttle the weekly "you're owed $X" digest push
   themePreference: text("theme_preference").notNull().default("system"), // "dark"|"light"|"system"
   utmCampaign: text("utm_campaign"),   // WhatsApp / referral campaign tracking (nullable)
   adminNotes: text("admin_notes"),     // Private admin notes (deal info, outreach status, etc.)

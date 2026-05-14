@@ -12,7 +12,7 @@ import { referralClicks, deviceTokens } from "@shared/schema";
 import { eq, and, gt, desc, sql } from "drizzle-orm";
 import { signupSchema, loginSchema, forgotPasswordSchema, resetPasswordSchema } from "@shared/schema";
 import { notifyExpenseCreated, sendOtpEmail, sendResetPasswordEmail, sendExportEmail, sendSupportEmail, sendInviteToInviteeEmail, sendInviteToAdminEmail, sendPremiumWelcomeEmail } from "./email";
-import { pushExpenseCreated, deleteDeviceToken as deleteDeviceTokenRow } from "./push";
+import { pushExpenseCreated, pushGroupMemberJoined, deleteDeviceToken as deleteDeviceTokenRow } from "./push";
 import { parseReceipt, RECEIPT_SCANNING_ENABLED } from "./receipt-parser";
 import { stripe, STRIPE_PRICE_MONTHLY, STRIPE_PRICE_YEARLY, STRIPE_ENABLED } from "./stripe";
 import {
@@ -1955,7 +1955,8 @@ setInterval(loadAll,30000);
     }
 
     // Add user to group + bump link usage counter
-    await storage.updateGroupMembers(group.id, [...group.memberIds, userId]);
+    const newMemberIds = [...group.memberIds, userId];
+    await storage.updateGroupMembers(group.id, newMemberIds);
     await storage.incrementInviteLinkUses(link.id);
 
     // Activity log entry
@@ -1968,6 +1969,17 @@ setInterval(loadAll,30000);
         action: "member_joined",
         description: "joined via invite link",
       });
+
+      // Re-engagement push: notify the existing members so they come back to the app.
+      // This is the retention loop: first-run wizard → invite sent → friend joins → push
+      // → original user reopens. Fire-and-forget; never blocks the response.
+      pushGroupMemberJoined({
+        joinerUserId: userId,
+        joinerName: user.name,
+        groupId: group.id,
+        groupName: group.name,
+        groupMemberIds: newMemberIds,
+      }).catch((err) => console.error("[push] pushGroupMemberJoined failed:", err));
     }
 
     res.json({ groupId: group.id, alreadyMember: false });
@@ -3837,6 +3849,29 @@ setInterval(loadAll,30000);
 
     const updated = await storage.updateUser(userId, { themePreference });
     if (!updated) return res.status(500).json({ error: "Failed to save preference." });
+
+    const { password: _, ...safeUser } = updated;
+    res.json(safeUser);
+  });
+
+  // POST /api/user/first-run — mark first-run wizard as completed (or skipped)
+  // Idempotent: re-calling does nothing if already set. Used by the /first-run page
+  // when the user finishes the wizard or hits "Skip for now" on any step.
+  app.post("/api/user/first-run", requireAuth, async (req, res) => {
+    const userId = (req.session as any).userId as string;
+    const user = await storage.getUser(userId);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+    // Already completed — return current state, don't overwrite the original timestamp
+    if (user.firstRunCompletedAt) {
+      const { password: _, ...safeUser } = user;
+      return res.json(safeUser);
+    }
+
+    const updated = await storage.updateUser(userId, {
+      firstRunCompletedAt: new Date().toISOString(),
+    });
+    if (!updated) return res.status(500).json({ error: "Failed to mark first-run as completed." });
 
     const { password: _, ...safeUser } = updated;
     res.json(safeUser);

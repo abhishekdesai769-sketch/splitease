@@ -102,6 +102,14 @@ async function runMigrations() {
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS default_currency text`);
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS currency_locked_at text`);
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS theme_preference text NOT NULL DEFAULT 'system'`);
+    // First-run wizard gate — null = user hasn't finished/skipped the wizard yet
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS first_run_completed_at text`);
+    // Backfill: any existing user who already set their currency pre-dates the first-run wizard;
+    // mark them as completed so they don't get force-routed through it on next login.
+    // Idempotent because the WHERE clause only matches rows that haven't been backfilled yet.
+    await pool.query(`UPDATE users SET first_run_completed_at = currency_locked_at WHERE first_run_completed_at IS NULL AND currency_locked_at IS NOT NULL`);
+    // Weekly digest push throttle — null = never sent, otherwise ISO timestamp of last send
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_weekly_digest_push_at text`);
     await pool.query(`
       CREATE TABLE IF NOT EXISTS activity_log (
         id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
