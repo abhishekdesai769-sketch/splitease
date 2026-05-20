@@ -26,6 +26,7 @@ import Upgrade from "@/pages/upgrade";
 import Money from "@/pages/money";
 import OnboardingPreferences from "@/pages/onboarding";
 import FirstRunWizard from "@/pages/first-run";
+import OnboardingV2 from "@/pages/onboarding-v2";
 import InvitePage from "@/pages/invite";
 import { ReviewPromptSheet } from "@/components/ReviewPromptSheet";
 import { ForceUpdateGate } from "@/components/ForceUpdateGate";
@@ -83,6 +84,15 @@ function AppRouter() {
     window.location.hash = `#/invite/${pending}`;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, user?.defaultCurrency]);
+
+  // Hidden preview route for onboarding v2 — bypasses all auth/onboarding gates
+  // so we can dogfood the new flow without affecting production users. Reachable
+  // at #/onboarding-v2-preview from any state (logged in, logged out, anything).
+  // Once the new flow is ready for real users, Wave 2 wires it as the real
+  // onboarding behind a feature flag — this preview route stays for QA.
+  if (window.location.hash.startsWith("#/onboarding-v2-preview")) {
+    return <OnboardingV2 />;
+  }
 
   if (isLoading) {
     return (
