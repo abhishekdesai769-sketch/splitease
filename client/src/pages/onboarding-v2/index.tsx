@@ -18,6 +18,7 @@ import { Chrome } from "./Chrome";
 import { WelcomeScreen } from "./screens/Welcome";
 import { PainQuestionScreen } from "./screens/PainQuestion";
 import { PersonaQuestionScreen } from "./screens/PersonaQuestion";
+import { DemoGroupScreen } from "./screens/DemoGroup";
 import {
   INITIAL_STATE,
   PROGRESS_STEPS,
@@ -46,19 +47,41 @@ export default function OnboardingV2() {
         <PersonaQuestionScreen onSelect={(persona) => dispatch({ type: "select_persona", persona })} />
       )}
 
-      {state.screen === "demo_group" && (
-        // Placeholder for Commit 2. The full demo group + AI Scanner come next.
-        <div className="flex-1 flex flex-col items-center justify-center max-w-md mx-auto w-full text-center space-y-4">
+      {state.screen === "demo_group" && state.persona && (
+        <DemoGroupScreen
+          persona={state.persona}
+          onMagicActionComplete={() => {
+            dispatch({ type: "demo_ai_scanner_completed" });
+            dispatch({ type: "advance_to_paywall_prime" });
+          }}
+        />
+      )}
+
+      {state.screen === "paywall_prime" && (
+        // Placeholder for Wave 2 — paywall prime + Recurring/Auto-Reminders demos
+        // + persona-mapped feature pitch + iOS / Android / web payment branching.
+        // Showing a celebratory "magic moment done" screen so the preview flow
+        // has a satisfying end-state during dogfooding.
+        <div className="flex-1 flex flex-col items-center justify-center max-w-md mx-auto w-full text-center space-y-5 px-2">
           <div className="text-xs uppercase tracking-wider text-muted-foreground font-mono">
-            Wave 1 · Commit 2 will build this screen
+            Wave 2 will build the paywall prime here
           </div>
-          <h2 className="text-xl font-semibold">Demo group + AI Scanner coming next</h2>
-          <p className="text-sm text-muted-foreground max-w-sm">
-            You picked the <span className="font-semibold text-foreground">{state.persona}</span> persona
-            (pain: <span className="font-semibold text-foreground">{state.pain}</span>).
-            The persona-mapped demo group + the 17-item Trattoria receipt magic moment
-            land in the next commit.
+          <h2 className="text-2xl font-semibold tracking-tight">
+            You just did the magic moment. ⚡
+          </h2>
+          <p className="text-sm text-muted-foreground max-w-sm leading-relaxed">
+            Next up (Wave 2): a persona-mapped Premium feature pitch
+            (<span className="font-semibold text-foreground">
+              {state.persona === "roommate" ? "Recurring Expenses"
+                : state.persona === "trip" ? "AI Receipt Scanner"
+                : "Auto Reminders (friendly · firm · funny)"}
+            </span>),
+            a "Start free month" CTA (iOS native / Android info screen / web Stripe),
+            then delayed signup, social hook, and smart push permission.
           </p>
+          <div className="text-xs text-muted-foreground">
+            For now: tap back to replay any step, or close this preview.
+          </div>
         </div>
       )}
     </Chrome>
