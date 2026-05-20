@@ -13,7 +13,7 @@
  *   - No backend calls. No DB writes. No balance recalculation. Pure
  *     frontend state + analytics events.
  */
-import { useReducer } from "react";
+import { useEffect, useReducer } from "react";
 import { Chrome } from "./Chrome";
 import { WelcomeScreen } from "./screens/Welcome";
 import { PainQuestionScreen } from "./screens/PainQuestion";
@@ -24,11 +24,28 @@ import {
   PROGRESS_STEPS,
   onboardingReducer,
 } from "./state";
+import { useTheme } from "@/lib/theme";
 
 export default function OnboardingV2() {
   const [state, dispatch] = useReducer(onboardingReducer, INITIAL_STATE);
   const step = PROGRESS_STEPS[state.screen];
   const showBack = state.screen !== "welcome" && state.screen !== "done";
+
+  // Force LIGHT mode for the entire onboarding session — cleanest first
+  // impression of the brand, and matches the canonical look the user wants
+  // every new user to see. We use saveToDb=false so the user's actual theme
+  // preference (set later in Settings) is unaffected. On unmount we restore
+  // whatever their previous pref was so the dashboard reflects their choice.
+  const { themePref, setThemePref } = useTheme();
+  useEffect(() => {
+    const previous = themePref;
+    setThemePref("light", false);
+    return () => {
+      setThemePref(previous, false);
+    };
+    // Intentionally run once on mount + once on unmount only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <Chrome

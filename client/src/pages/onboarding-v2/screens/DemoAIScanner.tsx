@@ -1,132 +1,201 @@
 /**
- * Demo AI Receipt Scanner — THE magic moment of onboarding v2.
+ * Demo AI Receipt Scanner — faithful clone of components/ReceiptReviewSheet.tsx
  *
- * 4 internal steps:
- *   1. "receipt"   — Show the stylized 17-line Trattoria bill + "Scan with AI" CTA
- *   2. "scanning"  — 1.5s scan animation (teal sweep + items lighting up)
- *   3. "assign"    — Interactive item-by-item assignment. Pre-seeded so the user
- *                    can either tweak or hit Auto-Assign and skip ahead. Running
- *                    totals per person update live at the bottom.
- *   4. "reveal"    — Per-person summary, confetti burst, "30 sec vs 8 minutes" headline
+ * The user lands on this in two ways:
+ *   (a) Add Expense dialog → "Scan with AI" button
+ *   (b) (Wave 2) Direct scanner CTA from group view
  *
- * Important: this is mocked. No backend call. The "scan" is theater.
- * The whole point is to let the user FEEL how powerful AI Scanner is so the
- * paywall prime on the next screen lands at peak desire.
+ * Internal steps mirror the real flow:
+ *   1. "receipt"        — stylized 17-line receipt + "Scan with AI" CTA
+ *   2. "scanning"       — 1.5s scan animation (teal sweep)
+ *   3. "assign-person"  — loops through members one-by-one with the EXACT
+ *                         "Which items include {Name}?" checkbox UI from the
+ *                         real ReceiptReviewSheet (lines 458–604)
+ *   4. "finalizing"     — brief 800ms loader, matches real "splitting…" pause
+ *   5. → done           — calls onComplete with the produced splits (multiple
+ *                         DemoExpense entries) + total scanner duration
+ *
+ * Split shape matches the real `handleCreateSplits` in ReceiptReviewSheet:
+ *   - Items every member is assigned to    → bundled into ONE expense
+ *     (e.g. "Bruschetta al pomodoro + 5 more")
+ *   - Each other item                       → its OWN expense
+ *
+ * IMPORTANT: zero backend calls. The "scan" is theater. Final amounts include
+ * proportional tax + tip (matches the real ReceiptReviewSheet's taxMultiplier).
  */
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { Sparkles, X, Check, Zap } from "lucide-react";
-import { Avatar } from "../components/Avatar";
-import { Confetti } from "../components/Confetti";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Sparkles, X as XIcon, Zap, ArrowLeft, ArrowRight, Loader2 } from "lucide-react";
 import { TRATTORIA_RECEIPT } from "../fixtures";
-import type { DemoGroup as DemoGroupType, DemoExpense, ReceiptItem } from "../fixtures";
+import type { DemoGroup, DemoExpense, ReceiptItem } from "../fixtures";
 import { track } from "@/lib/analytics";
 
 interface Props {
-  group: DemoGroupType;
-  onComplete: (aiExpense: DemoExpense) => void;
+  group: DemoGroup;
+  onComplete: (newExpenses: DemoExpense[], durationMs: number) => void;
   onCancel: () => void;
 }
 
-type Step = "receipt" | "scanning" | "assign" | "reveal";
+type Step = "receipt" | "scanning" | "assign-person" | "finalizing";
 
-// Build initial assignment map. Falls back to "everyone" if the fixture's
-// defaultAssignedTo references members not in this group.
-function initialAssignments(group: DemoGroupType): Record<string, string[]> {
-  const groupMemberIds = new Set(group.members.map((m) => m.id));
-  const map: Record<string, string[]> = {};
-  for (const item of TRATTORIA_RECEIPT.items) {
-    const valid = item.defaultAssignedTo.filter((id) => groupMemberIds.has(id));
-    map[item.id] = valid.length > 0 ? valid : group.members.map((m) => m.id);
-  }
-  return map;
-}
+const getInitials = (name: string) =>
+  name.split(" ").map((p) => p[0]).join("").slice(0, 2).toUpperCase();
 
-// Compute per-person totals from current assignments + add proportional tax+tip.
-function computeTotals(assignments: Record<string, string[]>, group: DemoGroupType): Record<string, number> {
-  const subtotalByPerson: Record<string, number> = {};
-  for (const m of group.members) subtotalByPerson[m.id] = 0;
-
-  for (const item of TRATTORIA_RECEIPT.items) {
-    const assignees = assignments[item.id] || [];
-    if (assignees.length === 0) continue;
-    const share = item.price / assignees.length;
-    for (const id of assignees) {
-      subtotalByPerson[id] = (subtotalByPerson[id] || 0) + share;
-    }
-  }
-
-  // Proportional tax + tip distribution
-  const subtotal = Object.values(subtotalByPerson).reduce((a, b) => a + b, 0);
-  if (subtotal === 0) return subtotalByPerson;
-  const taxTipMultiplier = (TRATTORIA_RECEIPT.tax + TRATTORIA_RECEIPT.tip) / subtotal;
-  const totals: Record<string, number> = {};
-  for (const id of Object.keys(subtotalByPerson)) {
-    totals[id] = subtotalByPerson[id] * (1 + taxTipMultiplier);
-  }
-  return totals;
-}
+// Tax + tip multiplier applied to each item's price.
+// Mirrors the real ReceiptReviewSheet behavior: taxMultiplier = 1 + (tax+tip)/subtotal
+const TAX_MULTIPLIER =
+  (TRATTORIA_RECEIPT.tax + TRATTORIA_RECEIPT.tip) / TRATTORIA_RECEIPT.subtotal + 1;
 
 export function DemoAIScanner({ group, onComplete, onCancel }: Props) {
   const [step, setStep] = useState<Step>("receipt");
-  const [assignments, setAssignments] = useState<Record<string, string[]>>(() => initialAssignments(group));
-  const [showConfetti, setShowConfetti] = useState(false);
+  const startTimeRef = useRef<number | null>(null);
 
-  const totals = useMemo(() => computeTotals(assignments, group), [assignments, group]);
+  // ── Derive equal vs unequal item indices from fixture defaults ────────
+  // Items whose default assignment includes ALL members are pre-classified
+  // as "equal" (split among all, no per-person step UI). Others are unequal.
+  const { equalIndices, unequalIndices } = useMemo(() => {
+    const allIds = new Set(group.members.map((m) => m.id));
+    const equal = new Set<number>();
+    const unequal: number[] = [];
+    TRATTORIA_RECEIPT.items.forEach((item, idx) => {
+      // Drop any fixture-default IDs that aren't in this persona's group
+      const validIds = item.defaultAssignedTo.filter((id) => allIds.has(id));
+      const coversAllMembers =
+        validIds.length === group.members.length &&
+        group.members.every((m) => validIds.includes(m.id));
+      if (coversAllMembers) equal.add(idx);
+      else unequal.push(idx);
+    });
+    return { equalIndices: equal, unequalIndices: unequal };
+  }, [group.members]);
 
-  // Scan-step timer — auto-advance after 1.5s of theater
+  // ── Assignment state: Map<itemIdx, Set<memberId>> ──
+  // Pre-seed unequal items with their fixture defaults (filtered to actual
+  // members). The per-person step toggles entries in/out of these sets.
+  const [assignments, setAssignments] = useState<Map<number, Set<string>>>(() => {
+    const init = new Map<number, Set<string>>();
+    const allIds = new Set(group.members.map((m) => m.id));
+    for (const idx of unequalIndices) {
+      const item = TRATTORIA_RECEIPT.items[idx];
+      const valid = item.defaultAssignedTo.filter((id) => allIds.has(id));
+      init.set(idx, new Set(valid));
+    }
+    return init;
+  });
+
+  const [assigningPersonIdx, setAssigningPersonIdx] = useState(0);
+
+  // Step-2 scan animation: auto-advance after 1500ms
   useEffect(() => {
     if (step !== "scanning") return;
-    const t = setTimeout(() => setStep("assign"), 1500);
+    const t = setTimeout(() => setStep("assign-person"), 1500);
     return () => clearTimeout(t);
   }, [step]);
 
-  // Fire confetti on reveal step
+  // Step-4 finalizing: brief loader, then build splits + call onComplete
   useEffect(() => {
-    if (step === "reveal") setShowConfetti(true);
+    if (step !== "finalizing") return;
+    const t = setTimeout(() => {
+      const elapsed = startTimeRef.current ? Date.now() - startTimeRef.current : 30_000;
+      const newExpenses = buildExpensesFromAssignments();
+      onComplete(newExpenses, elapsed);
+    }, 800);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);
 
-  const toggleAssignment = (itemId: string, memberId: string) => {
+  const startScan = () => {
+    startTimeRef.current = Date.now();
+    setStep("scanning");
+  };
+
+  const toggleItemForCurrentPerson = (itemIdx: number, memberId: string) => {
     setAssignments((prev) => {
-      const current = prev[itemId] || [];
-      const next = current.includes(memberId)
-        ? current.filter((id) => id !== memberId)
-        : [...current, memberId];
-      // Don't allow zero-assignee state — keep at least one person
-      if (next.length === 0) return prev;
-      return { ...prev, [itemId]: next };
+      const next = new Map(prev);
+      const current = new Set(next.get(itemIdx) ?? []);
+      if (current.has(memberId)) current.delete(memberId);
+      else current.add(memberId);
+      next.set(itemIdx, current);
+      return next;
     });
     track("demo_ai_scanner_items_assigned");
   };
 
-  const autoAssign = () => {
-    const everyone = group.members.map((m) => m.id);
-    const next: Record<string, string[]> = {};
-    for (const item of TRATTORIA_RECEIPT.items) next[item.id] = everyone;
-    setAssignments(next);
+  const toggleSelectAllForCurrentPerson = (memberId: string, allSelected: boolean) => {
+    setAssignments((prev) => {
+      const next = new Map(prev);
+      unequalIndices.forEach((itemIdx) => {
+        const current = new Set(next.get(itemIdx) ?? []);
+        if (allSelected) current.delete(memberId);
+        else current.add(memberId);
+        next.set(itemIdx, current);
+      });
+      return next;
+    });
     track("demo_ai_scanner_auto_assigned");
   };
 
-  const handleSaveSplit = () => {
-    setStep("reveal");
+  const advancePerson = () => {
+    if (assigningPersonIdx < group.members.length - 1) {
+      setAssigningPersonIdx(assigningPersonIdx + 1);
+    } else {
+      setStep("finalizing");
+    }
   };
 
-  const handleFinish = () => {
-    // Materialize the result as a new expense in the demo group.
-    // We pick the user as the "payer" for the demo — feels natural since
-    // they're the one running the scanner.
-    const youId = group.members.find((m) => m.isYou)?.id ?? group.members[0].id;
-    const aiExpense: DemoExpense = {
-      id: `e-ai-${Date.now()}`,
-      description: `Dinner at ${TRATTORIA_RECEIPT.restaurant}`,
-      amount: TRATTORIA_RECEIPT.total,
-      paidById: youId,
-      splitAmongIds: group.members.map((m) => m.id),
-      date: new Date().toISOString(),
-      note: "AI-split · 17 items",
-    };
-    onComplete(aiExpense);
+  const goBackPerson = () => {
+    if (assigningPersonIdx > 0) setAssigningPersonIdx(assigningPersonIdx - 1);
+    else setStep("receipt");
   };
+
+  // Build the final splits — mirrors handleCreateSplits in ReceiptReviewSheet:
+  //   - Equal items combine into ONE expense, named "Item1 + N more"
+  //   - Each unequal item becomes its own expense
+  function buildExpensesFromAssignments(): DemoExpense[] {
+    const allMemberIds = group.members.map((m) => m.id);
+    const youId = group.members.find((m) => m.isYou)?.id ?? allMemberIds[0];
+    const splits: DemoExpense[] = [];
+
+    // Equal bundle
+    const equalItems = Array.from(equalIndices).map((idx) => TRATTORIA_RECEIPT.items[idx]);
+    if (equalItems.length > 0) {
+      const preTax = equalItems.reduce((sum, it) => sum + it.price, 0);
+      const withTax = Math.round(preTax * TAX_MULTIPLIER * 100) / 100;
+      const desc = equalItems.length === 1
+        ? equalItems[0].name
+        : `${equalItems[0].name} + ${equalItems.length - 1} more`;
+      splits.push({
+        id: `e-ai-eq-${Date.now()}`,
+        description: desc,
+        amount: withTax,
+        paidById: youId,
+        splitAmongIds: allMemberIds,
+        date: new Date().toISOString(),
+        note: `AI · split ${allMemberIds.length} ways`,
+      });
+    }
+
+    // Per-item unequal expenses
+    let n = 0;
+    for (const itemIdx of unequalIndices) {
+      const item = TRATTORIA_RECEIPT.items[itemIdx];
+      const assigned = Array.from(assignments.get(itemIdx) ?? []);
+      const memberIds = assigned.length > 0 ? assigned : allMemberIds;
+      const withTax = Math.round(item.price * TAX_MULTIPLIER * 100) / 100;
+      splits.push({
+        id: `e-ai-${n++}-${Date.now()}`,
+        description: item.name,
+        amount: withTax,
+        paidById: youId,
+        splitAmongIds: memberIds,
+        date: new Date().toISOString(),
+        note: `AI · split ${memberIds.length} ${memberIds.length === 1 ? "way" : "ways"}`,
+      });
+    }
+
+    return splits;
+  }
 
   // ──────────────────────────────────────────────────────
   // Step 1 — Receipt + Scan CTA
@@ -136,35 +205,29 @@ export function DemoAIScanner({ group, onComplete, onCancel }: Props) {
       <div className="flex-1 flex flex-col max-w-md mx-auto w-full">
         <div className="flex items-center justify-between pb-4">
           <div className="flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-primary" />
-            <h2 className="text-xl font-semibold">AI Receipt Scanner</h2>
+            <Button size="icon" variant="ghost" onClick={onCancel} aria-label="Back">
+              <ArrowLeft className="w-4 h-4" />
+            </Button>
+            <h2 className="text-xl font-semibold tracking-tight flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-primary" />
+              Scan with AI
+            </h2>
           </div>
-          <button
-            onClick={onCancel}
-            className="p-2 -mr-2 rounded-full hover:bg-muted transition-colors"
-            aria-label="Cancel"
-            data-testid="demo-scanner-cancel-receipt"
-          >
-            <X className="w-5 h-5 text-muted-foreground" />
-          </button>
         </div>
 
         <p className="text-sm text-muted-foreground mb-4">
-          Pretend you just took this photo of tonight's dinner receipt.
+          Pretend you just took a photo of tonight's dinner receipt.
         </p>
 
-        {/* Stylized receipt — monospace + dashed dividers */}
         <ReceiptCard />
 
-        <div className="mt-5 mb-3 text-center text-sm" style={{ fontFamily: "'Caveat', cursive", color: "hsl(172 63% 45%)" }}>
+        <div
+          className="mt-5 mb-3 text-center text-sm"
+          style={{ fontFamily: "'Caveat', cursive", color: "hsl(172 63% 45%)" }}
+        >
           ↓ Tap to scan it
         </div>
-        <Button
-          size="lg"
-          className="w-full shadow-sm"
-          onClick={() => setStep("scanning")}
-          data-testid="demo-scanner-start"
-        >
+        <Button size="lg" className="w-full shadow-sm" onClick={startScan} data-testid="demo-scanner-start">
           <Zap className="w-4 h-4 mr-1.5" />
           Scan with AI
         </Button>
@@ -184,7 +247,6 @@ export function DemoAIScanner({ group, onComplete, onCancel }: Props) {
 
         <div className="relative">
           <ReceiptCard />
-          {/* Teal scan-line that sweeps top to bottom */}
           <div className="absolute inset-0 overflow-hidden rounded-2xl pointer-events-none">
             <div
               className="absolute left-0 right-0 h-1 bg-primary/80"
@@ -211,63 +273,99 @@ export function DemoAIScanner({ group, onComplete, onCancel }: Props) {
   }
 
   // ──────────────────────────────────────────────────────
-  // Step 3 — Assignment list
+  // Step 3 — Per-person assignment (matches ReceiptReviewSheet exactly)
   // ──────────────────────────────────────────────────────
-  if (step === "assign") {
+  if (step === "assign-person") {
+    const currentMember = group.members[assigningPersonIdx];
+    const isLastPerson = assigningPersonIdx === group.members.length - 1;
+    const selectedCount = unequalIndices.filter(
+      (itemIdx) => assignments.get(itemIdx)?.has(currentMember.id) ?? false
+    ).length;
+    const allSelected = unequalIndices.length > 0 && selectedCount === unequalIndices.length;
+
     return (
       <div className="flex-1 flex flex-col max-w-md mx-auto w-full">
-        <div className="flex items-center justify-between pb-3">
-          <div>
-            <h2 className="text-lg font-semibold">Assign each item</h2>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Tap avatars to toggle who shared each item.
-            </p>
-          </div>
-          <button
-            onClick={onCancel}
-            className="p-2 -mr-2 rounded-full hover:bg-muted transition-colors"
-            aria-label="Cancel"
+        <div className="text-left pt-2 pb-2">
+          <p className="text-xs text-muted-foreground uppercase tracking-wide">
+            Person {assigningPersonIdx + 1} of {group.members.length}
+          </p>
+          <div
+            className="w-11 h-11 rounded-full flex items-center justify-center mt-2 mb-1 text-white text-sm font-semibold"
+            style={{ backgroundColor: currentMember.avatarColor }}
           >
-            <X className="w-5 h-5 text-muted-foreground" />
+            {getInitials(currentMember.name)}
+          </div>
+          <h2 className="text-base font-semibold">
+            Which items include {currentMember.isYou ? "you" : currentMember.name}?
+          </h2>
+          <p className="text-xs text-muted-foreground mt-1">
+            Tap all items that involve this person, including shared items.
+          </p>
+        </div>
+
+        {/* Count + select-all row */}
+        <div className="flex items-center justify-between py-3">
+          <span className="text-sm font-semibold">{selectedCount} items selected</span>
+          <button
+            type="button"
+            onClick={() => toggleSelectAllForCurrentPerson(currentMember.id, allSelected)}
+            className="text-sm text-muted-foreground border border-border rounded-lg px-3 py-1 hover:bg-muted/40 transition-colors"
+          >
+            {allSelected ? "Deselect all" : "Select all"}
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto -mx-4 px-4 pb-3 space-y-2">
-          {TRATTORIA_RECEIPT.items.map((item) => (
-            <AssignmentRow
-              key={item.id}
-              item={item}
-              members={group.members}
-              assigned={assignments[item.id] || []}
-              onToggle={(memberId) => toggleAssignment(item.id, memberId)}
-            />
-          ))}
-        </div>
+        {/* Item list (unequal items only — equal items are bundled separately) */}
+        <div className="space-y-2 mb-5 overflow-y-auto -mx-1 px-1">
+          {unequalIndices.map((itemIdx) => {
+            const item = TRATTORIA_RECEIPT.items[itemIdx];
+            const isChecked = assignments.get(itemIdx)?.has(currentMember.id) ?? false;
+            const assignedInitials = Array.from(assignments.get(itemIdx) ?? [])
+              .map((id) => {
+                const m = group.members.find((mm) => mm.id === id);
+                return m ? (m.isYou ? "You" : getInitials(m.name)) : null;
+              })
+              .filter(Boolean) as string[];
 
-        {/* Running totals strip */}
-        <div className="mt-3 rounded-2xl bg-card border border-border p-3">
-          <div className="text-[10px] uppercase tracking-wider font-mono text-muted-foreground mb-2">
-            Running total (incl. tax + tip)
-          </div>
-          <div className="space-y-1.5">
-            {group.members.map((m) => (
-              <div key={m.id} className="flex items-center gap-2 text-sm">
-                <Avatar name={m.name} color={m.avatarColor} isYou={m.isYou} size="xs" />
-                <span className="flex-1 truncate">{m.isYou ? "You" : m.name}</span>
-                <span className="font-semibold tabular-nums">
-                  ${(totals[m.id] || 0).toFixed(2)}
+            return (
+              <label
+                key={itemIdx}
+                className={`flex items-center gap-3 px-3 py-3 rounded-xl border cursor-pointer transition-colors ${
+                  isChecked ? "border-primary bg-primary/5" : "border-border hover:bg-muted/40"
+                }`}
+              >
+                <Checkbox
+                  checked={isChecked}
+                  onCheckedChange={() => toggleItemForCurrentPerson(itemIdx, currentMember.id)}
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm truncate">{item.name}</p>
+                  {assignedInitials.length > 0 && (
+                    <p className="text-xs text-muted-foreground mt-0.5">{assignedInitials.join(", ")}</p>
+                  )}
+                </div>
+                <span className="text-sm font-mono text-muted-foreground shrink-0">
+                  ${item.price.toFixed(2)}
                 </span>
-              </div>
-            ))}
-          </div>
+              </label>
+            );
+          })}
         </div>
 
-        <div className="mt-3 grid grid-cols-2 gap-2">
-          <Button variant="outline" onClick={autoAssign} data-testid="demo-scanner-auto-assign">
-            Auto-assign equally
+        <div className="flex gap-3 pt-1">
+          <Button variant="outline" className="flex-1" onClick={goBackPerson}>
+            <ArrowLeft className="w-4 h-4 mr-1" /> Back
           </Button>
-          <Button onClick={handleSaveSplit} data-testid="demo-scanner-save">
-            Save split →
+          <Button className="flex-1" onClick={advancePerson} data-testid="demo-scanner-next-person">
+            {selectedCount === 0 ? (
+              "Skip this person"
+            ) : isLastPerson ? (
+              `Assign ${selectedCount} item${selectedCount !== 1 ? "s" : ""}`
+            ) : (
+              <>
+                Next person <ArrowRight className="w-4 h-4 ml-1" />
+              </>
+            )}
           </Button>
         </div>
       </div>
@@ -275,78 +373,36 @@ export function DemoAIScanner({ group, onComplete, onCancel }: Props) {
   }
 
   // ──────────────────────────────────────────────────────
-  // Step 4 — Reveal + confetti
+  // Step 4 — Finalizing loader
   // ──────────────────────────────────────────────────────
   return (
-    <div className="flex-1 flex flex-col max-w-md mx-auto w-full text-center relative">
-      <Confetti show={showConfetti} onDone={() => setShowConfetti(false)} />
-
-      <div className="flex-1 flex flex-col items-center justify-center space-y-5 px-2">
-        <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-primary/15">
-          <Sparkles className="w-8 h-8 text-primary" />
-        </div>
-
-        <div className="space-y-1.5">
-          <div className="text-[10px] uppercase tracking-wider font-mono text-primary">
-            Done · 30 seconds
-          </div>
-          <h2 className="text-2xl font-semibold tracking-tight">
-            30 seconds. <span className="text-muted-foreground line-through">8 minutes manually.</span>
-          </h2>
-          <p className="text-sm text-muted-foreground max-w-xs mx-auto">
-            17 items, tax, tip — all split. Auto-saved to {group.name}.
-          </p>
-        </div>
-
-        {/* Per-person breakdown */}
-        <div className="w-full rounded-2xl bg-card border border-border p-4 space-y-2">
-          <div className="text-[10px] uppercase tracking-wider font-mono text-muted-foreground mb-1">
-            Per person
-          </div>
-          {group.members.map((m) => (
-            <div key={m.id} className="flex items-center gap-2.5 text-sm">
-              <Avatar name={m.name} color={m.avatarColor} isYou={m.isYou} size="sm" />
-              <span className="flex-1 text-left">{m.isYou ? "You owe yourself nothing" : `${m.name} owes you`}</span>
-              <span className="font-semibold tabular-nums">
-                ${(totals[m.id] || 0).toFixed(2)}
-              </span>
-            </div>
-          ))}
-        </div>
-
-        <div className="text-xs text-muted-foreground">
-          AI Receipt Scanner is a <span className="font-semibold text-foreground">Premium</span> feature.
+    <div className="flex-1 flex flex-col items-center justify-center max-w-md mx-auto w-full text-center gap-4">
+      <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      <div>
+        <div className="text-base font-semibold">Splitting items…</div>
+        <div className="text-xs text-muted-foreground mt-1">
+          Bundling shared items + breaking out individual ones
         </div>
       </div>
-
-      <Button
-        size="lg"
-        className="w-full mt-4"
-        onClick={handleFinish}
-        data-testid="demo-scanner-finish"
-      >
-        Continue →
-      </Button>
     </div>
   );
 }
 
 // ──────────────────────────────────────────────────────
-// Subcomponents
+// Stylized receipt (used in both step 1 and step 2)
 // ──────────────────────────────────────────────────────
-
 function ReceiptCard() {
   return (
     <div
       className="rounded-2xl border border-border p-4 font-mono text-xs"
-      style={{ background: "#FBF6EC" }}
+      style={{ background: "#FBF6EC", color: "#1f1f1f" }}
     >
       <div className="text-center pb-2 border-b border-dashed border-stone-400/50">
-        <div className="font-bold text-sm" style={{ color: "#1f1f1f" }}>{TRATTORIA_RECEIPT.restaurant}</div>
-        <div className="text-[10px] opacity-70" style={{ color: "#1f1f1f" }}>{TRATTORIA_RECEIPT.date}</div>
-        <div className="text-[10px] opacity-70" style={{ color: "#1f1f1f" }}>{TRATTORIA_RECEIPT.cover}</div>
+        <div className="font-bold text-sm">{TRATTORIA_RECEIPT.restaurant}</div>
+        <div className="text-[10px] opacity-70">{TRATTORIA_RECEIPT.date}</div>
+        <div className="text-[10px] opacity-70">{TRATTORIA_RECEIPT.cover}</div>
       </div>
-      <div className="py-2 space-y-0.5" style={{ color: "#1f1f1f" }}>
+      <div className="py-2 space-y-0.5">
         {TRATTORIA_RECEIPT.items.map((item) => (
           <div key={item.id} className="flex justify-between leading-tight">
             <span className="truncate pr-2">{item.name}</span>
@@ -354,44 +410,13 @@ function ReceiptCard() {
           </div>
         ))}
       </div>
-      <div className="pt-2 border-t border-dashed border-stone-400/50 space-y-0.5" style={{ color: "#1f1f1f" }}>
+      <div className="pt-2 border-t border-dashed border-stone-400/50 space-y-0.5">
         <div className="flex justify-between"><span>Subtotal</span><span className="tabular-nums">{TRATTORIA_RECEIPT.subtotal.toFixed(2)}</span></div>
         <div className="flex justify-between opacity-80"><span>Tax (13%)</span><span className="tabular-nums">{TRATTORIA_RECEIPT.tax.toFixed(2)}</span></div>
         <div className="flex justify-between opacity-80"><span>Tip (18%)</span><span className="tabular-nums">{TRATTORIA_RECEIPT.tip.toFixed(2)}</span></div>
         <div className="flex justify-between font-bold pt-1 border-t border-dashed border-stone-400/50 mt-1">
           <span>TOTAL</span><span className="tabular-nums">{TRATTORIA_RECEIPT.total.toFixed(2)}</span>
         </div>
-      </div>
-    </div>
-  );
-}
-
-interface AssignmentRowProps {
-  item: ReceiptItem;
-  members: DemoGroupType["members"];
-  assigned: string[];
-  onToggle: (memberId: string) => void;
-}
-
-function AssignmentRow({ item, members, assigned, onToggle }: AssignmentRowProps) {
-  return (
-    <div className="bg-card border border-border rounded-xl p-2.5 flex items-center gap-2">
-      <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium truncate">{item.name}</div>
-        <div className="text-[10px] text-muted-foreground tabular-nums">${item.price.toFixed(2)}</div>
-      </div>
-      <div className="flex items-center gap-1 shrink-0">
-        {members.map((m) => (
-          <Avatar
-            key={m.id}
-            name={m.name}
-            color={m.avatarColor}
-            isYou={m.isYou}
-            size="xs"
-            active={assigned.includes(m.id)}
-            onClick={() => onToggle(m.id)}
-          />
-        ))}
       </div>
     </div>
   );
