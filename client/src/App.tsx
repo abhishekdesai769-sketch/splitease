@@ -1,6 +1,6 @@
 import { Switch, Route, Router, Redirect } from "wouter";
 import { useHashLocation } from "wouter/use-hash-location";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -54,6 +54,26 @@ function AppRouter() {
   // subscription AppRouter wouldn't re-run when the hash changes (e.g. when
   // the invite page sets hash="#/" to send a logged-out user to AuthPage).
   useHashLocation();
+
+  // Whether to show the onboarding-v2 demo. DECIDED ONCE, on first mount —
+  // a useState initializer, never re-read from localStorage on later renders.
+  // That matters: OnboardingV2 forces light mode, which re-renders AppRouter;
+  // if we re-read the (now-set) flag we'd boot the user out of the demo
+  // mid-flow. It only flips false via the two setStates below.
+  const [showOnboardingDemo, setShowOnboardingDemo] = useState(
+    () => ENABLE_ONBOARDING_V2 && !localStorage.getItem(ONBOARDING_SEEN_KEY),
+  );
+
+  // The moment we know a user is logged in, they're an established user —
+  // mark onboarding as seen and never show the demo this session. This is
+  // what stops an EXISTING user seeing the demo when they later log out:
+  // their first logged-in app-open after this ships sets the flag for good.
+  useEffect(() => {
+    if (user) {
+      try { localStorage.setItem(ONBOARDING_SEEN_KEY, "true"); } catch { /* storage off */ }
+      setShowOnboardingDemo(false);
+    }
+  }, [user]);
 
   // Capture UTM params and referral codes from URL on first load.
   // Both survive the OTP step because they're stored in localStorage.
@@ -133,14 +153,18 @@ function AppRouter() {
       return <InvitePage />;
     }
     // First-ever open of the app on this device → show the onboarding demo.
-    // Gated by VITE_ENABLE_ONBOARDING_V2. OnboardingV2 sets ONBOARDING_SEEN_KEY
-    // on mount, so this branch is taken exactly once per install — never on a
-    // later logout (logout doesn't touch localStorage). When the demo finishes
-    // it sets hash="#/" and re-renders to AuthPage, with the flag now set.
-    // reset-password / invite links above are intentionally checked first so
-    // a deep link is never interrupted by onboarding.
-    if (ENABLE_ONBOARDING_V2 && !localStorage.getItem(ONBOARDING_SEEN_KEY)) {
-      return <OnboardingV2 markSeenOnMount />;
+    // showOnboardingDemo was decided once at mount; OnboardingV2 also writes
+    // ONBOARDING_SEEN_KEY on mount so a future launch won't re-show it. When
+    // the demo finishes, onFinish flips showOnboardingDemo false → AuthPage.
+    // reset-password / invite links above are checked first so a deep link is
+    // never interrupted by onboarding.
+    if (showOnboardingDemo) {
+      return (
+        <OnboardingV2
+          markSeenOnMount
+          onFinish={() => setShowOnboardingDemo(false)}
+        />
+      );
     }
     return <AuthPage />;
   }

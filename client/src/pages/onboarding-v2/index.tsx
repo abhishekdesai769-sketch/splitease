@@ -43,9 +43,15 @@ interface OnboardingV2Props {
    * marks the demo as seen.
    */
   markSeenOnMount?: boolean;
+  /**
+   * Called when the demo finishes (recap → "Create your free account").
+   * The real flow passes this so AppRouter can swap to the real signup.
+   * The QA preview route omits it — there we just reset the hash instead.
+   */
+  onFinish?: () => void;
 }
 
-export default function OnboardingV2({ markSeenOnMount = false }: OnboardingV2Props) {
+export default function OnboardingV2({ markSeenOnMount = false, onFinish }: OnboardingV2Props) {
   const [state, dispatch] = useReducer(onboardingReducer, INITIAL_STATE);
   const step = PROGRESS_STEPS[state.screen];
   const showBack = state.screen !== "welcome";
@@ -113,9 +119,14 @@ export default function OnboardingV2({ markSeenOnMount = false }: OnboardingV2Pr
         <RecapScreen
           stats={state.demoStats}
           onContinue={() => {
-            // End of the demo — hand off to the real app signup. Leaving the
-            // preview route lets App.tsx route a logged-out user to AuthPage.
-            window.location.hash = "#/";
+            // End of the demo — hand off to the real app signup.
+            if (onFinish) {
+              // Real flow: AppRouter swaps this out for AuthPage.
+              onFinish();
+            } else {
+              // QA preview: just leave the preview route.
+              window.location.hash = "#/";
+            }
           }}
         />
       )}
