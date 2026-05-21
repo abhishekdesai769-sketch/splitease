@@ -99,8 +99,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
       {/* Voice Mode floating mic button — sits above the bottom nav */}
       <VoiceMicButton />
 
-      {/* Bottom navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-background/90 backdrop-blur-md">
+      {/* Bottom navigation.
+          pb-[env(safe-area-inset-bottom)] — the nav is position:fixed, so it
+          can't inherit #root's safe-area padding. This keeps the nav icons
+          above the iOS home-indicator while the nav's background still
+          extends to the true bottom edge (no white strip). */}
+      <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-background/90 backdrop-blur-md pb-[env(safe-area-inset-bottom)]">
         <div className="max-w-3xl mx-auto flex items-center justify-around h-16">
           {navItems.map((item) => {
             const isActive = location === item.path ||
