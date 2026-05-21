@@ -1,5 +1,5 @@
 /**
- * Screen 06 · Paywall prime — the persona-mapped Premium pitch.
+ * Screen 07 · Paywall prime — the persona-mapped Premium pitch.
  *
  * Three layers:
  *   1. Persona pitch  — headline + subhead from PAYWALL_PRIME_BY_PERSONA
@@ -7,22 +7,23 @@
  *                         roommate → RecurringMiniDemo
  *                         couple   → AutoRemindersMiniDemo
  *                         trip     → an "you just did this" AI Scanner recap
- *   3. Platform CTA   — how Premium is purchased, which differs by platform:
- *                         iOS      → native Apple IAP (StoreKit)
- *                         Android  → web purchase (Play policy — no in-app)
- *                         Web      → Stripe checkout
+ *   3. Trial CTA      — "Start my free month" for every platform. The
+ *                       platform only changes the footnote here; the real
+ *                       payment difference (iOS Apple Pay vs web Stripe
+ *                       redirect) happens later on the Payment screen.
  *
- * PREVIEW NOTE: nothing here charges anything. The CTAs just advance the
- * flow. A dev-only "Preview as" toggle lets you see all 3 platform variants
- * on one device — it will be removed when v2 becomes the real onboarding.
+ * A dev-only "Preview as" toggle lets you see the per-platform footnote on
+ * one device and carries the chosen platform forward to the Payment screen.
+ * It will be removed when v2 becomes the real onboarding.
  */
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Check, Sparkles, Crown, Globe, Smartphone } from "lucide-react";
+import { Check, Sparkles, Crown } from "lucide-react";
 import type { Persona } from "../fixtures";
 import { PAYWALL_PRIME_BY_PERSONA, PREMIUM_PRICE } from "../fixtures";
 import { RecurringMiniDemo } from "../components/RecurringMiniDemo";
 import { AutoRemindersMiniDemo } from "../components/AutoRemindersMiniDemo";
+import type { PlatformView } from "../state";
 import { isInTWA } from "@/lib/platform";
 import { isIosNative } from "@/lib/iap";
 import { track } from "@/lib/analytics";
@@ -30,10 +31,8 @@ import { track } from "@/lib/analytics";
 interface Props {
   persona: Persona;
   /** advance to signup; trialStarted true if they chose to start the trial */
-  onChoose: (trialStarted: boolean) => void;
+  onChoose: (trialStarted: boolean, platform: PlatformView) => void;
 }
-
-type PlatformView = "ios" | "android" | "web";
 
 function detectPlatform(): PlatformView {
   if (isIosNative) return "ios";
@@ -41,11 +40,16 @@ function detectPlatform(): PlatformView {
   return "web";
 }
 
+const PLATFORM_FOOTNOTE: Record<PlatformView, string> = {
+  ios: "Billed through your Apple ID. Cancel anytime in Settings.",
+  android: "Checkout completes at spliiit.klarityit.ca. Cancel anytime.",
+  web: "Secure Stripe checkout. Cancel anytime.",
+};
+
 export function PaywallPrime({ persona, onChoose }: Props) {
   const prime = PAYWALL_PRIME_BY_PERSONA[persona];
   const [platform, setPlatform] = useState<PlatformView>(detectPlatform);
 
-  // Fire once on mount — which feature got primed for which persona
   useState(() => {
     track("paywall_prime_viewed", { persona, feature: prime.feature });
     return null;
@@ -53,15 +57,11 @@ export function PaywallPrime({ persona, onChoose }: Props) {
 
   const startTrial = () => {
     track("paywall_prime_trial_started", { persona, platform });
-    onChoose(true);
-  };
-  const acknowledgeAndroid = () => {
-    track("paywall_prime_android_ack", { persona });
-    onChoose(false);
+    onChoose(true, platform);
   };
   const maybeLater = () => {
     track("paywall_prime_dismissed", { persona });
-    onChoose(false);
+    onChoose(false, platform);
   };
 
   return (
@@ -96,7 +96,7 @@ export function PaywallPrime({ persona, onChoose }: Props) {
         )}
       </div>
 
-      {/* ── 3. Platform-aware CTA ─────────────────────────── */}
+      {/* ── 3. Trial CTA ──────────────────────────────────── */}
       {/* Dev-only preview toggle — remove at cutover */}
       <div className="flex items-center gap-2 mb-3">
         <span className="text-[10px] uppercase tracking-wider font-mono text-muted-foreground">
@@ -120,73 +120,41 @@ export function PaywallPrime({ persona, onChoose }: Props) {
         </div>
       </div>
 
-      {platform === "android" ? (
-        // ── Android: Google Play forbids in-app subscription UI ──
-        <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
-          <div className="flex items-center gap-2">
-            <Globe className="w-4 h-4 text-primary" />
-            <span className="text-sm font-semibold">Premium is on the web</span>
-          </div>
-          <p className="text-xs text-muted-foreground leading-relaxed">
-            Google Play doesn't allow in-app subscriptions. Open{" "}
-            <span className="font-semibold text-foreground">spliiit.klarityit.ca</span>{" "}
-            in your browser when you're ready — start your{" "}
-            {PREMIUM_PRICE.trialDays}-day free trial there, and Premium unlocks
-            in this app automatically. No re-login, nothing.
-          </p>
-          <Button
-            size="lg"
-            className="w-full"
-            onClick={acknowledgeAndroid}
-            data-testid="paywall-android-ack"
-          >
-            Got it
-          </Button>
+      <div className="rounded-2xl border border-primary/30 bg-primary/5 p-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <Crown className="w-4 h-4 text-primary" />
+          <span className="text-sm font-semibold">
+            {PREMIUM_PRICE.trialDays} days free, then {PREMIUM_PRICE.monthly}/month
+          </span>
         </div>
-      ) : (
-        // ── iOS + Web: in-app trial start ──
-        <div className="rounded-2xl border border-primary/30 bg-primary/5 p-4 space-y-3">
-          <div className="flex items-center gap-2">
-            {platform === "ios" ? (
-              <Smartphone className="w-4 h-4 text-primary" />
-            ) : (
-              <Globe className="w-4 h-4 text-primary" />
-            )}
-            <span className="text-sm font-semibold">
-              {PREMIUM_PRICE.trialDays} days free, then {PREMIUM_PRICE.monthly}/month
-            </span>
-          </div>
-          <ul className="space-y-1.5">
-            {[
-              "AI Receipt Scanner on every bill",
-              "Recurring expenses — set once",
-              "Auto-Reminders in your chosen tone",
-              "Multi-currency auto-convert",
-            ].map((perk) => (
-              <li key={perk} className="flex items-center gap-2 text-xs text-foreground">
-                <Check className="w-3.5 h-3.5 text-primary shrink-0" />
-                {perk}
-              </li>
-            ))}
-          </ul>
-          <Button
-            size="lg"
-            className="w-full"
-            onClick={startTrial}
-            data-testid="paywall-start-trial"
-          >
-            <Sparkles className="w-4 h-4 mr-1.5" />
-            Start my free month
-          </Button>
-          <p className="text-[11px] text-muted-foreground text-center">
-            {platform === "ios"
-              ? "Billed through your Apple ID. Cancel anytime in Settings."
-              : "Secure checkout. Cancel anytime."}
-            {"  ·  "}
-            {PREMIUM_PRICE.yearly}/year option available.
-          </p>
-        </div>
-      )}
+        <ul className="space-y-1.5">
+          {[
+            "AI Receipt Scanner on every bill",
+            "Recurring expenses — set once",
+            "Auto-Reminders in your chosen tone",
+            "Multi-currency auto-convert",
+          ].map((perk) => (
+            <li key={perk} className="flex items-center gap-2 text-xs text-foreground">
+              <Check className="w-3.5 h-3.5 text-primary shrink-0" />
+              {perk}
+            </li>
+          ))}
+        </ul>
+        <Button
+          size="lg"
+          className="w-full"
+          onClick={startTrial}
+          data-testid="paywall-start-trial"
+        >
+          <Sparkles className="w-4 h-4 mr-1.5" />
+          Start my free month
+        </Button>
+        <p className="text-[11px] text-muted-foreground text-center">
+          {PLATFORM_FOOTNOTE[platform]}
+          {"  ·  "}
+          {PREMIUM_PRICE.yearly}/year option available.
+        </p>
+      </div>
 
       <button
         type="button"

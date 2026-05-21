@@ -3,15 +3,22 @@
  *
  * Holds the state machine, picks the right screen for the current step.
  *
+ * Flow:
+ *   welcome → pain → persona → simulation_intro → demo_group
+ *     → recap → paywall_prime → signup
+ *       → (trial) payment → create_group → done
+ *       → (no trial)        create_group → done
+ *
  * IMPORTANT — still preview-only:
  *   - Mounted only via the hidden preview route `#/onboarding-v2-preview`.
  *     NOT wired into the auth/onboarding gates. Production users still see
  *     the existing FirstRunWizard.
- *   - Wave 1 (welcome → demo group + AI Scanner) and Wave 2 (recap →
- *     paywall prime → signup → done) are all UI. No backend calls, no DB
- *     writes, no real payment, no real signup, no balance recalculation.
- *   - Real wiring (DB migration, RevenueCat/Stripe, OTP auth, flipping v2
- *     to be the live onboarding) is a separate cutover task.
+ *   - The demo is a teaching tool — nothing in the demo group is saved. The
+ *     user creates their REAL first group on the create_group screen.
+ *   - Payment is functional where it can be (web/Android → real redirect to
+ *     spliiit.klarityit.ca; iOS → real IAP in the native app, simulated on
+ *     web). Signup is still a mockup. DB migration + flipping v2 to be the
+ *     live onboarding is a separate cutover task.
  */
 import { useEffect, useReducer } from "react";
 import { Chrome } from "./Chrome";
@@ -23,6 +30,8 @@ import { DemoGroupScreen } from "./screens/DemoGroup";
 import { RecapScreen } from "./screens/Recap";
 import { PaywallPrime } from "./screens/PaywallPrime";
 import { SignupScreen } from "./screens/Signup";
+import { PaymentScreen } from "./screens/Payment";
+import { CreateGroupScreen } from "./screens/CreateGroup";
 import { DoneScreen } from "./screens/Done";
 import {
   INITIAL_STATE,
@@ -51,10 +60,6 @@ export default function OnboardingV2() {
     // Run once on mount + once on unmount only.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Derived values for screens that need the demo group name / expense count
-  const groupName = state.persona ? DEMO_GROUPS[state.persona].name : "your group";
-  const expenseCount = state.demoStats?.totalExpenses ?? 0;
 
   return (
     <Chrome
@@ -98,26 +103,36 @@ export default function OnboardingV2() {
       {state.screen === "paywall_prime" && state.persona && (
         <PaywallPrime
           persona={state.persona}
-          onChoose={(trialStarted) => dispatch({ type: "advance_to_signup", trialStarted })}
+          onChoose={(trialStarted, platform) =>
+            dispatch({ type: "advance_to_signup", trialStarted, platform })
+          }
         />
       )}
 
       {state.screen === "signup" && (
         <SignupScreen
-          groupName={groupName}
-          expenseCount={expenseCount}
           trialStarted={state.trialStarted}
-          onSignup={() => dispatch({ type: "advance_to_done", signedUp: true })}
-          onSkip={() => dispatch({ type: "advance_to_done", signedUp: false })}
+          onContinue={() => dispatch({ type: "advance_from_signup" })}
+        />
+      )}
+
+      {state.screen === "payment" && (
+        <PaymentScreen
+          platform={state.platform}
+          onPaid={() => dispatch({ type: "advance_from_payment" })}
+        />
+      )}
+
+      {state.screen === "create_group" && (
+        <CreateGroupScreen
+          onCreate={(groupName) => dispatch({ type: "create_group_done", groupName })}
         />
       )}
 
       {state.screen === "done" && (
         <DoneScreen
-          groupName={groupName}
-          expenseCount={expenseCount}
+          groupName={state.createdGroupName}
           trialStarted={state.trialStarted}
-          signedUp={state.signedUp}
           onFinish={() => {
             // Exit the preview route — at cutover this becomes the real
             // hand-off into the app.

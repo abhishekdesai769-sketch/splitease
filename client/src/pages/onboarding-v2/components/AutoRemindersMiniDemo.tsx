@@ -1,7 +1,12 @@
 /**
  * Auto-Reminders mini-demo — shown inside the paywall prime for the couple
- * persona. An interactive tone switcher: tapping friendly / firm / funny
- * swaps the reminder message so the user feels the feature.
+ * persona. Renders an EMAIL PREVIEW with the exact copy Spliiit's real
+ * sendAutoReminderEmail() produces, so the user sees precisely what their
+ * friends would receive — including the "Why did you get this?" block.
+ *
+ * Source of truth: server/email.ts → sendAutoReminderEmail (friendly / firm /
+ * funny tones). Sample values: recipient "Sam", owed to "Jordan", $42.00.
+ * Tones limited to the three the product spec uses (friendly / firm / funny).
  */
 import { useState } from "react";
 
@@ -13,13 +18,21 @@ const TONES: { id: Tone; label: string }[] = [
   { id: "funny", label: "Funny" },
 ];
 
-const MESSAGES: Record<Tone, string> = {
+// Verbatim from server/email.ts sendAutoReminderEmail (first="Sam",
+// owedToName="Jordan", amt="$42.00").
+const SUBJECTS: Record<Tone, string> = {
+  friendly: "👋 Friendly nudge from Spliiit — you owe Jordan money",
+  firm: "Payment reminder: you have an outstanding balance with Jordan",
+  funny: "Fun fact: you owe Jordan $42.00 😄",
+};
+
+const BODIES: Record<Tone, string> = {
   friendly:
-    "Hey! Gentle nudge — your $42 from Friday takeout whenever you get a sec 🙂",
+    "Hey Sam! 👋\n\nSpliiit here — just a quick, friendly nudge that you have an outstanding balance of $42.00 with Jordan on the app.\n\nNo stress at all, but whenever you get a chance to settle up it would mean a lot! Tap the button below to sort it out in seconds.\n\n— Spliiit",
   firm:
-    "Reminder: your $42 share of Friday takeout is now 5 days overdue. Please settle up.",
+    "Hi Sam,\n\nThis is an automated reminder from Spliiit that you have an outstanding balance of $42.00 owed to Jordan.\n\nPlease settle this at your earliest convenience using the button below.\n\nThank you,\nSpliiit",
   funny:
-    "The $42 you owe me has started paying rent in my head. Time to evict it 😭",
+    "Hi Sam 😄\n\nFun fact: you owe Jordan $42.00. Less fun fact: it's been sitting there for a while. Even less fun fact: Spliiit just sent you this email about it.\n\nGood news though — settling up takes about 10 seconds flat. Then we can all move on with our lives. Deal?\n\n— Spliiit (comedy writer by night, balance tracker by day)",
 };
 
 export function AutoRemindersMiniDemo() {
@@ -28,16 +41,11 @@ export function AutoRemindersMiniDemo() {
   return (
     <div className="rounded-2xl border border-border bg-card p-4">
       <div className="text-[10px] uppercase tracking-wider font-mono text-muted-foreground mb-3">
-        Auto-Reminders · Spliiit messages them for you
-      </div>
-
-      {/* Chat bubble preview */}
-      <div className="rounded-xl bg-primary/5 border border-primary/20 p-3 mb-3 min-h-[76px] flex items-center">
-        <p className="text-sm leading-relaxed">{MESSAGES[tone]}</p>
+        Auto-Reminders · the exact email Spliiit sends for you
       </div>
 
       {/* Tone switcher */}
-      <div className="grid grid-cols-3 gap-1.5">
+      <div className="grid grid-cols-3 gap-1.5 mb-3">
         {TONES.map((t) => (
           <button
             key={t.id}
@@ -55,8 +63,58 @@ export function AutoRemindersMiniDemo() {
         ))}
       </div>
 
+      {/* Email preview */}
+      <div className="rounded-xl border border-border bg-background overflow-hidden">
+        {/* Email subject */}
+        <div className="px-3 py-2.5 border-b border-border bg-muted/30">
+          <div className="text-[9px] uppercase tracking-wider font-mono text-muted-foreground">
+            Subject
+          </div>
+          <div className="text-xs font-semibold mt-0.5 leading-snug">
+            {SUBJECTS[tone]}
+          </div>
+        </div>
+
+        {/* Outstanding balance block (matches the real email) */}
+        <div className="px-3 pt-3">
+          <div className="rounded-lg border border-border p-2.5">
+            <div className="text-[10px] text-muted-foreground">Outstanding balance</div>
+            <div className="text-xl font-bold leading-tight">$42.00</div>
+            <div className="text-[11px] text-muted-foreground">
+              owed to <span className="font-semibold text-foreground">Jordan</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Email body */}
+        <div className="px-3 py-3 text-xs leading-relaxed whitespace-pre-line text-foreground">
+          {BODIES[tone]}
+        </div>
+
+        {/* Settle-up button (visual only) */}
+        <div className="px-3 pb-3">
+          <div className="rounded-lg bg-primary text-primary-foreground text-xs font-semibold text-center py-2">
+            Settle up on Spliiit
+          </div>
+        </div>
+
+        {/* "Why did you get this?" — verbatim from the real email */}
+        <div className="px-3 pb-3">
+          <div className="rounded-lg bg-muted/40 border border-border p-2.5">
+            <div className="text-[11px] font-semibold mb-1">Why did you get this?</div>
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+              <span className="font-semibold text-foreground">Jordan</span> is a
+              Spliiit Premium member. Spliiit sent this automatically on their
+              behalf — they didn't personally message you and may not even know
+              this landed in your inbox. No awkwardness needed. 😌
+            </p>
+          </div>
+        </div>
+      </div>
+
       <p className="text-xs text-muted-foreground mt-2.5">
-        Pick the tone. Spliiit sends it on a schedule — you never have to ask.
+        Pick the tone. Spliiit sends it on a schedule — from Spliiit, not you,
+        so there's zero awkwardness.
       </p>
     </div>
   );
