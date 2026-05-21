@@ -25,7 +25,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Sparkles, Zap, ArrowLeft, ArrowRight, Loader2 } from "lucide-react";
+import { Sparkles, Zap, ArrowLeft, ArrowRight, Loader2, CheckCircle2 } from "lucide-react";
 import { DEMO_RECEIPT } from "../fixtures";
 import type { DemoGroup, DemoExpense } from "../fixtures";
 import { track } from "@/lib/analytics";
@@ -36,7 +36,7 @@ interface Props {
   onCancel: () => void;
 }
 
-type Step = "receipt" | "scanning" | "select-equal" | "assign-person" | "finalizing";
+type Step = "receipt" | "scanning" | "select-equal" | "assign-person" | "summary" | "finalizing";
 
 const getInitials = (name: string) =>
   name.split(" ").map((p) => p[0]).join("").slice(0, 2).toUpperCase();
@@ -78,12 +78,12 @@ export function DemoAIScanner({ group, onComplete, onCancel }: Props) {
     return () => clearTimeout(t);
   }, [step]);
 
-  // Finalizing: brief loader, then build splits + hand back
+  // Finalizing: brief loader, then hand the confirmed splits back
   useEffect(() => {
     if (step !== "finalizing") return;
     const t = setTimeout(() => {
       const elapsed = startTimeRef.current ? Date.now() - startTimeRef.current : 30_000;
-      onComplete(buildExpenses(), elapsed);
+      onComplete(bundledExpenses, elapsed);
     }, 800);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -106,7 +106,9 @@ export function DemoAIScanner({ group, onComplete, onCancel }: Props) {
 
   const advanceFromSelectEqual = () => {
     track("demo_ai_scanner_equal_selected", { count: equalItemIds.size });
-    if (unequalIndices.length === 0) setStep("finalizing");
+    // If every item is shared, there's nothing to assign per-person — jump
+    // straight to the review & confirm screen.
+    if (unequalIndices.length === 0) setStep("summary");
     else setStep("assign-person");
   };
 
@@ -126,7 +128,8 @@ export function DemoAIScanner({ group, onComplete, onCancel }: Props) {
     if (assigningPersonIdx < group.members.length - 1) {
       setAssigningPersonIdx(assigningPersonIdx + 1);
     } else {
-      setStep("finalizing");
+      // Last person done — go to the review & confirm screen.
+      setStep("summary");
     }
   };
 
@@ -135,8 +138,18 @@ export function DemoAIScanner({ group, onComplete, onCancel }: Props) {
     else setStep("select-equal");
   };
 
-  // Build final expenses — items grouped by identical assignee set.
-  function buildExpenses(): DemoExpense[] {
+  const goBackFromSummary = () => {
+    if (unequalIndices.length > 0) {
+      setAssigningPersonIdx(group.members.length - 1);
+      setStep("assign-person");
+    } else {
+      setStep("select-equal");
+    }
+  };
+
+  // Final expenses — items grouped by identical assignee set. Computed once
+  // here (useMemo) so the summary screen previews EXACTLY what gets created.
+  const bundledExpenses = useMemo<DemoExpense[]>(() => {
     const allMemberIds = group.members.map((m) => m.id);
     const youId = group.members.find((m) => m.isYou)?.id ?? allMemberIds[0];
     const splits: DemoExpense[] = [];
@@ -196,7 +209,7 @@ export function DemoAIScanner({ group, onComplete, onCancel }: Props) {
     }
 
     return splits;
-  }
+  }, [equalItemIds, unequalIndices, assignments, group.members]);
 
   // ──────────────────────────────────────────────────────
   // Step 1 — Receipt + Scan CTA
@@ -426,10 +439,10 @@ export function DemoAIScanner({ group, onComplete, onCancel }: Props) {
             <ArrowLeft className="w-4 h-4 mr-1" /> Back
           </Button>
           <Button className="flex-1" onClick={advancePerson} data-testid="demo-scanner-next-person">
-            {selectedCount === 0 ? (
+            {isLastPerson ? (
+              <>Review <ArrowRight className="w-4 h-4 ml-1" /></>
+            ) : selectedCount === 0 ? (
               "Skip this person"
-            ) : isLastPerson ? (
-              "Finish"
             ) : (
               <>Next person <ArrowRight className="w-4 h-4 ml-1" /></>
             )}
@@ -440,15 +453,80 @@ export function DemoAIScanner({ group, onComplete, onCancel }: Props) {
   }
 
   // ──────────────────────────────────────────────────────
-  // Step 5 — Finalizing
+  // Step 5 — Review & confirm (clone of ReceiptReviewSheet's "summary")
+  // Shows EXACTLY the expenses that are about to be created. Nothing is
+  // written until the user taps "Create N expenses".
+  // ──────────────────────────────────────────────────────
+  if (step === "summary") {
+    const count = bundledExpenses.length;
+    return (
+      <div className="flex-1 flex flex-col max-w-md mx-auto w-full">
+        <div className="text-left pt-2 pb-4">
+          <p className="text-xs text-muted-foreground uppercase tracking-wide">Review &amp; confirm</p>
+          <h2 className="flex items-center gap-2 text-base font-semibold mt-1">
+            <CheckCircle2 className="w-5 h-5 text-primary" />
+            Creating {count} expense{count !== 1 ? "s" : ""}
+          </h2>
+          <p className="text-xs text-muted-foreground mt-1">
+            Here's what the AI Scanner will add to your group. Check it, then
+            confirm.
+          </p>
+        </div>
+
+        <div className="rounded-lg border border-border divide-y divide-border mb-5 text-sm overflow-y-auto -mx-1">
+          {bundledExpenses.map((exp) => {
+            const isEveryone = exp.splitAmongIds.length === group.members.length;
+            const names = exp.splitAmongIds
+              .map((id) => {
+                const m = group.members.find((mm) => mm.id === id);
+                return m ? (m.isYou ? "You" : m.name) : id;
+              })
+              .join(", ");
+            return (
+              <div key={exp.id} className="px-3 py-3">
+                <div className="flex justify-between mb-0.5">
+                  <span className="font-medium truncate flex-1 pr-4">{exp.description}</span>
+                  <span className="font-mono font-semibold">${exp.amount.toFixed(2)}</span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {isEveryone ? `Split equally — ${group.members.length} people` : names}
+                </p>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="flex-1" />
+
+        <div className="flex gap-3">
+          <Button variant="outline" className="flex-1" onClick={goBackFromSummary}>
+            <ArrowLeft className="w-4 h-4 mr-1" /> Back
+          </Button>
+          <Button
+            className="flex-1"
+            onClick={() => {
+              track("demo_ai_scanner_confirmed", { expenses: count });
+              setStep("finalizing");
+            }}
+            data-testid="demo-scanner-confirm"
+          >
+            Create {count} expense{count !== 1 ? "s" : ""}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // ──────────────────────────────────────────────────────
+  // Step 6 — Finalizing
   // ──────────────────────────────────────────────────────
   return (
     <div className="flex-1 flex flex-col items-center justify-center max-w-md mx-auto w-full text-center gap-4">
       <Loader2 className="w-8 h-8 animate-spin text-primary" />
       <div>
-        <div className="text-base font-semibold">Splitting your bill…</div>
+        <div className="text-base font-semibold">Creating your expenses…</div>
         <div className="text-xs text-muted-foreground mt-1">
-          Bundling shared items + individual ones
+          Adding {bundledExpenses.length} expense{bundledExpenses.length !== 1 ? "s" : ""} to your group
         </div>
       </div>
     </div>
