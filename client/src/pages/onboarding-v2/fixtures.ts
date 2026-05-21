@@ -176,48 +176,41 @@ export const DEMO_GROUPS: Record<Persona, DemoGroup> = {
   },
 };
 
-// ─── Trattoria receipt (the AI Scanner magic moment — Screen 04d) ─────────────
-// Pre-baked 17-line restaurant receipt. Used identically across all personas
-// because the AI Scanner is the universal magic moment.
+// ─── Demo receipt (the AI Scanner magic moment) ───────────────────────────────
+// A small 8-line restaurant receipt — deliberately short so the per-person
+// assignment steps stay easy to follow. Assignments are expressed as member
+// INDICES (0-based), resolved against the demo group's actual members at
+// runtime, so the receipt is persona-agnostic (works for a 2/3/4-person group).
+// These indices are only the STARTING checkboxes — the user changes them in
+// the assignment steps; the AI never guesses who ate what.
 
 export interface ReceiptItem {
   id: string;
   name: string;
   price: number;
-  // suggested initial assignment — gets pre-applied so each member's checkbox
-  // step starts with a "best guess" they can tweak.
-  defaultAssignedTo: string[];
+  defaultMemberIndices: number[]; // 0-based positions into group.members
 }
 
-export const TRATTORIA_RECEIPT = {
-  restaurant: "Trattoria da Luca",
-  date: "12 May · 8:47 PM",
-  cover: "Table 7 · 4 covers",
+export const DEMO_RECEIPT = {
+  restaurant: "Bella Trattoria",
+  date: "20 May · 8:15 PM",
+  cover: "Table 6 · 3 covers",
   items: [
-    { id: "r01", name: "Bruschetta al pomodoro", price: 8.50,  defaultAssignedTo: ["m-you","m-aryan","m-maya","m-sam"] },
-    { id: "r02", name: "Burrata e prosciutto",   price: 14.00, defaultAssignedTo: ["m-you","m-maya"] },
-    { id: "r03", name: "Calamari fritti",        price: 12.50, defaultAssignedTo: ["m-you","m-aryan","m-maya","m-sam"] },
-    { id: "r04", name: "Margherita pizza",       price: 14.50, defaultAssignedTo: ["m-maya"] },
-    { id: "r05", name: "Quattro stagioni",       price: 17.00, defaultAssignedTo: ["m-you"] },
-    { id: "r06", name: "Diavola pizza",          price: 16.50, defaultAssignedTo: ["m-sam"] },
-    { id: "r07", name: "Tagliatelle al ragù",    price: 18.00, defaultAssignedTo: ["m-aryan"] },
-    { id: "r08", name: "Spaghetti carbonara",    price: 16.00, defaultAssignedTo: ["m-aryan"] },
-    { id: "r09", name: "Truffle fries",          price: 9.50,  defaultAssignedTo: ["m-you","m-aryan","m-maya","m-sam"] },
-    { id: "r10", name: "Caesar salad",           price: 11.00, defaultAssignedTo: ["m-maya"] },
-    { id: "r11", name: "House red (500ml)",      price: 22.00, defaultAssignedTo: ["m-you","m-aryan","m-maya","m-sam"] },
-    { id: "r12", name: "Aperol spritz × 3",      price: 24.00, defaultAssignedTo: ["m-you","m-maya","m-sam"] },
-    { id: "r13", name: "Negroni × 2",            price: 22.00, defaultAssignedTo: ["m-you","m-sam"] },
-    { id: "r14", name: "Tiramisù × 2",           price: 14.00, defaultAssignedTo: ["m-maya","m-aryan"] },
-    { id: "r15", name: "Affogato",               price: 7.50,  defaultAssignedTo: ["m-you"] },
-    { id: "r16", name: "Limoncello shots × 4",   price: 16.00, defaultAssignedTo: ["m-you","m-aryan","m-maya","m-sam"] },
-    { id: "r17", name: "Espresso × 4",           price: 10.00, defaultAssignedTo: ["m-you","m-aryan","m-maya","m-sam"] },
+    { id: "r1", name: "Garlic bread",        price: 7.50,  defaultMemberIndices: [0, 1, 2] },
+    { id: "r2", name: "Caesar salad",        price: 12.00, defaultMemberIndices: [1] },
+    { id: "r3", name: "Margherita pizza",    price: 16.00, defaultMemberIndices: [0, 2] },
+    { id: "r4", name: "Spaghetti carbonara", price: 18.50, defaultMemberIndices: [1] },
+    { id: "r5", name: "Grilled salmon",      price: 24.00, defaultMemberIndices: [0] },
+    { id: "r6", name: "House fries",         price: 6.50,  defaultMemberIndices: [0, 1, 2] },
+    { id: "r7", name: "Tiramisù × 2",        price: 14.00, defaultMemberIndices: [1, 2] },
+    { id: "r8", name: "Wine (bottle)",       price: 38.00, defaultMemberIndices: [0, 1, 2] },
   ] satisfies ReceiptItem[],
-  subtotal: 252.50,
+  subtotal: 136.50,
   taxRate: 0.13,
-  tax: 32.83,
+  tax: 17.75,
   tipRate: 0.18,
-  tip: 45.45,
-  total: 330.78,
+  tip: 24.57,
+  total: 178.82,
 };
 
 // ─── Persona-mapped Premium prime (Screen 05 — Wave 2) ────────────────────────
