@@ -28,13 +28,14 @@ import {
 } from "lucide-react";
 import type { Persona, DemoGroup as DemoGroupType, DemoExpense } from "../fixtures";
 import { DEMO_GROUPS } from "../fixtures";
+import type { DemoStats } from "../state";
 import { DemoAddExpense } from "./DemoAddExpense";
 import { DemoAIScanner } from "./DemoAIScanner";
 import { track } from "@/lib/analytics";
 
 interface Props {
   persona: Persona;
-  onMagicActionComplete: () => void;
+  onMagicActionComplete: (stats: DemoStats) => void;
 }
 
 type SubView = "main" | "add_expense" | "ai_scanner";
@@ -56,7 +57,8 @@ export function DemoGroupScreen({ persona, onMagicActionComplete }: Props) {
   //   scanner done     → primary: Continue →        · banner above shows stats
   const manualExpenseAdded = group.expenses.length > baseExpenseCount;
   const [aiScannerCompleted, setAiScannerCompleted] = useState(false);
-  const [secondsSaved, setSecondsSaved] = useState<number | null>(null);
+  const [secondsSaved, setSecondsSaved] = useState<number>(0);
+  const [aiExpensesCount, setAiExpensesCount] = useState(0);
 
   // Fire the demo_group_loaded event once on mount.
   useEffect(() => {
@@ -70,13 +72,13 @@ export function DemoGroupScreen({ persona, onMagicActionComplete }: Props) {
     track("demo_add_expense_submitted");
   };
 
-  // AI Scanner produces MULTIPLE expenses (matches the real handleCreateSplits
-  // in ReceiptReviewSheet: equal-items bundle + each unequal item separately).
+  // AI Scanner produces MULTIPLE expenses (items bundled by share-combo).
   const handleScannerComplete = (newExpenses: DemoExpense[], durationMs: number) => {
     setGroup({ ...group, expenses: [...group.expenses, ...newExpenses] });
     setSubView("main");
     setAiScannerCompleted(true);
-    setSecondsSaved(Math.round(durationMs / 1000));
+    setSecondsSaved(Math.max(1, Math.round(durationMs / 1000)));
+    setAiExpensesCount(newExpenses.length);
     track("demo_ai_scanner_completed", {
       duration_seconds: Math.round(durationMs / 1000),
       expenses_created: newExpenses.length,
@@ -92,10 +94,6 @@ export function DemoGroupScreen({ persona, onMagicActionComplete }: Props) {
         group={group}
         onSubmit={handleManualExpenseSubmit}
         onCancel={() => setSubView("main")}
-        onTryScanner={() => {
-          track("demo_ai_scanner_started", { entry: "modal" });
-          setSubView("ai_scanner");
-        }}
       />
     );
   }
@@ -356,12 +354,18 @@ export function DemoGroupScreen({ persona, onMagicActionComplete }: Props) {
           </>
         )}
 
-        {/* State 3 — Magic moment done: Continue */}
+        {/* State 3 — Magic moment done: Continue (passes stats to the recap) */}
         {aiScannerCompleted && (
           <Button
             size="lg"
             className="w-full shadow-sm"
-            onClick={onMagicActionComplete}
+            onClick={() =>
+              onMagicActionComplete({
+                totalExpenses: group.expenses.length,
+                aiExpensesCreated: aiExpensesCount,
+                secondsElapsed: secondsSaved,
+              })
+            }
             data-testid="demo-continue-after-magic"
           >
             Continue →

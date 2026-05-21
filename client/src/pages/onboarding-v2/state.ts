@@ -20,14 +20,22 @@ export type ScreenId =
   | "signup"          // Wave 2
   | "done";
 
+// Stats captured at the end of the demo group, surfaced on the recap screen.
+export interface DemoStats {
+  totalExpenses: number;       // total expenses in the demo group at the end
+  aiExpensesCreated: number;   // how many the AI Scanner produced from one receipt
+  secondsElapsed: number;      // how long the scanner run actually took
+}
+
 export interface OnboardingState {
   screen: ScreenId;
   pain: PainPoint | null;
   persona: Persona | null;
-  // Used by demo group (Commit 2) — set when the user adds their manual
-  // expense and again when they finish the AI Scanner run.
+  // Used by demo group — set when the user adds their manual expense and
+  // again when they finish the AI Scanner run.
   demoManualExpenseAdded: boolean;
   demoAiScannerCompleted: boolean;
+  demoStats: DemoStats | null;
 }
 
 export const INITIAL_STATE: OnboardingState = {
@@ -36,6 +44,7 @@ export const INITIAL_STATE: OnboardingState = {
   persona: null,
   demoManualExpenseAdded: false,
   demoAiScannerCompleted: false,
+  demoStats: null,
 };
 
 export type OnboardingAction =
@@ -45,8 +54,7 @@ export type OnboardingAction =
   | { type: "advance_from_intro" }
   | { type: "back" }
   | { type: "demo_manual_expense_added" }
-  | { type: "demo_ai_scanner_completed" }
-  | { type: "advance_to_paywall_prime" };
+  | { type: "advance_to_paywall_prime"; stats: DemoStats };
 
 export function onboardingReducer(
   state: OnboardingState,
@@ -75,11 +83,13 @@ export function onboardingReducer(
     case "demo_manual_expense_added":
       return { ...state, demoManualExpenseAdded: true };
 
-    case "demo_ai_scanner_completed":
-      return { ...state, demoAiScannerCompleted: true };
-
     case "advance_to_paywall_prime":
-      return { ...state, screen: "paywall_prime" };
+      return {
+        ...state,
+        screen: "paywall_prime",
+        demoAiScannerCompleted: true,
+        demoStats: action.stats,
+      };
 
     default:
       return state;

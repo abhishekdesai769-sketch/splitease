@@ -23,14 +23,13 @@ import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { ChevronDown, Sparkles, ArrowLeft } from "lucide-react";
+import { ChevronDown, ArrowLeft, Camera, FileText, X } from "lucide-react";
 import type { DemoGroup, DemoExpense } from "../fixtures";
 
 interface Props {
   group: DemoGroup;
   onSubmit: (expense: DemoExpense) => void;
   onCancel: () => void;
-  onTryScanner: () => void;
 }
 
 type SplitType = "equal" | "they_pay" | "you_pay" | "custom";
@@ -41,7 +40,7 @@ const SPLIT_LABELS: Record<SplitType, string> = {
   custom: "Unequal split",
 };
 
-export function DemoAddExpense({ group, onSubmit, onCancel, onTryScanner }: Props) {
+export function DemoAddExpense({ group, onSubmit, onCancel }: Props) {
   // Pre-filled state so the user only needs to tap Submit to feel the flow
   const [description, setDescription] = useState(group.prefilledExpenseDescription);
   const [amount, setAmount] = useState(group.prefilledExpenseAmount.toFixed(2));
@@ -53,6 +52,7 @@ export function DemoAddExpense({ group, onSubmit, onCancel, onTryScanner }: Prop
   const [tipAmount, setTipAmount] = useState("");
   const [customSplitMode, setCustomSplitMode] = useState<"amount" | "percent">("amount");
   const [customSplitValues, setCustomSplitValues] = useState<Record<string, string>>({});
+  const [receiptAttached, setReceiptAttached] = useState(false);
 
   const baseAmount = parseFloat(amount) || 0;
   const taxAmt = baseAmount * (parseFloat(taxPercent) || 0) / 100;
@@ -332,28 +332,44 @@ export function DemoAddExpense({ group, onSubmit, onCancel, onTryScanner }: Prop
           </div>
         )}
 
-        {/* Receipt (optional) — the on-ramp to the AI Scanner magic moment */}
+        {/* Receipt (optional) — plain attach. The AI Scanner gets its own
+            dedicated demo step afterwards, so we keep this dialog to the
+            simple "attach a photo" path that every user gets for free. */}
         <div className="space-y-2">
           <Label>Receipt (optional)</Label>
-          <button
-            type="button"
-            onClick={onTryScanner}
-            className="relative w-full bg-gradient-to-br from-primary/15 to-primary/5 border border-primary/30 rounded-xl p-3.5 flex items-center gap-3 text-left hover:border-primary/50 active:scale-[0.99] transition-all"
-            data-testid="demo-try-scanner"
-          >
-            <div className="w-9 h-9 rounded-lg bg-primary/20 flex items-center justify-center shrink-0">
-              <Sparkles className="w-4 h-4 text-primary" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="font-semibold text-sm">Scan with AI</div>
-              <div className="text-xs text-muted-foreground mt-0.5">
-                17-item dinner bill? Faster than typing.
+          {!receiptAttached ? (
+            <button
+              type="button"
+              onClick={() => setReceiptAttached(true)}
+              className="w-full border-2 border-dashed border-border rounded-xl p-4 flex flex-col items-center gap-1.5 hover:border-primary/40 hover:bg-muted/30 transition-colors"
+              data-testid="demo-attach-receipt"
+            >
+              <Camera className="w-5 h-5 text-muted-foreground" />
+              <span className="text-sm font-medium">Attach a photo</span>
+              <span className="text-xs text-muted-foreground">Snap or upload the receipt</span>
+            </button>
+          ) : (
+            <div className="flex items-center gap-3 rounded-xl border border-border p-3 bg-muted/30">
+              <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                <FileText className="w-4 h-4 text-primary" />
               </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium truncate">receipt-photo.jpg</div>
+                <div className="text-xs text-muted-foreground">Attached</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReceiptAttached(false)}
+                className="p-1.5 rounded-full hover:bg-muted transition-colors"
+                aria-label="Remove receipt"
+              >
+                <X className="w-4 h-4 text-muted-foreground" />
+              </button>
             </div>
-            <span className="text-[10px] uppercase tracking-wider font-mono text-primary font-semibold shrink-0">
-              Premium
-            </span>
-          </button>
+          )}
+          <p className="text-xs text-muted-foreground">
+            Receipt photos are emailed to everyone in this split.
+          </p>
         </div>
 
         {/* Submit */}

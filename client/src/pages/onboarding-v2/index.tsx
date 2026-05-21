@@ -76,37 +76,82 @@ export default function OnboardingV2() {
       {state.screen === "demo_group" && state.persona && (
         <DemoGroupScreen
           persona={state.persona}
-          onMagicActionComplete={() => {
-            dispatch({ type: "demo_ai_scanner_completed" });
-            dispatch({ type: "advance_to_paywall_prime" });
+          onMagicActionComplete={(stats) => {
+            dispatch({ type: "advance_to_paywall_prime", stats });
           }}
         />
       )}
 
       {state.screen === "paywall_prime" && (
-        // Placeholder for Wave 2 — paywall prime + Recurring/Auto-Reminders demos
-        // + persona-mapped feature pitch + iOS / Android / web payment branching.
-        // Showing a celebratory "magic moment done" screen so the preview flow
-        // has a satisfying end-state during dogfooding.
-        <div className="flex-1 flex flex-col items-center justify-center max-w-md mx-auto w-full text-center space-y-5 px-2">
-          <div className="text-xs uppercase tracking-wider text-muted-foreground font-mono">
-            Wave 2 will build the paywall prime here
-          </div>
-          <h2 className="text-2xl font-semibold tracking-tight">
-            You just did the magic moment. ⚡
-          </h2>
-          <p className="text-sm text-muted-foreground max-w-sm leading-relaxed">
-            Next up (Wave 2): a persona-mapped Premium feature pitch
-            (<span className="font-semibold text-foreground">
-              {state.persona === "roommate" ? "Recurring Expenses"
-                : state.persona === "trip" ? "AI Receipt Scanner"
-                : "Auto Reminders (friendly · firm · funny)"}
-            </span>),
-            a "Start free month" CTA (iOS native / Android info screen / web Stripe),
-            then delayed signup, social hook, and smart push permission.
-          </p>
-          <div className="text-xs text-muted-foreground">
-            For now: tap back to replay any step, or close this preview.
+        // Results recap. The Wave-2 paywall prime + payment branching will
+        // slot in below this recap. The recap itself is real copy: it shows
+        // the user exactly what they accomplished — count of expenses + time
+        // — so the value lands before any paywall is shown.
+        <div className="flex-1 flex flex-col max-w-md mx-auto w-full">
+          <div className="flex-1 flex flex-col justify-center space-y-6">
+            <div className="text-center space-y-2">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 text-primary text-[10px] uppercase tracking-wider font-mono font-semibold">
+                Demo complete
+              </div>
+              <h2 className="text-2xl font-semibold tracking-tight">
+                You logged{" "}
+                <span className="text-primary">
+                  {state.demoStats?.totalExpenses ?? 0} expenses
+                </span>{" "}
+                in{" "}
+                <span className="text-primary">
+                  {state.demoStats?.secondsElapsed ?? 0} seconds.
+                </span>
+              </h2>
+              <p className="text-sm text-muted-foreground max-w-sm mx-auto leading-relaxed">
+                The AI Scanner alone turned one receipt photo into{" "}
+                <span className="font-semibold text-foreground">
+                  {state.demoStats?.aiExpensesCreated ?? 0} split expenses
+                </span>
+                {" "}— tax and tip included. By hand, that's the better part of
+                ten minutes of receipt math, every single time.
+              </p>
+            </div>
+
+            {/* Compact stat row */}
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div className="rounded-xl bg-card border border-border p-3">
+                <div className="text-lg font-semibold text-primary">
+                  {state.demoStats?.totalExpenses ?? 0}
+                </div>
+                <div className="text-[10px] uppercase tracking-wider font-mono text-muted-foreground mt-0.5">
+                  expenses
+                </div>
+              </div>
+              <div className="rounded-xl bg-card border border-border p-3">
+                <div className="text-lg font-semibold text-primary">
+                  {state.demoStats?.secondsElapsed ?? 0}s
+                </div>
+                <div className="text-[10px] uppercase tracking-wider font-mono text-muted-foreground mt-0.5">
+                  your time
+                </div>
+              </div>
+              <div className="rounded-xl bg-card border border-border p-3">
+                <div className="text-lg font-semibold text-primary">~10m</div>
+                <div className="text-[10px] uppercase tracking-wider font-mono text-muted-foreground mt-0.5">
+                  by hand
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-dashed border-border p-3 text-center">
+              <div className="text-[10px] uppercase tracking-wider font-mono text-muted-foreground">
+                Wave 2 builds the paywall prime below this recap
+              </div>
+              <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                Persona-mapped Premium pitch (
+                {state.persona === "roommate" ? "Recurring Expenses"
+                  : state.persona === "trip" ? "AI Receipt Scanner"
+                  : "Auto Reminders"}
+                ) → "Start free month" CTA (iOS native / Android info / web
+                Stripe) → delayed signup → social hook → push permission.
+              </p>
+            </div>
           </div>
         </div>
       )}
