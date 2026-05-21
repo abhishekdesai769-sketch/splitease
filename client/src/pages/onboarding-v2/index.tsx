@@ -3,26 +3,31 @@
  *
  * Holds the state machine, picks the right screen for the current step.
  *
- * IMPORTANT — Wave 1 (this commit):
- *   - This page is mounted only via the hidden preview route
- *     `#/onboarding-v2-preview`. It is NOT wired into the auth/onboarding
- *     gates yet. Production users still see the existing FirstRunWizard.
- *   - The demo_group / paywall_prime / signup / done screens are
- *     placeholder cards in Wave 1. They get built out in Commit 2 (demo
- *     group) and Wave 2 (signup + paywall prime).
- *   - No backend calls. No DB writes. No balance recalculation. Pure
- *     frontend state + analytics events.
+ * IMPORTANT — still preview-only:
+ *   - Mounted only via the hidden preview route `#/onboarding-v2-preview`.
+ *     NOT wired into the auth/onboarding gates. Production users still see
+ *     the existing FirstRunWizard.
+ *   - Wave 1 (welcome → demo group + AI Scanner) and Wave 2 (recap →
+ *     paywall prime → signup → done) are all UI. No backend calls, no DB
+ *     writes, no real payment, no real signup, no balance recalculation.
+ *   - Real wiring (DB migration, RevenueCat/Stripe, OTP auth, flipping v2
+ *     to be the live onboarding) is a separate cutover task.
  */
 import { useEffect, useReducer } from "react";
 import { Chrome } from "./Chrome";
 import { WelcomeScreen } from "./screens/Welcome";
 import { PainQuestionScreen } from "./screens/PainQuestion";
 import { PersonaQuestionScreen } from "./screens/PersonaQuestion";
-import { DemoGroupScreen } from "./screens/DemoGroup";
 import { SimulationIntroScreen } from "./screens/SimulationIntro";
+import { DemoGroupScreen } from "./screens/DemoGroup";
+import { RecapScreen } from "./screens/Recap";
+import { PaywallPrime } from "./screens/PaywallPrime";
+import { SignupScreen } from "./screens/Signup";
+import { DoneScreen } from "./screens/Done";
 import {
   INITIAL_STATE,
   PROGRESS_STEPS,
+  TOTAL_STEPS,
   onboardingReducer,
 } from "./state";
 import { useTheme } from "@/lib/theme";
@@ -34,10 +39,8 @@ export default function OnboardingV2() {
   const showBack = state.screen !== "welcome" && state.screen !== "done";
 
   // Force LIGHT mode for the entire onboarding session — cleanest first
-  // impression of the brand, and matches the canonical look the user wants
-  // every new user to see. We use saveToDb=false so the user's actual theme
-  // preference (set later in Settings) is unaffected. On unmount we restore
-  // whatever their previous pref was so the dashboard reflects their choice.
+  // impression of the brand. saveToDb=false so the user's actual theme
+  // preference is unaffected; restored on unmount.
   const { themePref, setThemePref } = useTheme();
   useEffect(() => {
     const previous = themePref;
@@ -45,13 +48,18 @@ export default function OnboardingV2() {
     return () => {
       setThemePref(previous, false);
     };
-    // Intentionally run once on mount + once on unmount only.
+    // Run once on mount + once on unmount only.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Derived values for screens that need the demo group name / expense count
+  const groupName = state.persona ? DEMO_GROUPS[state.persona].name : "your group";
+  const expenseCount = state.demoStats?.totalExpenses ?? 0;
 
   return (
     <Chrome
       step={step}
+      totalSteps={TOTAL_STEPS}
       onBack={showBack ? () => dispatch({ type: "back" }) : undefined}
     >
       {state.screen === "welcome" && (
@@ -76,84 +84,46 @@ export default function OnboardingV2() {
       {state.screen === "demo_group" && state.persona && (
         <DemoGroupScreen
           persona={state.persona}
-          onMagicActionComplete={(stats) => {
-            dispatch({ type: "advance_to_paywall_prime", stats });
-          }}
+          onMagicActionComplete={(stats) => dispatch({ type: "advance_to_recap", stats })}
         />
       )}
 
-      {state.screen === "paywall_prime" && (
-        // Results recap. The Wave-2 paywall prime + payment branching will
-        // slot in below this recap. The recap itself is real copy: it shows
-        // the user exactly what they accomplished — count of expenses + time
-        // — so the value lands before any paywall is shown.
-        <div className="flex-1 flex flex-col max-w-md mx-auto w-full">
-          <div className="flex-1 flex flex-col justify-center space-y-6">
-            <div className="text-center space-y-2">
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 text-primary text-[10px] uppercase tracking-wider font-mono font-semibold">
-                Demo complete
-              </div>
-              <h2 className="text-2xl font-semibold tracking-tight">
-                You logged{" "}
-                <span className="text-primary">
-                  {state.demoStats?.totalExpenses ?? 0} expenses
-                </span>{" "}
-                in{" "}
-                <span className="text-primary">
-                  {state.demoStats?.secondsElapsed ?? 0} seconds.
-                </span>
-              </h2>
-              <p className="text-sm text-muted-foreground max-w-sm mx-auto leading-relaxed">
-                The AI Scanner alone turned one receipt photo into{" "}
-                <span className="font-semibold text-foreground">
-                  {state.demoStats?.aiExpensesCreated ?? 0} split expenses
-                </span>
-                {" "}— tax and tip included. By hand, that's the better part of
-                ten minutes of receipt math, every single time.
-              </p>
-            </div>
+      {state.screen === "recap" && (
+        <RecapScreen
+          stats={state.demoStats}
+          onContinue={() => dispatch({ type: "advance_to_paywall" })}
+        />
+      )}
 
-            {/* Compact stat row */}
-            <div className="grid grid-cols-3 gap-2 text-center">
-              <div className="rounded-xl bg-card border border-border p-3">
-                <div className="text-lg font-semibold text-primary">
-                  {state.demoStats?.totalExpenses ?? 0}
-                </div>
-                <div className="text-[10px] uppercase tracking-wider font-mono text-muted-foreground mt-0.5">
-                  expenses
-                </div>
-              </div>
-              <div className="rounded-xl bg-card border border-border p-3">
-                <div className="text-lg font-semibold text-primary">
-                  {state.demoStats?.secondsElapsed ?? 0}s
-                </div>
-                <div className="text-[10px] uppercase tracking-wider font-mono text-muted-foreground mt-0.5">
-                  your time
-                </div>
-              </div>
-              <div className="rounded-xl bg-card border border-border p-3">
-                <div className="text-lg font-semibold text-primary">~10m</div>
-                <div className="text-[10px] uppercase tracking-wider font-mono text-muted-foreground mt-0.5">
-                  by hand
-                </div>
-              </div>
-            </div>
+      {state.screen === "paywall_prime" && state.persona && (
+        <PaywallPrime
+          persona={state.persona}
+          onChoose={(trialStarted) => dispatch({ type: "advance_to_signup", trialStarted })}
+        />
+      )}
 
-            <div className="rounded-xl border border-dashed border-border p-3 text-center">
-              <div className="text-[10px] uppercase tracking-wider font-mono text-muted-foreground">
-                Wave 2 builds the paywall prime below this recap
-              </div>
-              <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                Persona-mapped Premium pitch (
-                {state.persona === "roommate" ? "Recurring Expenses"
-                  : state.persona === "trip" ? "AI Receipt Scanner"
-                  : "Auto Reminders"}
-                ) → "Start free month" CTA (iOS native / Android info / web
-                Stripe) → delayed signup → social hook → push permission.
-              </p>
-            </div>
-          </div>
-        </div>
+      {state.screen === "signup" && (
+        <SignupScreen
+          groupName={groupName}
+          expenseCount={expenseCount}
+          trialStarted={state.trialStarted}
+          onSignup={() => dispatch({ type: "advance_to_done", signedUp: true })}
+          onSkip={() => dispatch({ type: "advance_to_done", signedUp: false })}
+        />
+      )}
+
+      {state.screen === "done" && (
+        <DoneScreen
+          groupName={groupName}
+          expenseCount={expenseCount}
+          trialStarted={state.trialStarted}
+          signedUp={state.signedUp}
+          onFinish={() => {
+            // Exit the preview route — at cutover this becomes the real
+            // hand-off into the app.
+            window.location.hash = "#/";
+          }}
+        />
       )}
     </Chrome>
   );

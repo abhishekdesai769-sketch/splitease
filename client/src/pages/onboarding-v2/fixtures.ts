@@ -218,22 +218,33 @@ export const DEMO_RECEIPT = {
 
 export const PAYWALL_PRIME_BY_PERSONA: Record<Persona, {
   feature: "ai_scanner" | "recurring" | "auto_reminders";
+  featureLabel: string;
   headline: string;
   subhead: string;
 }> = {
   roommate: {
     feature: "recurring",
-    headline: "Rent every month. Tap once, never again.",
-    subhead: "Recurring Expenses sets up next month, and the one after that, automatically.",
+    featureLabel: "Recurring Expenses",
+    headline: "Rent. Internet. Hydro. Every month, forever.",
+    subhead: "Recurring Expenses logs them automatically — set it once, never touch it again.",
   },
   trip: {
     feature: "ai_scanner",
-    headline: "That was 4 people. Try this with 38.",
-    subhead: "AI Scanner reads any bill — line by line — and splits it in seconds.",
+    featureLabel: "AI Receipt Scanner",
+    headline: "That receipt took seconds. Every receipt can.",
+    subhead: "AI Receipt Scanner reads any bill — 8 items or 80 — and splits it in seconds, every time.",
   },
   couple: {
     feature: "auto_reminders",
-    headline: "Jordan still hasn't paid. Want us to ask — politely?",
-    subhead: "Auto Reminders chases your half automatically. You pick the tone.",
+    featureLabel: "Auto-Reminders",
+    headline: "Stop being the one who always asks for money back.",
+    subhead: "Auto-Reminders nudges them for you — friendly, firm, or funny. You pick the tone.",
   },
+};
+
+// Premium pricing (CAD). Display-only in the preview.
+export const PREMIUM_PRICE = {
+  monthly: "CA$3.99",
+  yearly: "CA$29.99",
+  trialDays: 30,
 };
