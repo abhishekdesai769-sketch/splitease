@@ -34,6 +34,18 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { isInTWA } from "@/lib/platform";
 import { initDeepLinkHandling } from "@/lib/deeplink";
 
+// Cutover flag for onboarding v2. OFF by default — set VITE_ENABLE_ONBOARDING_V2
+// to "true" in the Render environment to turn the new onboarding on for new
+// users. While OFF, behaviour is exactly as before (new users get the old
+// FirstRunWizard). Build-time flag (Vite), so flipping it triggers a rebuild.
+const ENABLE_ONBOARDING_V2 =
+  import.meta.env.VITE_ENABLE_ONBOARDING_V2 === "true";
+
+// localStorage key that records the onboarding demo has been shown on this
+// device. Set once, on first install — survives logout (logout never clears
+// localStorage), so the demo shows exactly ONCE per install and never again.
+const ONBOARDING_SEEN_KEY = "spliiit_seen_onboarding";
+
 function AppRouter() {
   const { user, isLoading } = useAuth();
   const { syncFromDb } = useTheme();
@@ -119,6 +131,16 @@ function AppRouter() {
     // before being asked to sign up. The InvitePage handles the "Sign up to join" CTA itself.
     if (hash.startsWith("#/invite/")) {
       return <InvitePage />;
+    }
+    // First-ever open of the app on this device → show the onboarding demo.
+    // Gated by VITE_ENABLE_ONBOARDING_V2. OnboardingV2 sets ONBOARDING_SEEN_KEY
+    // on mount, so this branch is taken exactly once per install — never on a
+    // later logout (logout doesn't touch localStorage). When the demo finishes
+    // it sets hash="#/" and re-renders to AuthPage, with the flag now set.
+    // reset-password / invite links above are intentionally checked first so
+    // a deep link is never interrupted by onboarding.
+    if (ENABLE_ONBOARDING_V2 && !localStorage.getItem(ONBOARDING_SEEN_KEY)) {
+      return <OnboardingV2 markSeenOnMount />;
     }
     return <AuthPage />;
   }

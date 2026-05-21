@@ -35,10 +35,33 @@ import {
 import { useTheme } from "@/lib/theme";
 import { DEMO_GROUPS } from "./fixtures";
 
-export default function OnboardingV2() {
+interface OnboardingV2Props {
+  /**
+   * When true (the real new-user flow), records in localStorage that the
+   * onboarding demo has been shown — so it appears exactly ONCE per install
+   * and never again. The QA preview route omits this, so previewing never
+   * marks the demo as seen.
+   */
+  markSeenOnMount?: boolean;
+}
+
+export default function OnboardingV2({ markSeenOnMount = false }: OnboardingV2Props) {
   const [state, dispatch] = useReducer(onboardingReducer, INITIAL_STATE);
   const step = PROGRESS_STEPS[state.screen];
   const showBack = state.screen !== "welcome";
+
+  // Mark the demo as "seen" on first paint. Done on mount (not on completion)
+  // so it shows strictly once on first install — quitting mid-demo doesn't
+  // re-trigger it on the next launch.
+  useEffect(() => {
+    if (markSeenOnMount) {
+      try {
+        localStorage.setItem("spliiit_seen_onboarding", "true");
+      } catch {
+        /* private mode / storage disabled — non-fatal */
+      }
+    }
+  }, [markSeenOnMount]);
 
   // Force LIGHT mode for the entire onboarding session — cleanest first
   // impression of the brand. saveToDb=false so the user's actual theme
