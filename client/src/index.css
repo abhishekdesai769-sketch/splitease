@@ -197,21 +197,13 @@
     @apply font-sans antialiased bg-background text-foreground;
   }
 
-  /* The one and only scroll container for the whole app.
-     Padded by the device safe-area insets (notch / Dynamic Island at the top,
-     home-indicator at the bottom) so app content never sits under them. With
-     viewport-fit=cover in index.html the web view fills the WHOLE screen edge
-     to edge — the inset padding keeps content clear, and the cream html/body
-     background paints the inset strips so there's no white gap. The values
-     are 0 on devices without safe areas (desktop, older phones). */
+  /* The one and only scroll container for the whole app. */
   #root {
     height: 100%;
     overflow-y: auto;
     overflow-x: hidden;
     overscroll-behavior: none;
     -webkit-overflow-scrolling: touch;
-    padding-top: env(safe-area-inset-top);
-    padding-bottom: env(safe-area-inset-bottom);
   }
 }
 
