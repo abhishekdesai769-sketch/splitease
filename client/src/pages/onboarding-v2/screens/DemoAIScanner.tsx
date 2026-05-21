@@ -50,37 +50,22 @@ export function DemoAIScanner({ group, onComplete, onCancel }: Props) {
   const [step, setStep] = useState<Step>("receipt");
   const startTimeRef = useRef<number | null>(null);
 
-  // ── Resolve receipt fixture's member indices → actual member IDs ──
-  // Indices beyond this group's size are dropped; empty falls back to all.
-  const resolvedDefaults = useMemo<string[][]>(() => {
-    const allIds = group.members.map((m) => m.id);
-    return DEMO_RECEIPT.items.map((item) => {
-      const ids = item.defaultMemberIndices
-        .filter((i) => i < group.members.length)
-        .map((i) => group.members[i].id);
-      return ids.length > 0 ? ids : allIds;
-    });
-  }, [group.members]);
-
-  // ── Equal items — seeded from defaults (items shared by everyone) ──
-  const seededEqualIds = useMemo(() => {
-    const equal = new Set<number>();
-    resolvedDefaults.forEach((ids, idx) => {
-      if (ids.length === group.members.length) equal.add(idx);
-    });
-    return equal;
-  }, [resolvedDefaults, group.members.length]);
-
-  const [equalItemIds, setEqualItemIds] = useState<Set<number>>(seededEqualIds);
+  // ── Equal items — the user picks these in step 1. NOTHING is pre-checked.
+  // The demo teaches by making the user do the selecting themselves; an
+  // auto-filled checklist is confusing and defeats the point. ──
+  const [equalItemIds, setEqualItemIds] = useState<Set<number>>(() => new Set<number>());
   const unequalIndices = useMemo(
     () => DEMO_RECEIPT.items.map((_, i) => i).filter((i) => !equalItemIds.has(i)),
     [equalItemIds]
   );
 
-  // ── Per-person assignment state: Map<itemIdx, Set<memberId>> ──
+  // ── Per-person assignment: Map<itemIdx, Set<memberId>> ──
+  // Every item starts UNassigned. The user actively ticks who had what in
+  // the per-person step. The "who shared this" names under an item appear
+  // only once the user has assigned someone — never before.
   const [assignments, setAssignments] = useState<Map<number, Set<string>>>(() => {
     const init = new Map<number, Set<string>>();
-    resolvedDefaults.forEach((ids, idx) => init.set(idx, new Set(ids)));
+    DEMO_RECEIPT.items.forEach((_, idx) => init.set(idx, new Set<string>()));
     return init;
   });
 
