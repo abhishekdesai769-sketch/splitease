@@ -19,12 +19,14 @@ import { WelcomeScreen } from "./screens/Welcome";
 import { PainQuestionScreen } from "./screens/PainQuestion";
 import { PersonaQuestionScreen } from "./screens/PersonaQuestion";
 import { DemoGroupScreen } from "./screens/DemoGroup";
+import { SimulationIntroScreen } from "./screens/SimulationIntro";
 import {
   INITIAL_STATE,
   PROGRESS_STEPS,
   onboardingReducer,
 } from "./state";
 import { useTheme } from "@/lib/theme";
+import { DEMO_GROUPS } from "./fixtures";
 
 export default function OnboardingV2() {
   const [state, dispatch] = useReducer(onboardingReducer, INITIAL_STATE);
@@ -62,6 +64,13 @@ export default function OnboardingV2() {
 
       {state.screen === "persona" && (
         <PersonaQuestionScreen onSelect={(persona) => dispatch({ type: "select_persona", persona })} />
+      )}
+
+      {state.screen === "simulation_intro" && state.persona && (
+        <SimulationIntroScreen
+          personaLabel={DEMO_GROUPS[state.persona].name}
+          onContinue={() => dispatch({ type: "advance_from_intro" })}
+        />
       )}
 
       {state.screen === "demo_group" && state.persona && (

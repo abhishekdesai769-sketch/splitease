@@ -37,7 +37,7 @@ interface Props {
   onCancel: () => void;
 }
 
-type Step = "receipt" | "scanning" | "assign-person" | "finalizing";
+type Step = "receipt" | "scanning" | "select-equal" | "assign-person" | "finalizing";
 
 const getInitials = (name: string) =>
   name.split(" ").map((p) => p[0]).join("").slice(0, 2).toUpperCase();
@@ -51,47 +51,67 @@ export function DemoAIScanner({ group, onComplete, onCancel }: Props) {
   const [step, setStep] = useState<Step>("receipt");
   const startTimeRef = useRef<number | null>(null);
 
-  // ── Derive equal vs unequal item indices from fixture defaults ────────
-  // Items whose default assignment includes ALL members are pre-classified
-  // as "equal" (split among all, no per-person step UI). Others are unequal.
-  const { equalIndices, unequalIndices } = useMemo(() => {
+  // ── Equal vs unequal classification — now USER-CONTROLLED ──
+  // We seed it from fixture defaults (items where defaultAssignedTo = all
+  // members start as "equal"), but the user toggles which items are
+  // "shared by everyone" in the select-equal step. Items still in equalIds
+  // bundle into one expense; the rest go through per-person assignment.
+  const seededEqualIds = useMemo(() => {
     const allIds = new Set(group.members.map((m) => m.id));
     const equal = new Set<number>();
-    const unequal: number[] = [];
     TRATTORIA_RECEIPT.items.forEach((item, idx) => {
-      // Drop any fixture-default IDs that aren't in this persona's group
       const validIds = item.defaultAssignedTo.filter((id) => allIds.has(id));
       const coversAllMembers =
         validIds.length === group.members.length &&
         group.members.every((m) => validIds.includes(m.id));
       if (coversAllMembers) equal.add(idx);
-      else unequal.push(idx);
     });
-    return { equalIndices: equal, unequalIndices: unequal };
+    return equal;
   }, [group.members]);
 
-  // ── Assignment state: Map<itemIdx, Set<memberId>> ──
-  // Pre-seed unequal items with their fixture defaults (filtered to actual
-  // members). The per-person step toggles entries in/out of these sets.
+  const [equalItemIds, setEqualItemIds] = useState<Set<number>>(seededEqualIds);
+  // Derived live: every item NOT in equalItemIds goes through per-person.
+  const unequalIndices = useMemo(
+    () => TRATTORIA_RECEIPT.items.map((_, i) => i).filter((i) => !equalItemIds.has(i)),
+    [equalItemIds]
+  );
+
+  // ── Per-person assignment state: Map<itemIdx, Set<memberId>> ──
+  // Pre-seeded from fixture defaults but only for items that are unequal.
   const [assignments, setAssignments] = useState<Map<number, Set<string>>>(() => {
     const init = new Map<number, Set<string>>();
     const allIds = new Set(group.members.map((m) => m.id));
-    for (const idx of unequalIndices) {
-      const item = TRATTORIA_RECEIPT.items[idx];
+    TRATTORIA_RECEIPT.items.forEach((item, idx) => {
       const valid = item.defaultAssignedTo.filter((id) => allIds.has(id));
       init.set(idx, new Set(valid));
-    }
+    });
     return init;
   });
 
   const [assigningPersonIdx, setAssigningPersonIdx] = useState(0);
 
-  // Step-2 scan animation: auto-advance after 1500ms
+  // Step-2 scan animation: auto-advance to the equal-items step
   useEffect(() => {
     if (step !== "scanning") return;
-    const t = setTimeout(() => setStep("assign-person"), 1500);
+    const t = setTimeout(() => setStep("select-equal"), 1500);
     return () => clearTimeout(t);
   }, [step]);
+
+  const toggleEqualItem = (itemIdx: number) => {
+    setEqualItemIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(itemIdx)) next.delete(itemIdx);
+      else next.add(itemIdx);
+      return next;
+    });
+  };
+
+  const advanceFromSelectEqual = () => {
+    track("demo_ai_scanner_equal_selected", { count: equalItemIds.size });
+    // If everything is marked equal, skip per-person entirely
+    if (unequalIndices.length === 0) setStep("finalizing");
+    else setStep("assign-person");
+  };
 
   // Step-4 finalizing: brief loader, then build splits + call onComplete
   useEffect(() => {
@@ -146,19 +166,23 @@ export function DemoAIScanner({ group, onComplete, onCancel }: Props) {
 
   const goBackPerson = () => {
     if (assigningPersonIdx > 0) setAssigningPersonIdx(assigningPersonIdx - 1);
-    else setStep("receipt");
+    else setStep("select-equal");
   };
 
-  // Build the final splits — mirrors handleCreateSplits in ReceiptReviewSheet:
-  //   - Equal items combine into ONE expense, named "Item1 + N more"
-  //   - Each unequal item becomes its own expense
+  // Build the final splits — smarter bundling than the v1.
+  //   - All "everyone-shared" items combine into ONE expense
+  //   - Unequal items are grouped by IDENTICAL share-combo: every item with
+  //     the same Set<memberId> becomes ONE expense whose description lists
+  //     the item names (truncated to "Item1 + N more" if it gets long).
+  // Result: a Trattoria dinner produces ~4-6 expenses instead of 12.
   function buildExpensesFromAssignments(): DemoExpense[] {
     const allMemberIds = group.members.map((m) => m.id);
     const youId = group.members.find((m) => m.isYou)?.id ?? allMemberIds[0];
     const splits: DemoExpense[] = [];
+    const stamp = Date.now();
 
-    // Equal bundle
-    const equalItems = Array.from(equalIndices).map((idx) => TRATTORIA_RECEIPT.items[idx]);
+    // 1. Equal bundle — everyone shared these
+    const equalItems = Array.from(equalItemIds).map((idx) => TRATTORIA_RECEIPT.items[idx]);
     if (equalItems.length > 0) {
       const preTax = equalItems.reduce((sum, it) => sum + it.price, 0);
       const withTax = Math.round(preTax * TAX_MULTIPLIER * 100) / 100;
@@ -166,7 +190,7 @@ export function DemoAIScanner({ group, onComplete, onCancel }: Props) {
         ? equalItems[0].name
         : `${equalItems[0].name} + ${equalItems.length - 1} more`;
       splits.push({
-        id: `e-ai-eq-${Date.now()}`,
+        id: `e-ai-eq-${stamp}`,
         description: desc,
         amount: withTax,
         paidById: youId,
@@ -176,16 +200,33 @@ export function DemoAIScanner({ group, onComplete, onCancel }: Props) {
       });
     }
 
-    // Per-item unequal expenses
-    let n = 0;
+    // 2. Group unequal items by their share-combo (sorted member IDs).
+    //    Items with the same set of assignees end up in the same bucket.
+    const buckets = new Map<string, { memberIds: string[]; items: typeof TRATTORIA_RECEIPT.items }>();
     for (const itemIdx of unequalIndices) {
       const item = TRATTORIA_RECEIPT.items[itemIdx];
       const assigned = Array.from(assignments.get(itemIdx) ?? []);
       const memberIds = assigned.length > 0 ? assigned : allMemberIds;
-      const withTax = Math.round(item.price * TAX_MULTIPLIER * 100) / 100;
+      const key = [...memberIds].sort().join("|");
+      const bucket = buckets.get(key);
+      if (bucket) bucket.items.push(item);
+      else buckets.set(key, { memberIds, items: [item] });
+    }
+
+    let n = 0;
+    for (const { memberIds, items } of buckets.values()) {
+      const preTax = items.reduce((sum, it) => sum + it.price, 0);
+      const withTax = Math.round(preTax * TAX_MULTIPLIER * 100) / 100;
+      // Description lists the items — readable up to 2 names, then "+ N more"
+      const desc =
+        items.length === 1
+          ? items[0].name
+          : items.length === 2
+            ? `${items[0].name} + ${items[1].name}`
+            : `${items[0].name} + ${items.length - 1} more`;
       splits.push({
-        id: `e-ai-${n++}-${Date.now()}`,
-        description: item.name,
+        id: `e-ai-${n++}-${stamp}`,
+        description: desc,
         amount: withTax,
         paidById: youId,
         splitAmongIds: memberIds,
@@ -273,7 +314,88 @@ export function DemoAIScanner({ group, onComplete, onCancel }: Props) {
   }
 
   // ──────────────────────────────────────────────────────
-  // Step 3 — Per-person assignment (matches ReceiptReviewSheet exactly)
+  // Step 3a — Select items everyone shared (BEFORE per-person)
+  // Mirrors the real flow: classify equal items first, then per-person for
+  // the rest. Pre-seeded from fixture defaults so the user usually just
+  // hits Continue → unless they want to tweak.
+  // ──────────────────────────────────────────────────────
+  if (step === "select-equal") {
+    const equalCount = equalItemIds.size;
+    const totalItems = TRATTORIA_RECEIPT.items.length;
+    return (
+      <div className="flex-1 flex flex-col max-w-md mx-auto w-full">
+        <div className="text-left pt-2 pb-2">
+          <p className="text-xs text-muted-foreground uppercase tracking-wide">
+            Step 1 of 2
+          </p>
+          <h2 className="text-base font-semibold mt-1">
+            Which items did everyone share?
+          </h2>
+          <p className="text-xs text-muted-foreground mt-1">
+            We'll split these equally among all {group.members.length} of you. The
+            rest get assigned per person in the next step.
+          </p>
+        </div>
+
+        <div className="flex items-center justify-between py-3">
+          <span className="text-sm font-semibold">
+            {equalCount} of {totalItems} marked shared
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              if (equalItemIds.size === totalItems) setEqualItemIds(new Set());
+              else setEqualItemIds(new Set(TRATTORIA_RECEIPT.items.map((_, i) => i)));
+            }}
+            className="text-sm text-muted-foreground border border-border rounded-lg px-3 py-1 hover:bg-muted/40 transition-colors"
+          >
+            {equalItemIds.size === totalItems ? "Deselect all" : "Select all"}
+          </button>
+        </div>
+
+        <div className="space-y-2 mb-5 overflow-y-auto -mx-1 px-1">
+          {TRATTORIA_RECEIPT.items.map((item, idx) => {
+            const isChecked = equalItemIds.has(idx);
+            return (
+              <label
+                key={idx}
+                className={`flex items-center gap-3 px-3 py-3 rounded-xl border cursor-pointer transition-colors ${
+                  isChecked ? "border-primary bg-primary/5" : "border-border hover:bg-muted/40"
+                }`}
+              >
+                <Checkbox checked={isChecked} onCheckedChange={() => toggleEqualItem(idx)} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm truncate">{item.name}</p>
+                  {isChecked && (
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Split among all {group.members.length}
+                    </p>
+                  )}
+                </div>
+                <span className="text-sm font-mono text-muted-foreground shrink-0">
+                  ${item.price.toFixed(2)}
+                </span>
+              </label>
+            );
+          })}
+        </div>
+
+        <div className="flex gap-3 pt-1">
+          <Button variant="outline" className="flex-1" onClick={() => setStep("receipt")}>
+            <ArrowLeft className="w-4 h-4 mr-1" /> Back
+          </Button>
+          <Button className="flex-1" onClick={advanceFromSelectEqual} data-testid="demo-scanner-select-equal-next">
+            {unequalIndices.length === 0 ? "Finish" : (
+              <>Next: assign the rest <ArrowRight className="w-4 h-4 ml-1" /></>
+            )}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // ──────────────────────────────────────────────────────
+  // Step 3b — Per-person assignment (matches ReceiptReviewSheet exactly)
   // ──────────────────────────────────────────────────────
   if (step === "assign-person") {
     const currentMember = group.members[assigningPersonIdx];
@@ -287,7 +409,7 @@ export function DemoAIScanner({ group, onComplete, onCancel }: Props) {
       <div className="flex-1 flex flex-col max-w-md mx-auto w-full">
         <div className="text-left pt-2 pb-2">
           <p className="text-xs text-muted-foreground uppercase tracking-wide">
-            Person {assigningPersonIdx + 1} of {group.members.length}
+            Step 2 of 2 · Person {assigningPersonIdx + 1} of {group.members.length}
           </p>
           <div
             className="w-11 h-11 rounded-full flex items-center justify-center mt-2 mb-1 text-white text-sm font-semibold"
@@ -299,7 +421,8 @@ export function DemoAIScanner({ group, onComplete, onCancel }: Props) {
             Which items include {currentMember.isYou ? "you" : currentMember.name}?
           </h2>
           <p className="text-xs text-muted-foreground mt-1">
-            Tap all items that involve this person, including shared items.
+            Tap all the items {currentMember.isYou ? "you" : currentMember.name} had —
+            shared items are already handled from step 1.
           </p>
         </div>
 

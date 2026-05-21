@@ -46,10 +46,15 @@ const formatLargeCurrency = (n: number) =>
 
 export function DemoGroupScreen({ persona, onMagicActionComplete }: Props) {
   const baseGroup = DEMO_GROUPS[persona];
+  const baseExpenseCount = baseGroup.expenses.length;
   const [group, setGroup] = useState<DemoGroupType>(baseGroup);
   const [subView, setSubView] = useState<SubView>("main");
-  // Track magic-action completion locally so we can show the celebration banner
-  // and switch the bottom CTA from "Add an expense" → "Continue →".
+  // Track which milestones the user has hit. Drives which CTA shows at the
+  // bottom of the demo group — no more "Add expense" loop. Flow:
+  //   start            → primary: Add expense       · secondary: try AI Scanner
+  //   manual added     → primary: Try AI Scanner    · secondary: add another
+  //   scanner done     → primary: Continue →        · banner above shows stats
+  const manualExpenseAdded = group.expenses.length > baseExpenseCount;
   const [aiScannerCompleted, setAiScannerCompleted] = useState(false);
   const [secondsSaved, setSecondsSaved] = useState<number | null>(null);
 
@@ -280,15 +285,15 @@ export function DemoGroupScreen({ persona, onMagicActionComplete }: Props) {
         })}
       </div>
 
-      {/* ── Bottom CTA — guided action OR continue if magic action done ── */}
+      {/* ── Bottom CTA — three states, one of them at a time ── */}
       <div className="pt-2 pb-2 space-y-3">
-        {!aiScannerCompleted ? (
+        {/* State 1 — Nothing done yet: primary Add Expense + secondary AI Scanner */}
+        {!manualExpenseAdded && !aiScannerCompleted && (
           <>
-            <div
-              className="text-center text-sm"
-              style={{ fontFamily: "'Caveat', cursive", color: "hsl(172 63% 45%)" }}
-            >
-              ↓ Now you try — tap to add an expense
+            <div className="bg-primary/10 border border-primary/30 rounded-xl px-3 py-2 text-center">
+              <span className="text-primary font-semibold text-sm">
+                ↓ Now you try — tap to add an expense
+              </span>
             </div>
             <Button
               size="lg"
@@ -302,8 +307,57 @@ export function DemoGroupScreen({ persona, onMagicActionComplete }: Props) {
               <Plus className="w-4 h-4 mr-1.5" />
               Add expense
             </Button>
+            <button
+              type="button"
+              onClick={() => {
+                track("demo_ai_scanner_started", { entry: "direct" });
+                setSubView("ai_scanner");
+              }}
+              className="w-full text-sm text-primary font-medium flex items-center justify-center gap-1 py-1"
+              data-testid="demo-skip-to-scanner"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              Or jump straight to AI Scanner →
+            </button>
           </>
-        ) : (
+        )}
+
+        {/* State 2 — Manual expense added, scanner not yet: primary AI Scanner */}
+        {manualExpenseAdded && !aiScannerCompleted && (
+          <>
+            <div className="bg-primary/10 border border-primary/30 rounded-xl px-3 py-2 text-center">
+              <span className="text-primary font-semibold text-sm">
+                ✨ Nice. Now try the magic one — AI Receipt Scanner.
+              </span>
+            </div>
+            <Button
+              size="lg"
+              className="w-full shadow-sm"
+              onClick={() => {
+                track("demo_ai_scanner_started", { entry: "after_manual" });
+                setSubView("ai_scanner");
+              }}
+              data-testid="demo-try-scanner-after-manual"
+            >
+              <Sparkles className="w-4 h-4 mr-1.5" />
+              Try AI Receipt Scanner
+            </Button>
+            <button
+              type="button"
+              onClick={() => {
+                track("demo_add_expense_started", { entry: "secondary" });
+                setSubView("add_expense");
+              }}
+              className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center gap-1 py-1"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Or add another expense manually
+            </button>
+          </>
+        )}
+
+        {/* State 3 — Magic moment done: Continue */}
+        {aiScannerCompleted && (
           <Button
             size="lg"
             className="w-full shadow-sm"

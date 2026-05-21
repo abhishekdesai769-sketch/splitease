@@ -14,7 +14,8 @@ export type ScreenId =
   | "welcome"
   | "pain"
   | "persona"
-  | "demo_group"      // wired in Commit 2 — placeholder for now
+  | "simulation_intro" // primes the user that the next screen is a simulation
+  | "demo_group"
   | "paywall_prime"   // Wave 2
   | "signup"          // Wave 2
   | "done";
@@ -41,6 +42,7 @@ export type OnboardingAction =
   | { type: "advance_from_welcome" }
   | { type: "select_pain"; pain: PainPoint }
   | { type: "select_persona"; persona: Persona }
+  | { type: "advance_from_intro" }
   | { type: "back" }
   | { type: "demo_manual_expense_added" }
   | { type: "demo_ai_scanner_completed" }
@@ -58,12 +60,16 @@ export function onboardingReducer(
       return { ...state, pain: action.pain, screen: "persona" };
 
     case "select_persona":
-      return { ...state, persona: action.persona, screen: "demo_group" };
+      return { ...state, persona: action.persona, screen: "simulation_intro" };
+
+    case "advance_from_intro":
+      return { ...state, screen: "demo_group" };
 
     case "back":
-      if (state.screen === "pain")        return { ...state, screen: "welcome" };
-      if (state.screen === "persona")     return { ...state, screen: "pain" };
-      if (state.screen === "demo_group")  return { ...state, screen: "persona" };
+      if (state.screen === "pain")              return { ...state, screen: "welcome" };
+      if (state.screen === "persona")           return { ...state, screen: "pain" };
+      if (state.screen === "simulation_intro")  return { ...state, screen: "persona" };
+      if (state.screen === "demo_group")        return { ...state, screen: "simulation_intro" };
       return state;
 
     case "demo_manual_expense_added":
@@ -81,13 +87,14 @@ export function onboardingReducer(
 }
 
 // Progress dots — 5 total. Each screen reports its position.
-// Demo group "completes" the magic action and is the 5th filled dot.
+// Intro + demo_group share dot 4 (they're the "play" zone).
 export const PROGRESS_STEPS: Record<ScreenId, number> = {
-  welcome:        1,
-  pain:           2,
-  persona:        3,
-  demo_group:     4,
-  paywall_prime:  5,
-  signup:         5,
-  done:           5,
+  welcome:          1,
+  pain:             2,
+  persona:          3,
+  simulation_intro: 4,
+  demo_group:       4,
+  paywall_prime:    5,
+  signup:           5,
+  done:             5,
 };
