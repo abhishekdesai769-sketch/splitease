@@ -168,20 +168,42 @@
     @apply border-border;
   }
 
-  /* Native-app feel: clamp the iOS Safari rubber-band overscroll so dragging
-     past the content edge doesn't expose a blank white page ("the screen got
-     lost"). overscroll-behavior:none stops the bounce + browser pull-to-
-     refresh (a real app has neither). The html element is also painted with
-     the theme background as a safety net — if any residual overscroll does
-     happen, it shows the brand canvas (cream / dark), never white. */
+  /* ───────────────────────────────────────────────────────────────────────
+     Native-app feel — kill the iOS Safari rubber-band bounce.
+
+     overscroll-behavior alone does NOT stop the top-level document bounce on
+     iOS Safari (it only works on nested scrollers). So we lock the document
+     entirely: html + body are exactly viewport-height with overflow hidden,
+     meaning the PAGE itself can never scroll or bounce. A single inner
+     container (#root) does all the scrolling — and because #root is a NESTED
+     scroller, overscroll-behavior:none on it is honoured reliably.
+
+     Net effect: scrolling clamps firmly at the top and bottom edges, like a
+     real app — no rubber-band, no blank area, no "lost screen". html is also
+     painted with the theme background as a belt-and-suspenders safety net.
+     ─────────────────────────────────────────────────────────────────────── */
+  html,
+  body {
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+
   html {
     @apply bg-background;
-    overscroll-behavior: none;
   }
 
   body {
     @apply font-sans antialiased bg-background text-foreground;
+  }
+
+  /* The one and only scroll container for the whole app. */
+  #root {
+    height: 100%;
+    overflow-y: auto;
+    overflow-x: hidden;
     overscroll-behavior: none;
+    -webkit-overflow-scrolling: touch;
   }
 }
 
