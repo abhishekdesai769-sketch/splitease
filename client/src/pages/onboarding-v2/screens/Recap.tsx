@@ -1,8 +1,8 @@
 /**
- * Screen 05 · Recap — "look what you just did"
+ * Screen 05 · Recap — "look what you just did", the last screen of the demo.
  *
- * Shown right after the demo group. Surfaces the demoStats (expense count +
- * time) so the value lands BEFORE the paywall pitch. No "magic moment"
+ * Surfaces the demoStats (expense count + time) so the value of the demo
+ * lands, then hands the user off to the real signup. No "magic moment"
  * wording — just the concrete numbers.
  */
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import type { DemoStats } from "../state";
 
 interface Props {
   stats: DemoStats | null;
+  /** continue to the real signup */
   onContinue: () => void;
 }
 
@@ -64,15 +65,20 @@ export function RecapScreen({ stats, onContinue }: Props) {
         </div>
       </div>
 
-      <Button
-        size="lg"
-        className="w-full shadow-sm"
-        onClick={onContinue}
-        data-testid="onboarding-v2-recap-cta"
-      >
-        Continue
-        <ArrowRight className="w-4 h-4 ml-1.5" />
-      </Button>
+      <div className="space-y-2">
+        <p className="text-xs text-muted-foreground text-center">
+          Sign up to start splitting for real — free, always.
+        </p>
+        <Button
+          size="lg"
+          className="w-full shadow-sm"
+          onClick={onContinue}
+          data-testid="onboarding-v2-recap-cta"
+        >
+          Create your free account
+          <ArrowRight className="w-4 h-4 ml-1.5" />
+        </Button>
+      </div>
     </div>
   );
 }

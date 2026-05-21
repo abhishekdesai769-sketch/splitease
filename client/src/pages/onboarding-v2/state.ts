@@ -3,19 +3,18 @@
  *
  * Lives entirely in the OnboardingV2 component via useReducer. No global store.
  *
- * Flow:
- *   welcome → pain → persona → simulation_intro → demo_group
- *     → recap → paywall_prime → signup
- *       → (trial) payment → create_group → done
- *       → (no trial)        create_group → done
+ * Flow (trimmed — no paywall for now):
+ *   welcome → pain → persona → simulation_intro → demo_group → recap
+ *     → [exit preview → the real app signup (AuthPage)]
  *
- * The demo is purely a teaching tool — nothing the user does in the demo
- * group is saved. After signup they create their REAL first group on the
- * create_group screen, exactly like the real first-run.
+ * The demo is purely a teaching tool — nothing in it is saved. After the
+ * recap the user is handed off to the real signup, and the real app's own
+ * onboarding (currency, first-run) takes over.
  *
- * Still preview-only — no real DB writes; payment is functional where it can
- * be (web/Android redirect to spliiit.klarityit.ca; iOS real IAP in the
- * native app, simulated on web).
+ * NOTE: the Wave 2 paywall screens (PaywallPrime, Payment, Signup, CreateGroup,
+ * Done + the mini-demos) are intentionally kept in the codebase but unhooked
+ * from this flow — premium/paywall was descoped for now. PlatformView and
+ * DemoStats stay exported so those files keep type-checking.
  */
 import type { Persona, PainPoint } from "./fixtures";
 
@@ -25,13 +24,10 @@ export type ScreenId =
   | "persona"
   | "simulation_intro"
   | "demo_group"
-  | "recap"
-  | "paywall_prime"
-  | "signup"
-  | "payment"        // only when the user started a trial
-  | "create_group"   // "what are you splitting" — their REAL first group
-  | "done";
+  | "recap";
 
+// Retained for the unhooked Wave 2 screens (paywall / payment). Not used by
+// the current trimmed flow.
 export type PlatformView = "ios" | "android" | "web";
 
 // Stats captured at the end of the demo group, surfaced on the recap screen.
@@ -46,9 +42,6 @@ export interface OnboardingState {
   pain: PainPoint | null;
   persona: Persona | null;
   demoStats: DemoStats | null;
-  trialStarted: boolean;            // did they tap "Start my free month"
-  platform: PlatformView;           // chosen on the paywall, drives payment UI
-  createdGroupName: string | null;  // their real first group, from create_group
 }
 
 export const INITIAL_STATE: OnboardingState = {
@@ -56,9 +49,6 @@ export const INITIAL_STATE: OnboardingState = {
   pain: null,
   persona: null,
   demoStats: null,
-  trialStarted: false,
-  platform: "web",
-  createdGroupName: null,
 };
 
 export type OnboardingAction =
@@ -67,12 +57,7 @@ export type OnboardingAction =
   | { type: "select_persona"; persona: Persona }
   | { type: "advance_from_intro" }
   | { type: "back" }
-  | { type: "advance_to_recap"; stats: DemoStats }
-  | { type: "advance_to_paywall" }
-  | { type: "advance_to_signup"; trialStarted: boolean; platform: PlatformView }
-  | { type: "advance_from_signup" }
-  | { type: "advance_from_payment" }
-  | { type: "create_group_done"; groupName: string };
+  | { type: "advance_to_recap"; stats: DemoStats };
 
 export function onboardingReducer(
   state: OnboardingState,
@@ -94,37 +79,12 @@ export function onboardingReducer(
     case "advance_to_recap":
       return { ...state, screen: "recap", demoStats: action.stats };
 
-    case "advance_to_paywall":
-      return { ...state, screen: "paywall_prime" };
-
-    case "advance_to_signup":
-      return {
-        ...state,
-        screen: "signup",
-        trialStarted: action.trialStarted,
-        platform: action.platform,
-      };
-
-    case "advance_from_signup":
-      // Trial users pay next; everyone else goes straight to their first group.
-      return { ...state, screen: state.trialStarted ? "payment" : "create_group" };
-
-    case "advance_from_payment":
-      return { ...state, screen: "create_group" };
-
-    case "create_group_done":
-      return { ...state, screen: "done", createdGroupName: action.groupName };
-
     case "back":
       if (state.screen === "pain")              return { ...state, screen: "welcome" };
       if (state.screen === "persona")           return { ...state, screen: "pain" };
       if (state.screen === "simulation_intro")  return { ...state, screen: "persona" };
       if (state.screen === "demo_group")        return { ...state, screen: "simulation_intro" };
       if (state.screen === "recap")             return { ...state, screen: "demo_group" };
-      if (state.screen === "paywall_prime")     return { ...state, screen: "recap" };
-      if (state.screen === "signup")            return { ...state, screen: "paywall_prime" };
-      if (state.screen === "payment")           return { ...state, screen: "signup" };
-      if (state.screen === "create_group")      return { ...state, screen: "signup" };
       return state;
 
     default:
@@ -132,8 +92,8 @@ export function onboardingReducer(
   }
 }
 
-// Progress dots — 7 total. Screens that pair up share a dot.
-export const TOTAL_STEPS = 7;
+// Progress dots — 5 total. Intro + demo_group share dot 4.
+export const TOTAL_STEPS = 5;
 export const PROGRESS_STEPS: Record<ScreenId, number> = {
   welcome:          1,
   pain:             2,
@@ -141,9 +101,4 @@ export const PROGRESS_STEPS: Record<ScreenId, number> = {
   simulation_intro: 4,
   demo_group:       4,
   recap:            5,
-  paywall_prime:    5,
-  signup:           6,
-  payment:          6,
-  create_group:     7,
-  done:             7,
 };
