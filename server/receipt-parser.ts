@@ -48,7 +48,11 @@ export async function parseReceipt(
   try {
     const response = await anthropic.messages.create({
       model: "claude-haiku-4-5-20251001",
-      max_tokens: 1024,
+      // Long receipts (groceries, big restaurant bills) produce a long JSON
+      // item list. At 1024 the output was truncated mid-JSON on big receipts
+      // → JSON.parse failed → the scan silently returned null. 8192 fits
+      // ~250+ items — more than any real receipt. Haiku 4.5 allows far more.
+      max_tokens: 8192,
       messages: [
         {
           role: "user",
@@ -78,7 +82,9 @@ export async function parseReceipt(
 Rules:
 - merchant: the store or restaurant name
 - date: the date printed on the receipt (e.g. "Apr 20, 2026"), or null if not visible
-- Extract every line item with its price
+- Extract EVERY line item with its price — receipts can be long (groceries,
+  big bills). Do not stop early, do not summarise, do not skip items. Go all
+  the way to the bottom of the receipt.
 - Use null for subtotal, tax, total, or date if not visible
 - Prices should be numbers, not strings
 - If this is not a receipt, return: { "merchant": "Unknown", "date": null, "items": [], "subtotal": null, "tax": null, "total": null }`,
