@@ -104,15 +104,19 @@ export async function initPushNotifications(userId: string): Promise<void> {
       return;
     }
 
-    // Ask permission. iOS shows the system alert on first call; subsequent
-    // calls return the current decision without re-prompting.
-    const permResult = await PushNotifications.requestPermissions();
-    if (permResult.receive === "granted") {
-      // This kicks off APNs registration. The 'registration' listener above
-      // will fire with the device token a moment later.
+    // Do NOT cold-prompt for permission here. iOS only ever shows the system
+    // alert ONCE — a cold ask (no context) gets declined a lot, and a decline
+    // is permanent (the app can never re-prompt). Instead, the contextual
+    // <PushPermissionPrompt> card explains the value first and calls
+    // requestPushPermission() on the user's tap. Here we only register if
+    // permission is ALREADY granted.
+    const perm = await PushNotifications.checkPermissions();
+    if (perm.receive === "granted") {
+      // Kicks off APNs registration — the 'registration' listener fires with
+      // the device token a moment later.
       await PushNotifications.register();
     } else {
-      console.log("[push] permission not granted:", permResult.receive);
+      console.log("[push] permission not yet granted:", perm.receive);
     }
   } catch (err) {
     console.error("[push] init failed:", err);
@@ -141,4 +145,46 @@ export async function deregisterPushToken(): Promise<void> {
   _currentUserId = null;
   // Note: we intentionally keep _registeredToken so the next login can
   // re-register the same device without re-prompting the user.
+}
+
+// ─── Permission status + contextual request ───────────────────────────────────
+
+export type PushPermissionStatus = "granted" | "denied" | "prompt" | "unsupported";
+
+/**
+ * Current push permission status — drives the contextual pre-permission card
+ * and the "notifications are off" recovery banner. Never prompts the user.
+ * Returns "unsupported" on web / Android.
+ */
+export async function getPushPermissionStatus(): Promise<PushPermissionStatus> {
+  if (!isIosNative) return "unsupported";
+  try {
+    const perm = await PushNotifications.checkPermissions();
+    if (perm.receive === "granted") return "granted";
+    if (perm.receive === "denied") return "denied";
+    return "prompt"; // covers "prompt" and "prompt-with-rationale"
+  } catch {
+    return "unsupported";
+  }
+}
+
+/**
+ * Trigger the real iOS permission alert. Call ONLY from a contextual
+ * pre-permission UI after the user has explicitly opted in — never cold.
+ * On grant, kicks off APNs registration. Returns the resulting status.
+ */
+export async function requestPushPermission(): Promise<PushPermissionStatus> {
+  if (!isIosNative) return "unsupported";
+  try {
+    await setupListeners();
+    const result = await PushNotifications.requestPermissions();
+    if (result.receive === "granted") {
+      await PushNotifications.register();
+      return "granted";
+    }
+    return result.receive === "denied" ? "denied" : "prompt";
+  } catch (err) {
+    console.error("[push] requestPushPermission failed:", err);
+    return "unsupported";
+  }
 }

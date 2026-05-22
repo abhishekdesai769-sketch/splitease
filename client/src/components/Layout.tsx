@@ -7,6 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { SupportDrawer } from "@/components/SupportDrawer";
 import { VoiceMicButton } from "@/components/VoiceMicButton";
+import { PushPermissionPrompt } from "@/components/PushPermissionPrompt";
 import { isInTWA } from "@/lib/platform";
 
 export function Layout({ children }: { children: React.ReactNode }) {
@@ -98,6 +99,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
       {/* Voice Mode floating mic button — sits above the bottom nav */}
       <VoiceMicButton />
+
+      {/* Contextual notification-permission card / recovery banner.
+          iOS-native only — renders nothing on web/Android. */}
+      <PushPermissionPrompt />
 
       {/* Bottom navigation */}
       <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-background/90 backdrop-blur-md">
