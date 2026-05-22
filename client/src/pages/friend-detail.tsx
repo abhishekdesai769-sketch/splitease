@@ -213,6 +213,10 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
       const res = await apiRequest("POST", "/api/settle-up", {
         friendId: friendId,
         amount: Math.abs(myBalance),
+        // myBalance > 0 means the friend owes you → they're the one paying
+        // it back. The server uses this to record the settlement in the
+        // correct direction (otherwise it doubles the balance).
+        friendIsPayer: myBalance > 0,
       });
       return res.json();
     },

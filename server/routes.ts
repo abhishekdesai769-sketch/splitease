@@ -1362,7 +1362,7 @@ setInterval(loadAll,30000);
   // ========== Settle Up ==========
   app.post("/api/settle-up", requireAuth, async (req, res) => {
     const userId = (req.session as any).userId;
-    const { friendId, amount, groupId } = req.body;
+    const { friendId, amount, groupId, friendIsPayer } = req.body;
 
     if (!friendId || !amount) {
       return res.status(400).json({ error: "Friend and amount are required" });
@@ -1378,14 +1378,24 @@ setInterval(loadAll,30000);
       return res.status(403).json({ error: "Unauthorized" });
     }
 
-    // Determine who pays whom based on positive/negative amount
-    // If amount > 0, current user pays friend (current user owed friend)
-    // We create a payment record: paidById = userId (the one paying), splitAmongIds = [friendId]
+    // Direction of the settlement.
+    //   friendIsPayer = true  → the FRIEND owes the current user and is now
+    //                           paying it back  → friend is the payer.
+    //   friendIsPayer = false → the current user owes the friend and is
+    //                           paying           → current user is the payer.
+    // This MUST match the real balance direction. If it's wrong, the
+    // settlement records a brand-new debt instead of cancelling the existing
+    // one (the $5 → $10 bug). The client passes this from the same balance
+    // it already displays ("X pays you" / "you pay X"). Defaults to false
+    // for backward compatibility with any caller that omits the field.
+    const payerId = friendIsPayer ? friendId : userId;
+    const receiverId = friendIsPayer ? userId : friendId;
+
     const expense = await storage.createExpense({
       description: `Settlement payment`,
       amount: parsedAmount,
-      paidById: userId, // person who is paying/settling
-      splitAmongIds: [friendId], // person receiving the payment
+      paidById: payerId,            // the person handing over the money
+      splitAmongIds: [receiverId],  // the person receiving it
       groupId: groupId || null,
       date: new Date().toISOString(),
       addedById: userId,
@@ -1393,10 +1403,11 @@ setInterval(loadAll,30000);
     });
     res.status(201).json(expense);
 
-    // Send email notification for settlement (fire-and-forget)
+    // Send email + push notification for settlement (fire-and-forget).
+    // Payer / receiver follow the real direction above.
     try {
-      const payer = await storage.getUser(userId);
-      const receiver = await storage.getUser(friendId);
+      const payer = await storage.getUser(payerId);
+      const receiver = await storage.getUser(receiverId);
       if (payer && receiver) {
         notifyExpenseCreated({
           description: "Settlement payment",
@@ -1408,15 +1419,15 @@ setInterval(loadAll,30000);
           // Deep-link: if settlement was within a group, link there; otherwise
           // link to the friend page (paidByUserId = payer's id).
           groupId: groupId || undefined,
-          paidByUserId: userId,
+          paidByUserId: payerId,
         });
         // iOS push notifications (fire-and-forget; never throws)
         pushExpenseCreated({
           description: "Settlement payment",
           amount: parsedAmount,
           paidByName: payer.name,
-          paidByUserId: userId,
-          splitAmongUserIds: [friendId],
+          paidByUserId: payerId,
+          splitAmongUserIds: [receiverId],
           isSettlement: true,
         }).catch((err) => console.error("[push] settle-up:", err));
       }
