@@ -1318,47 +1318,13 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
               )}
               <UpgradePromptSheet open={upgradeSheetOpen} onClose={() => setUpgradeSheetOpen(false)} />
 
-              {/* Receipt: scan with AI (Premium) or plain attach */}
+              {/* Receipt (optional) — plain photo attach for THIS manual
+                  expense. The AI scan lives BELOW the form (it fills in
+                  everything itself, so it's an alternative to manual entry,
+                  not a field within it). */}
               {!isRecurring && (
               <div className="space-y-2">
                 <Label>Receipt (optional)</Label>
-                {/* AI Scan button */}
-                <ScanReceiptButton
-                  isPremium={!!user?.isPremium}
-                  onUpgrade={() => setUpgradeSheetOpen(true)}
-                  members={members.map(m => ({ id: m.id, name: m.name }))}
-                  onItemSplit={async (splits) => {
-                    try {
-                      await Promise.all(splits.map(async (split) => {
-                        const fd = new FormData();
-                        fd.append("description", split.description.trim());
-                        fd.append("amount", String(split.amount));
-                        fd.append("paidById", user?.id || "");
-                        fd.append("splitAmongIds", JSON.stringify(split.splitAmongIds));
-                        fd.append("groupId", groupId);
-                        fd.append("date", new Date().toISOString());
-                        const res = await apiFormRequest("POST", "/api/expenses", fd);
-                        return res.json();
-                      }));
-                      queryClient.invalidateQueries({ queryKey: ["/api/expenses/group", groupId] });
-                      queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
-                      setAddOpen(false);
-                      toast({ title: `${splits.length} expense${splits.length !== 1 ? "s" : ""} added` });
-                    } catch (err: any) {
-                      let msg = err.message;
-                      try { msg = JSON.parse(msg.split(": ").slice(1).join(": ")).error; } catch {}
-                      toast({ title: "Error", description: msg, variant: "destructive" });
-                    }
-                  }}
-                  onResult={(data, file) => {
-                    if (data.merchant && !description.trim()) {
-                      setDescription(data.date ? `${data.merchant} — ${data.date}` : data.merchant);
-                    }
-                    if (data.total != null && !amount) setAmount(String(data.total));
-                    setReceiptFile(file);
-                  }}
-                />
-                {/* Plain attach */}
                 {receiptFile ? (
                   <div className="flex items-center gap-2 rounded-lg border border-border p-2.5">
                     <Camera className="w-4 h-4 text-primary shrink-0" />
@@ -1407,6 +1373,54 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                     ? `Set Up Recurring (${recurringFrequency})`
                     : "Add Expense"}
               </Button>
+
+              {/* ── or — AI-scan the whole receipt instead of the manual form
+                  above. AI extracts the items, amounts and who-owes-what, so
+                  it's an alternative to the whole form, not a field in it. */}
+              {!isRecurring && (
+                <div className="space-y-3 pt-1">
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 h-px bg-border" />
+                    <span className="text-[10px] uppercase tracking-wider font-mono text-muted-foreground">or</span>
+                    <div className="flex-1 h-px bg-border" />
+                  </div>
+                  <ScanReceiptButton
+                    isPremium={!!user?.isPremium}
+                    onUpgrade={() => setUpgradeSheetOpen(true)}
+                    members={members.map(m => ({ id: m.id, name: m.name }))}
+                    onItemSplit={async (splits) => {
+                      try {
+                        await Promise.all(splits.map(async (split) => {
+                          const fd = new FormData();
+                          fd.append("description", split.description.trim());
+                          fd.append("amount", String(split.amount));
+                          fd.append("paidById", user?.id || "");
+                          fd.append("splitAmongIds", JSON.stringify(split.splitAmongIds));
+                          fd.append("groupId", groupId);
+                          fd.append("date", new Date().toISOString());
+                          const res = await apiFormRequest("POST", "/api/expenses", fd);
+                          return res.json();
+                        }));
+                        queryClient.invalidateQueries({ queryKey: ["/api/expenses/group", groupId] });
+                        queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
+                        setAddOpen(false);
+                        toast({ title: `${splits.length} expense${splits.length !== 1 ? "s" : ""} added` });
+                      } catch (err: any) {
+                        let msg = err.message;
+                        try { msg = JSON.parse(msg.split(": ").slice(1).join(": ")).error; } catch {}
+                        toast({ title: "Error", description: msg, variant: "destructive" });
+                      }
+                    }}
+                    onResult={(data, file) => {
+                      if (data.merchant && !description.trim()) {
+                        setDescription(data.date ? `${data.merchant} — ${data.date}` : data.merchant);
+                      }
+                      if (data.total != null && !amount) setAmount(String(data.total));
+                      setReceiptFile(file);
+                    }}
+                  />
+                </div>
+              )}
             </form>
           </DialogContent>
         </Dialog>
