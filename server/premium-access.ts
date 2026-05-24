@@ -160,6 +160,77 @@ export async function incrementScanCounters(params: {
 }
 
 // ---------------------------------------------------------------------------
+// Commit a previously-recorded scan by its audit row ID.
+//
+// Used by the expense-create endpoints: when an expense is being saved that
+// originated from an AI scan, we charge the user's free quota HERE (not at
+// scan time). This means a user who scans, reviews, then cancels never spends
+// a free scan — counter only ticks down when an expense actually gets created.
+//
+// Server-side dedup via the `countedAgainstFree` flag on the audit row:
+// calling this twice with the same scanId is a no-op the second time (safe
+// for the per-item flow which creates multiple expenses from one scan).
+//
+// Returns true if a commit happened, false if no-op (scanId invalid, wrong
+// user, already counted, or scan was a failure / paid user).
+// ---------------------------------------------------------------------------
+export async function commitScanByScanId(params: {
+  scanId: string;
+  user: Pick<User, "id" | "isPremium">;
+  deviceId: string | null;
+  platform: string | null;
+}): Promise<boolean> {
+  const { scanId, user, deviceId, platform } = params;
+  if (!scanId) return false;
+
+  // Paid users: nothing to charge. Still mark the audit row as counted so we
+  // never re-process if they downgrade. Cheap, safe.
+  if (user.isPremium) {
+    try {
+      await db
+        .update(aiScanAudit)
+        .set({ countedAgainstFree: true })
+        .where(
+          sql`${aiScanAudit.id} = ${scanId} AND ${aiScanAudit.userId} = ${user.id} AND ${aiScanAudit.countedAgainstFree} = false`,
+        );
+    } catch (err) {
+      console.error("commitScanByScanId paid-user audit update failed:", err);
+    }
+    return false;
+  }
+
+  try {
+    // Atomic check-and-set: flip countedAgainstFree=true only if currently
+    // false AND row belongs to this user AND the scan succeeded. RETURNING
+    // tells us whether the update actually matched a row.
+    const updated = await db
+      .update(aiScanAudit)
+      .set({ countedAgainstFree: true })
+      .where(
+        sql`${aiScanAudit.id} = ${scanId} AND ${aiScanAudit.userId} = ${user.id} AND ${aiScanAudit.countedAgainstFree} = false AND ${aiScanAudit.success} = true`,
+      )
+      .returning({ id: aiScanAudit.id });
+
+    if (updated.length === 0) {
+      // No matching uncounted row — invalid scanId / wrong user / already
+      // committed / failure scan. No-op, no error.
+      return false;
+    }
+
+    // Increment the user's counter + device counter, exactly mirroring the
+    // logic that USED to live inside /api/scan-receipt post-success.
+    await incrementScanCounters({ user, deviceId, platform });
+    return true;
+  } catch (err) {
+    // Don't propagate — expense creation must not fail because counter
+    // commit hit a transient issue. Fail-open: user effectively gets the
+    // scan "back" (audit row stays uncounted, counter unchanged).
+    console.error("commitScanByScanId failed:", err);
+    return false;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Audit log — fire-and-forget. Records every attempt, success or failure.
 // Used for forensic abuse detection and analytics. Never throws.
 // ---------------------------------------------------------------------------
@@ -171,9 +242,9 @@ export async function recordScanAudit(params: {
   success: boolean;
   countedAgainstFree: boolean;
   parseError?: string | null;
-}): Promise<void> {
+}): Promise<string | null> {
   try {
-    await db.insert(aiScanAudit).values({
+    const [row] = await db.insert(aiScanAudit).values({
       userId: params.userId,
       normalizedEmail: params.normalizedEmail,
       deviceId: params.deviceId,
@@ -182,9 +253,11 @@ export async function recordScanAudit(params: {
       success: params.success,
       countedAgainstFree: params.countedAgainstFree,
       parseError: params.parseError ?? null,
-    });
+    }).returning({ id: aiScanAudit.id });
+    return row?.id ?? null;
   } catch (err) {
     console.error("Failed to write ai_scan_audit row:", err);
     // Swallow — audit failure must never block a real scan.
+    return null;
   }
 }

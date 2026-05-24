@@ -14,7 +14,7 @@ import { signupSchema, loginSchema, forgotPasswordSchema, resetPasswordSchema } 
 import { notifyExpenseCreated, sendOtpEmail, sendResetPasswordEmail, sendExportEmail, sendSupportEmail, sendInviteToInviteeEmail, sendInviteToAdminEmail, sendPremiumWelcomeEmail } from "./email";
 import { pushExpenseCreated, pushGroupMemberJoined, pushAddedToGroup, deleteDeviceToken as deleteDeviceTokenRow } from "./push";
 import { parseReceipt, RECEIPT_SCANNING_ENABLED } from "./receipt-parser";
-import { checkScanEligibility, incrementScanCounters, recordScanAudit, normalizeEmail } from "./premium-access";
+import { checkScanEligibility, incrementScanCounters, recordScanAudit, normalizeEmail, commitScanByScanId } from "./premium-access";
 import { isDisposableEmail } from "./disposable-emails";
 import { stripe, STRIPE_PRICE_MONTHLY, STRIPE_PRICE_YEARLY, STRIPE_ENABLED } from "./stripe";
 import {
@@ -1332,6 +1332,23 @@ setInterval(loadAll,30000);
       currency: storedCurrency,
       originalAmount: storedOriginalAmount,
     });
+
+    // ── AI-scan attribution & free-quota commit ─────────────────────────────
+    // If this expense came from an AI scan, charge the user's free quota NOW
+    // (not at scan time). Idempotent — safe to retry.
+    const aiScanIdFriend = typeof req.body.aiScanId === "string" ? req.body.aiScanId : null;
+    if (aiScanIdFriend) {
+      const creator = await storage.getUser(userId);
+      if (creator) {
+        await commitScanByScanId({
+          scanId: aiScanIdFriend,
+          user: { id: creator.id, isPremium: creator.isPremium },
+          deviceId: (req.header("x-device-id") || "").trim() || null,
+          platform: (req.header("x-platform") || "").trim() || null,
+        }).catch((err) => console.error("[friends/expenses] scan commit failed:", err));
+      }
+    }
+
     res.status(201).json(expense);
 
     // Receipt from upload (held in memory only â not saved)
@@ -2337,6 +2354,25 @@ setInterval(loadAll,30000);
       currency: storedCurrency2,
       originalAmount: storedOriginalAmount2,
     });
+
+    // ── AI-scan attribution & free-quota commit ─────────────────────────────
+    // If this expense came from an AI scan, NOW is when we charge the user's
+    // free quota (not at scan time). Idempotent server-side: calling this
+    // twice with the same scanId is a no-op the second time. Safe to ignore
+    // errors — fail-open means the user effectively gets the scan back.
+    const aiScanIdExp = typeof req.body.aiScanId === "string" ? req.body.aiScanId : null;
+    if (aiScanIdExp) {
+      const creator = await storage.getUser(userId);
+      if (creator) {
+        await commitScanByScanId({
+          scanId: aiScanIdExp,
+          user: { id: creator.id, isPremium: creator.isPremium },
+          deviceId: (req.header("x-device-id") || "").trim() || null,
+          platform: (req.header("x-platform") || "").trim() || null,
+        }).catch((err) => console.error("[expenses] scan commit failed:", err));
+      }
+    }
+
     res.status(201).json(expense);
 
     // Log activity (fire-and-forget)
@@ -2536,31 +2572,28 @@ setInterval(loadAll,30000);
       return res.status(422).json({ error: "Could not parse receipt — try a clearer photo" });
     }
 
-    // Success — atomically increment counters (no-op for paid users) then audit.
-    try {
-      await incrementScanCounters({
-        user: { id: user.id, isPremium: user.isPremium },
-        deviceId,
-        platform,
-      });
-    } catch (err) {
-      // Counter failure must not block returning the parse result to the user.
-      // Audit will still record success; quota may be slightly off — fix in batch later.
-      console.error("scan-receipt counter increment failed:", err);
-    }
-
-    recordScanAudit({
+    // Success path — record the audit row but DO NOT charge the free quota yet.
+    // The counter ticks down ONLY when an expense is actually created from this
+    // scan (the /api/expenses or /api/friends/expenses endpoints commit it via
+    // commitScanByScanId using the scanId we return below).
+    //
+    // Rationale: users who scan, review, then cancel shouldn't lose a free
+    // scan — it's bad UX and bad reputation. The Anthropic API call is sunk
+    // either way, but the user only loses a "free trial slot" when they
+    // actually get value (a created expense).
+    const scanId = await recordScanAudit({
       userId,
       normalizedEmail,
       deviceId,
       ip,
       success: true,
-      countedAgainstFree: !user.isPremium,
+      countedAgainstFree: false, // ← committed later, in the expense-create endpoints
       parseError: null,
-    }).catch(() => { /* never throws */ });
+    });
 
-    // Response shape preserved exactly — existing client keeps working.
-    res.json(data);
+    // Response now includes scanId so the client can pass it back when
+    // creating the expense. Existing fields (the receipt data) preserved.
+    res.json({ ...data, scanId });
   });
 
   // ========== Receipt data for an expense ==========
