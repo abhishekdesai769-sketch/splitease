@@ -14,7 +14,6 @@ import { signupSchema, loginSchema, forgotPasswordSchema, resetPasswordSchema } 
 import { notifyExpenseCreated, sendOtpEmail, sendResetPasswordEmail, sendExportEmail, sendSupportEmail, sendInviteToInviteeEmail, sendInviteToAdminEmail, sendPremiumWelcomeEmail } from "./email";
 import { pushExpenseCreated, pushGroupMemberJoined, pushAddedToGroup, deleteDeviceToken as deleteDeviceTokenRow } from "./push";
 import { parseReceipt, RECEIPT_SCANNING_ENABLED } from "./receipt-parser";
-import { checkScanEligibility, incrementScanCounters, recordScanAudit, normalizeEmail } from "./premium-access";
 import { stripe, STRIPE_PRICE_MONTHLY, STRIPE_PRICE_YEARLY, STRIPE_ENABLED } from "./stripe";
 import {
   upload, hashPassword, verifyPassword, needsHashUpgrade,
@@ -2415,94 +2414,27 @@ setInterval(loadAll,30000);
     }
   });
 
-  // ========== Scan receipt image (3 free for everyone, then Premium) ==========
-  // Gate logic lives in server/premium-access.ts (single source of truth).
-  // Paid users: unlimited. Free users: FREE_AI_SCAN_LIMIT successful scans
-  // (per-user AND per-device, whichever runs out first).
-  // Failed parses (parser returns null, network errors, bad images) do NOT
-  // count against the free quota — audited but not charged.
+  // ========== Scan receipt image (Premium) ==========
   app.post("/api/scan-receipt", requireAuth, async (req, res) => {
     const userId = (req.session as any).userId;
     const user = await storage.getUser(userId);
     if (!user) return res.status(401).json({ error: "Unauthorized" });
-
-    // Optional headers — degrade gracefully when missing (web before Phase 3).
-    const deviceId = (req.header("x-device-id") || "").trim() || null;
-    const platform = (req.header("x-platform") || "").trim() || null;
-    const ip = req.ip || null;
-
-    // Eligibility: paid OR (user-counter < granted AND device-counter < cap).
-    const eligibility = await checkScanEligibility(user, deviceId);
-    if (!eligibility.allowed) {
-      // Keep legacy "Premium required" error for the existing client.
-      // Phase 3 client will read the additional fields to show a contextual paywall.
-      return res.status(403).json({
-        error: "Premium required",
-        reason: eligibility.reason,
-        paid: false,
-        freeRemaining: 0,
-      });
-    }
+    if (!user.isPremium) return res.status(403).json({ error: "Premium required" });
 
     const { imageBase64, mimeType } = req.body;
     if (!imageBase64 || typeof imageBase64 !== "string") {
       return res.status(400).json({ error: "imageBase64 is required" });
     }
 
-    // Compute normalized email once for the audit row (forensic abuse detection).
-    let normalizedEmail: string | null = null;
-    try { normalizedEmail = normalizeEmail(user.email); } catch { /* ignore */ }
-
-    // Run the parse — failure path is recorded as a non-counting audit row.
-    let data: Awaited<ReturnType<typeof parseReceipt>> = null;
-    let parseError: string | null = null;
     try {
       const buffer = Buffer.from(imageBase64, "base64");
-      data = await parseReceipt(buffer, mimeType || "image/jpeg");
+      const data = await parseReceipt(buffer, mimeType || "image/jpeg");
+      if (!data) return res.status(422).json({ error: "Could not parse receipt — try a clearer photo" });
+      res.json(data);
     } catch (err: any) {
-      parseError = err?.message || String(err);
-      console.error("scan-receipt parse error:", err);
+      console.error("scan-receipt error:", err);
+      res.status(500).json({ error: "Receipt scanning failed" });
     }
-
-    if (!data) {
-      // Audit the miss — do NOT decrement quota.
-      recordScanAudit({
-        userId,
-        normalizedEmail,
-        deviceId,
-        ip,
-        success: false,
-        countedAgainstFree: false,
-        parseError: parseError ?? "parser returned null",
-      }).catch(() => { /* never throws */ });
-      return res.status(422).json({ error: "Could not parse receipt — try a clearer photo" });
-    }
-
-    // Success — atomically increment counters (no-op for paid users) then audit.
-    try {
-      await incrementScanCounters({
-        user: { id: user.id, isPremium: user.isPremium },
-        deviceId,
-        platform,
-      });
-    } catch (err) {
-      // Counter failure must not block returning the parse result to the user.
-      // Audit will still record success; quota may be slightly off — fix in batch later.
-      console.error("scan-receipt counter increment failed:", err);
-    }
-
-    recordScanAudit({
-      userId,
-      normalizedEmail,
-      deviceId,
-      ip,
-      success: true,
-      countedAgainstFree: !user.isPremium,
-      parseError: null,
-    }).catch(() => { /* never throws */ });
-
-    // Response shape preserved exactly — existing client keeps working.
-    res.json(data);
   });
 
   // ========== Receipt data for an expense ==========
