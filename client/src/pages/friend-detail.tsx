@@ -826,7 +826,7 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
                       { id: user?.id || "", name: user?.name || "You" },
                       { id: friendId, name: friend.name },
                     ]}
-                    onItemSplit={async (splits) => {
+                    onItemSplit={async (splits, scanId) => {
                       try {
                         await Promise.all(splits.map(async (split) => {
                           const fd = new FormData();
@@ -835,11 +835,15 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
                           fd.append("paidById", user?.id || "");
                           fd.append("splitAmongIds", JSON.stringify(split.splitAmongIds));
                           fd.append("date", new Date().toISOString());
+                          // Same scanId on every expense — server's commit is
+                          // idempotent (counter only ticks once per scanId).
+                          if (scanId) fd.append("aiScanId", scanId);
                           const res = await apiFormRequest("POST", "/api/friends/expenses", fd);
                           return res.json();
                         }));
                         queryClient.invalidateQueries({ queryKey: ["/api/friends/expenses"] });
                         queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
+                        queryClient.invalidateQueries({ queryKey: ["/api/scan-receipt/quota"] });
                         setAddExpenseOpen(false);
                         toast({ title: `${splits.length} expense${splits.length !== 1 ? "s" : ""} added` });
                       } catch (err: any) {
@@ -848,12 +852,45 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
                         toast({ title: "Error", description: msg, variant: "destructive" });
                       }
                     }}
-                    onResult={(data, file) => {
-                      if (data.merchant && !description.trim()) {
-                        setDescription(data.date ? `${data.merchant} — ${data.date}` : data.merchant);
+                    onResult={async (data, file, scanId) => {
+                      // AUTO-CREATE the expense from the scan. The review sheet
+                      // already let the user verify merchant/total before
+                      // confirming — no need to dump them back at the form.
+                      if (!user) return;
+                      const actualPaidById = paidById || user.id;
+                      // Use the user's selected splitType; default = equal.
+                      let splitAmongIds: string[];
+                      if (splitType === "they_pay") {
+                        splitAmongIds = [friendId];
+                      } else if (splitType === "you_pay") {
+                        splitAmongIds = [user.id];
+                      } else {
+                        // "equal" or "unequal" both split between the two people
+                        splitAmongIds = [user.id, friendId];
                       }
-                      if (data.total != null && !amount) setAmount(String(data.total));
-                      setReceiptFile(file);
+                      try {
+                        const fd = new FormData();
+                        const desc = data.merchant
+                          ? (data.date ? `${data.merchant} — ${data.date}` : data.merchant)
+                          : "Receipt";
+                        fd.append("description", desc);
+                        fd.append("amount", String(data.total ?? 0));
+                        fd.append("paidById", actualPaidById);
+                        fd.append("splitAmongIds", JSON.stringify(splitAmongIds));
+                        fd.append("date", new Date().toISOString());
+                        if (scanId) fd.append("aiScanId", scanId);
+                        fd.append("receipt", file);
+                        await apiFormRequest("POST", "/api/friends/expenses", fd);
+                        queryClient.invalidateQueries({ queryKey: ["/api/friends/expenses"] });
+                        queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
+                        queryClient.invalidateQueries({ queryKey: ["/api/scan-receipt/quota"] });
+                        setAddExpenseOpen(false);
+                        toast({ title: "Expense added" });
+                      } catch (err: any) {
+                        let msg = err.message;
+                        try { msg = JSON.parse(msg.split(": ").slice(1).join(": ")).error; } catch {}
+                        toast({ title: "Couldn't create expense", description: msg, variant: "destructive" });
+                      }
                     }}
                   />
                 </div>

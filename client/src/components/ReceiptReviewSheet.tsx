@@ -271,7 +271,7 @@ export function ReceiptReviewSheet({ open, data, members, onConfirm, onItemSplit
                 disabled={!totalIsValid}
                 onClick={() => hasItems ? setStep("items-overview") : handleConfirmTotal()}
               >
-                {hasItems ? <><span>Next</span><ArrowRight className="w-4 h-4 ml-1" /></> : "Use This"}
+                {hasItems ? <><span>Next</span><ArrowRight className="w-4 h-4 ml-1" /></> : "Create Expense"}
               </Button>
             </div>
           </>
@@ -388,7 +388,7 @@ export function ReceiptReviewSheet({ open, data, members, onConfirm, onItemSplit
               <Button variant="outline" className="flex-1" onClick={goBack}>
                 <ArrowLeft className="w-4 h-4 mr-1" /> Back
               </Button>
-              <Button className="flex-1" onClick={handleConfirmTotal}>Use Total</Button>
+              <Button className="flex-1" onClick={handleConfirmTotal}>Create Expense</Button>
             </div>
             {canSplitByItems && (
               <Button

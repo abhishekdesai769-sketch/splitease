@@ -514,12 +514,59 @@ export default function Friends() {
                       <ScanReceiptButton
                         isPremium={!!user?.isPremium}
                         onUpgrade={() => setUpgradeSheetOpen(true)}
-                        onResult={(data, file) => {
-                          if (data.merchant && !description.trim()) {
-                            setDescription(data.date ? `${data.merchant} — ${data.date}` : data.merchant);
+                        onResult={async (data, file, scanId) => {
+                          // AUTO-CREATE the expense — don't just pre-fill the
+                          // form (that confused users into thinking nothing
+                          // happened). The review sheet already let them edit
+                          // merchant/total before confirming, so we have
+                          // everything we need.
+                          if (!user) return;
+                          if (!splitWithId) {
+                            // Edge case: no friend picked yet. Fall back to
+                            // pre-fill so the user can complete the form.
+                            if (data.merchant && !description.trim()) {
+                              setDescription(data.date ? `${data.merchant} — ${data.date}` : data.merchant);
+                            }
+                            if (data.total != null && !amount) setAmount(String(data.total));
+                            setReceiptFile(file);
+                            toast({ title: "Receipt scanned", description: "Pick a friend and tap Add Expense to save." });
+                            return;
                           }
-                          if (data.total != null && !amount) setAmount(String(data.total));
-                          setReceiptFile(file);
+                          // Honor the user's current splitType selection.
+                          let actualPaidById = paidById || user.id;
+                          let splitAmongIds: string[];
+                          if (splitType === "equal") {
+                            splitAmongIds = [actualPaidById, splitWithId].filter((v, i, a) => a.indexOf(v) === i);
+                          } else if (splitType === "they_pay") {
+                            splitAmongIds = [splitWithId];
+                          } else {
+                            actualPaidById = splitWithId;
+                            splitAmongIds = [user.id];
+                          }
+                          try {
+                            const fd = new FormData();
+                            const desc = data.merchant
+                              ? (data.date ? `${data.merchant} — ${data.date}` : data.merchant)
+                              : "Receipt";
+                            fd.append("description", desc);
+                            fd.append("amount", String(data.total ?? 0));
+                            fd.append("paidById", actualPaidById);
+                            fd.append("splitAmongIds", JSON.stringify(splitAmongIds));
+                            fd.append("date", new Date().toISOString());
+                            if (scanId) fd.append("aiScanId", scanId);
+                            fd.append("receipt", file);
+                            await apiFormRequest("POST", "/api/friends/expenses", fd);
+                            queryClient.invalidateQueries({ queryKey: ["/api/friends/expenses"] });
+                            queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
+                            queryClient.invalidateQueries({ queryKey: ["/api/scan-receipt/quota"] });
+                            setAddExpenseOpen(false);
+                            resetExpenseForm();
+                            toast({ title: "Expense added" });
+                          } catch (err: any) {
+                            let msg = err.message;
+                            try { msg = JSON.parse(msg.split(": ").slice(1).join(": ")).error; } catch {}
+                            toast({ title: "Couldn't create expense", description: msg, variant: "destructive" });
+                          }
                         }}
                       />
                     </div>

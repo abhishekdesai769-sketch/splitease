@@ -20,6 +20,10 @@ interface ReceiptData {
   subtotal: number | null;
   tax: number | null;
   total: number | null;
+  /** Server-generated audit row ID. Pass back when creating the expense so
+   *  the server can commit the free-quota counter (only counts on actual
+   *  expense creation, never on bare scans). */
+  scanId?: string | null;
 }
 
 interface ScanResult {
@@ -41,10 +45,14 @@ interface ScanReceiptButtonProps {
   onUpgrade: () => void;
   /** Group/friend members — enables "Split by items" in the review sheet */
   members?: Member[];
-  /** Called when user completes per-item assignment in the review sheet */
-  onItemSplit?: (splits: ItemSplit[]) => void;
-  /** Called with extracted data and the original File (for attaching to expense) */
-  onResult: (data: ScanResult, file: File) => void;
+  /** Called when user completes per-item assignment in the review sheet.
+   *  scanId is forwarded so the server can commit the free-quota counter
+   *  when the expense is created. */
+  onItemSplit?: (splits: ItemSplit[], scanId: string | null) => void;
+  /** Called when user confirms a single-expense scan. The form is expected
+   *  to AUTO-CREATE the expense from this data (no more "pre-fill the form"
+   *  behavior — that confused free users into thinking nothing happened). */
+  onResult: (data: ScanResult, file: File, scanId: string | null) => void;
 }
 
 function fileToBase64(file: File): Promise<string> {
@@ -141,7 +149,9 @@ export function ScanReceiptButton({ isPremium, onUpgrade, members, onItemSplit, 
 
   const handleConfirm = (merchant: string, total: number, date?: string) => {
     if (!reviewFile) return;
-    onResult({ merchant, total, date }, reviewFile);
+    // Pass scanId so the form can include it in the create payload — server
+    // commits the free-quota counter ONLY when an expense gets created.
+    onResult({ merchant, total, date }, reviewFile, reviewData?.scanId ?? null);
     setTimeout(() => triggerReview("receipt"), 1500);
     setReviewData(null);
     setReviewFile(null);
@@ -265,7 +275,9 @@ export function ScanReceiptButton({ isPremium, onUpgrade, members, onItemSplit, 
           members={members}
           onConfirm={handleConfirm}
           onItemSplit={onItemSplit ? (splits) => {
-            onItemSplit(splits);
+            // Forward the scanId so the form can pass it through to the
+            // expense-create endpoints (server commits the counter there).
+            onItemSplit(splits, reviewData?.scanId ?? null);
             setReviewData(null);
             setReviewFile(null);
           } : undefined}
