@@ -11,6 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Plus, ArrowLeft, Trash2, Shuffle, Receipt, UserPlus, X, HandCoins, CheckCircle2, AlertTriangle, Camera, Mail, Loader2, Crown, Shield, LogOut, UserMinus, Clock, Check, Ghost, FileText, Pencil, MoreVertical, Upload, Download, Repeat, ChevronDown, Copy, MessageCircle, Share2 } from "lucide-react";
+import { shareInviteLink, shareAppLink } from "@/lib/share";
 import { Switch } from "@/components/ui/switch";
 import { UpgradePromptSheet } from "@/components/UpgradePromptSheet";
 import { isInTWA } from "@/lib/platform";
@@ -571,14 +572,22 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
     },
   });
 
+  // Native share sheet for the group invite link. Falls back to clipboard if
+  // the OS share API isn't available (rare — works in iOS WKWebView, Android
+  // Chrome/TWA, and modern mobile browsers). Triggers the "where do you want
+  // to send this?" sheet showing every messaging app the user has installed.
   const handleCopyShareLink = async () => {
     if (!inviteLinkUrl) return;
-    try {
-      await navigator.clipboard.writeText(inviteLinkUrl);
+    const result = await shareInviteLink({
+      groupName: group?.name || "this group",
+      inviterName: user?.name || "A friend",
+      url: inviteLinkUrl,
+    });
+    if (result.method === "clipboard") {
       setShareLinkCopied(true);
       setTimeout(() => setShareLinkCopied(false), 2000);
-    } catch {
-      toast({ title: "Couldn't copy", description: "Long-press the link to copy manually.", variant: "destructive" });
+    } else if (result.method === "error") {
+      toast({ title: "Couldn't share", description: "Long-press the link to copy manually.", variant: "destructive" });
     }
   };
 
@@ -866,7 +875,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                     </code>
                     <Button
                       size="sm"
-                      variant="ghost"
+                      variant="default"
                       onClick={handleCopyShareLink}
                       data-testid="btn-copy-invite-link"
                       className="shrink-0"
@@ -874,7 +883,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                       {shareLinkCopied ? (
                         <><Check className="w-3.5 h-3.5 mr-1.5" /> Copied</>
                       ) : (
-                        <><Copy className="w-3.5 h-3.5 mr-1.5" /> Copy</>
+                        <><Share2 className="w-3.5 h-3.5 mr-1.5" /> Share</>
                       )}
                     </Button>
                   </div>
@@ -1507,21 +1516,28 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                 <p className="text-xs text-muted-foreground">
                   They need a Spliiit account to accept. Not on Spliiit yet?
                 </p>
-                <div className="flex gap-2 pt-0.5">
+                <div className="flex flex-wrap gap-2 pt-0.5">
+                  {/* PRIMARY: native share sheet — one tap to IG/WhatsApp/iMessage/etc. */}
                   <button
                     type="button"
                     onClick={async () => {
-                      await navigator.clipboard.writeText("https://spliiit.klarityit.ca");
-                      setInviteLinkCopied(true);
-                      setTimeout(() => setInviteLinkCopied(false), 2000);
+                      const result = await shareAppLink({
+                        inviterName: user?.name || "A friend",
+                        referralCode: user?.referralCode,
+                      });
+                      if (result.method === "clipboard") {
+                        setInviteLinkCopied(true);
+                        setTimeout(() => setInviteLinkCopied(false), 2000);
+                      }
                     }}
-                    className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md border border-border bg-muted/30 hover:bg-muted/60 transition-colors"
+                    className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors font-medium"
                   >
-                    {inviteLinkCopied ? <Check className="w-3.5 h-3.5 text-primary" /> : <Copy className="w-3.5 h-3.5 text-muted-foreground" />}
-                    {inviteLinkCopied ? "Copied!" : "Copy invite link"}
+                    <Share2 className="w-3.5 h-3.5" />
+                    {inviteLinkCopied ? "Link copied!" : "Share invite"}
                   </button>
+                  {/* SECONDARY: explicit WhatsApp shortcut */}
                   <a
-                    href={`https://wa.me/?text=${encodeURIComponent("Hey! I use Spliiit to split expenses — it's free with no limits. Join me: https://spliiit.klarityit.ca")}`}
+                    href={`https://wa.me/?text=${encodeURIComponent(`Hey, ${user?.name || "a friend"} here. I use Spliiit to split expenses with friends — it's free with no limits. Join me: https://spliiit.klarityit.ca${user?.referralCode ? `?ref=${user.referralCode}` : ""}`)}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md border border-border bg-muted/30 hover:bg-muted/60 transition-colors"
