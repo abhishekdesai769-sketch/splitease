@@ -2415,6 +2415,28 @@ setInterval(loadAll,30000);
     }
   });
 
+  // ========== Quota status for the scan-receipt feature ==========
+  // Returns the user's current eligibility — used by the client to render the
+  // button label ("3 free scans left", "AI Scan · Premium", etc.) BEFORE the
+  // user actually taps. Cheap read, no side effects. Paid users always
+  // short-circuit to { paid: true }.
+  app.get("/api/scan-receipt/quota", requireAuth, async (req, res) => {
+    const userId = (req.session as any).userId;
+    const user = await storage.getUser(userId);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+    const deviceId = (req.header("x-device-id") || "").trim() || null;
+    const eligibility = await checkScanEligibility(user, deviceId);
+
+    res.json({
+      paid: eligibility.paid,
+      allowed: eligibility.allowed,
+      freeRemaining: eligibility.freeRemaining,
+      freeUsed: user.freeAiScansUsed,
+      freeGranted: user.freeAiScansGranted,
+    });
+  });
+
   // ========== Scan receipt image (3 free for everyone, then Premium) ==========
   // Gate logic lives in server/premium-access.ts (single source of truth).
   // Paid users: unlimited. Free users: FREE_AI_SCAN_LIMIT successful scans
