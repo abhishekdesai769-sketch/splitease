@@ -37,10 +37,58 @@ export const users = pgTable("users", {
   referredByCode: text("referred_by_code"),                                   // code of who referred this user
   referralRewardClaimed: boolean("referral_reward_claimed").notNull().default(false), // one-time reward flag
   signupIp: text("signup_ip"),                                                // IP at signup — used for abuse detection
+  // Free AI receipt scan quota (everyone gets 3 free successful scans before paywall)
+  // Counter is decremented server-side only on a successful parse. Paid users (isPremium=true)
+  // bypass this entirely. See server/premium-access.ts for the canUseAIScan() helper.
+  freeAiScansUsed: integer("free_ai_scans_used").notNull().default(0),
+  freeAiScansGranted: integer("free_ai_scans_granted").notNull().default(3),  // per-user override knob for support
+  // Email normalization for abuse detection (Gmail dots/+aliases stripped, lowercased).
+  // Set on signup; used to detect "same person, different alias" account recycling.
+  normalizedEmail: text("normalized_email"),
 }, (table) => [
   uniqueIndex("users_email_idx").on(table.email),
   uniqueIndex("users_referral_code_idx").on(table.referralCode),
+  index("users_normalized_email_idx").on(table.normalizedEmail),
 ]);
+
+// Device-level free AI scan quota — prevents the "make a new account on my phone" scam.
+// One row per device. scansUsed is capped at 3 (or whatever freeAiScansGranted is on
+// the user — we use min of user.granted and device cap). deviceId is IDFV on iOS, a
+// stable random UUID stored in localStorage on web (best-effort, web users can clear it).
+export const deviceScanQuota = pgTable("device_scan_quota", {
+  deviceId: text("device_id").primaryKey(),
+  scansUsed: integer("scans_used").notNull().default(0),
+  firstScanAt: text("first_scan_at").notNull(),
+  lastScanAt: text("last_scan_at").notNull(),
+  // Platform tag — useful for analytics ("how many ios devices hit cap")
+  platform: text("platform"), // "ios" | "android" | "web"
+});
+
+export type DeviceScanQuota = typeof deviceScanQuota.$inferSelect;
+
+// AI scan audit log — every attempt (success or failure) is recorded. Used for:
+// 1. Forensic abuse detection (find clusters by normalized_email/device_id/ip)
+// 2. Analytics (success rate, parser errors)
+// 3. Support ("did my scan really count against my free 3?")
+export const aiScanAudit = pgTable("ai_scan_audit", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  normalizedEmail: text("normalized_email"),
+  deviceId: text("device_id"),
+  ip: text("ip"),
+  scannedAt: text("scanned_at").notNull(),
+  success: boolean("success").notNull(),         // did parseReceipt return a valid receipt?
+  countedAgainstFree: boolean("counted_against_free").notNull().default(false), // true = decremented counter
+  parseError: text("parse_error"),               // null if success
+}, (table) => [
+  index("ai_scan_audit_user_id_idx").on(table.userId),
+  index("ai_scan_audit_device_id_idx").on(table.deviceId),
+  index("ai_scan_audit_normalized_email_idx").on(table.normalizedEmail),
+  index("ai_scan_audit_scanned_at_idx").on(table.scannedAt),
+]);
+
+export type AiScanAudit = typeof aiScanAudit.$inferSelect;
+export type InsertAiScanAudit = typeof aiScanAudit.$inferInsert;
 
 // OTP codes for email verification
 export const otpCodes = pgTable("otp_codes", {
