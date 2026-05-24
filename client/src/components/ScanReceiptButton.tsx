@@ -6,6 +6,7 @@ import { ReceiptReviewSheet, type Member, type ItemSplit } from "@/components/Re
 import { triggerReview } from "@/lib/reviewPrompt";
 import { isInTWA } from "@/lib/platform";
 import { getDeviceId, getPlatformHint } from "@/lib/device-id";
+import { track } from "@/lib/analytics";
 
 interface ReceiptItem {
   name: string;
@@ -78,6 +79,11 @@ export function ScanReceiptButton({ isPremium, onUpgrade, members, onItemSplit, 
 
   const handleFile = async (file: File) => {
     setIsScanning(true);
+    track("ai_scan_attempted", {
+      is_paid: isPremium,
+      free_remaining_before: quota?.freeRemaining ?? null,
+      file_size_kb: Math.round(file.size / 1024),
+    });
     try {
       const imageBase64 = await fileToBase64(file);
       // Send device-id + platform headers so the server can enforce the
@@ -100,15 +106,28 @@ export function ScanReceiptButton({ isPremium, onUpgrade, members, onItemSplit, 
         if (res.status === 403) {
           // Refresh quota so the button re-renders into the paywall state.
           queryClient.invalidateQueries({ queryKey: ["/api/scan-receipt/quota"] });
+          track("ai_scan_paywall_shown", { trigger: "server_403" });
           onUpgrade();
           return;
         }
+        if (res.status === 429) {
+          track("ai_scan_rate_limited", { is_paid: isPremium });
+          throw new Error("Too many scans from this network — try again tomorrow.");
+        }
         const err = await res.json().catch(() => ({ error: "Scan failed" }));
+        track("ai_scan_failed", { is_paid: isPremium, status: res.status });
         throw new Error(err.error || "Scan failed");
       }
       const data: ReceiptData = await res.json();
       // Refresh quota — the successful scan ticked the counter down server-side.
       queryClient.invalidateQueries({ queryKey: ["/api/scan-receipt/quota"] });
+      track("ai_scan_succeeded", {
+        is_paid: isPremium,
+        free_remaining_after: isPremium ? null : Math.max(0, (quota?.freeRemaining ?? 1) - 1),
+        merchant: data.merchant ?? null,
+        item_count: data.items?.length ?? 0,
+        has_total: data.total != null,
+      });
       // Show review sheet instead of immediately pre-filling
       setReviewData(data);
       setReviewFile(file);
@@ -165,7 +184,10 @@ export function ScanReceiptButton({ isPremium, onUpgrade, members, onItemSplit, 
     return (
       <button
         type="button"
-        onClick={onUpgrade}
+        onClick={() => {
+          track("ai_scan_paywall_shown", { trigger: "quota_exhausted_click" });
+          onUpgrade();
+        }}
         className="flex items-center gap-2 w-full rounded-lg border border-dashed border-amber-400/60 p-3 text-sm text-amber-600 hover:bg-amber-50/10 transition-colors"
       >
         <Camera className="w-4 h-4 shrink-0" />
