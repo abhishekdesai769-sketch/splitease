@@ -827,29 +827,43 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
                       { id: friendId, name: friend.name },
                     ]}
                     onItemSplit={async (splits, scanId) => {
-                      try {
-                        await Promise.all(splits.map(async (split) => {
-                          const fd = new FormData();
-                          fd.append("description", split.description.trim());
-                          fd.append("amount", String(split.amount));
-                          fd.append("paidById", user?.id || "");
-                          fd.append("splitAmongIds", JSON.stringify(split.splitAmongIds));
-                          fd.append("date", new Date().toISOString());
-                          // Same scanId on every expense — server's commit is
-                          // idempotent (counter only ticks once per scanId).
-                          if (scanId) fd.append("aiScanId", scanId);
-                          const res = await apiFormRequest("POST", "/api/friends/expenses", fd);
-                          return res.json();
-                        }));
-                        queryClient.invalidateQueries({ queryKey: ["/api/friends/expenses"] });
-                        queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
-                        queryClient.invalidateQueries({ queryKey: ["/api/scan-receipt/quota"] });
-                        setAddExpenseOpen(false);
-                        toast({ title: `${splits.length} expense${splits.length !== 1 ? "s" : ""} added` });
-                      } catch (err: any) {
-                        let msg = err.message;
+                      // Promise.allSettled so a single failing item doesn't
+                      // mask the successes — earlier, Promise.all's fail-fast
+                      // behaviour caused "Error: Unauthorized" toasts even
+                      // when 2-of-3 items had been created. Always invalidate
+                      // queries afterwards so the UI catches up either way.
+                      const results = await Promise.allSettled(splits.map(async (split) => {
+                        const fd = new FormData();
+                        fd.append("description", split.description.trim());
+                        fd.append("amount", String(split.amount));
+                        fd.append("paidById", user?.id || "");
+                        fd.append("splitAmongIds", JSON.stringify(split.splitAmongIds));
+                        fd.append("date", new Date().toISOString());
+                        // Same scanId on every expense — server's commit is
+                        // idempotent (counter only ticks once per scanId).
+                        if (scanId) fd.append("aiScanId", scanId);
+                        const res = await apiFormRequest("POST", "/api/friends/expenses", fd);
+                        return res.json();
+                      }));
+                      queryClient.invalidateQueries({ queryKey: ["/api/friends/expenses"] });
+                      queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
+                      queryClient.invalidateQueries({ queryKey: ["/api/scan-receipt/quota"] });
+                      const succeeded = results.filter((r) => r.status === "fulfilled").length;
+                      const failed = results.length - succeeded;
+                      setAddExpenseOpen(false);
+                      if (failed === 0) {
+                        toast({ title: `${succeeded} expense${succeeded !== 1 ? "s" : ""} added` });
+                      } else if (succeeded === 0) {
+                        const firstErr = (results.find((r) => r.status === "rejected") as PromiseRejectedResult | undefined)?.reason;
+                        let msg = firstErr?.message || "Couldn't create expenses";
                         try { msg = JSON.parse(msg.split(": ").slice(1).join(": ")).error; } catch {}
-                        toast({ title: "Error", description: msg, variant: "destructive" });
+                        toast({ title: "Couldn't create expenses", description: msg, variant: "destructive" });
+                      } else {
+                        toast({
+                          title: `${succeeded} of ${results.length} expenses added`,
+                          description: `${failed} couldn't be created — try the manual form for those.`,
+                          variant: "destructive",
+                        });
                       }
                     }}
                     onResult={async (data, file, scanId) => {

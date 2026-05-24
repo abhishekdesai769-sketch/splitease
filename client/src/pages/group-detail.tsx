@@ -1398,30 +1398,43 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                     onUpgrade={() => setUpgradeSheetOpen(true)}
                     members={members.map(m => ({ id: m.id, name: m.name }))}
                     onItemSplit={async (splits, scanId) => {
-                      try {
-                        await Promise.all(splits.map(async (split) => {
-                          const fd = new FormData();
-                          fd.append("description", split.description.trim());
-                          fd.append("amount", String(split.amount));
-                          fd.append("paidById", user?.id || "");
-                          fd.append("splitAmongIds", JSON.stringify(split.splitAmongIds));
-                          fd.append("groupId", groupId);
-                          fd.append("date", new Date().toISOString());
-                          // Same scanId on every expense — commit is idempotent
-                          // (counter only ticks once per scanId).
-                          if (scanId) fd.append("aiScanId", scanId);
-                          const res = await apiFormRequest("POST", "/api/expenses", fd);
-                          return res.json();
-                        }));
-                        queryClient.invalidateQueries({ queryKey: ["/api/expenses/group", groupId] });
-                        queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
-                        queryClient.invalidateQueries({ queryKey: ["/api/scan-receipt/quota"] });
-                        setAddOpen(false);
-                        toast({ title: `${splits.length} expense${splits.length !== 1 ? "s" : ""} added` });
-                      } catch (err: any) {
-                        let msg = err.message;
+                      // Promise.allSettled so one failed item doesn't mask
+                      // the successes (Promise.all's fail-fast was producing
+                      // misleading "Error" toasts even when most items had
+                      // been created successfully).
+                      const results = await Promise.allSettled(splits.map(async (split) => {
+                        const fd = new FormData();
+                        fd.append("description", split.description.trim());
+                        fd.append("amount", String(split.amount));
+                        fd.append("paidById", user?.id || "");
+                        fd.append("splitAmongIds", JSON.stringify(split.splitAmongIds));
+                        fd.append("groupId", groupId);
+                        fd.append("date", new Date().toISOString());
+                        // Same scanId on every expense — commit is idempotent
+                        // (counter only ticks once per scanId).
+                        if (scanId) fd.append("aiScanId", scanId);
+                        const res = await apiFormRequest("POST", "/api/expenses", fd);
+                        return res.json();
+                      }));
+                      queryClient.invalidateQueries({ queryKey: ["/api/expenses/group", groupId] });
+                      queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
+                      queryClient.invalidateQueries({ queryKey: ["/api/scan-receipt/quota"] });
+                      const succeeded = results.filter((r) => r.status === "fulfilled").length;
+                      const failed = results.length - succeeded;
+                      setAddOpen(false);
+                      if (failed === 0) {
+                        toast({ title: `${succeeded} expense${succeeded !== 1 ? "s" : ""} added` });
+                      } else if (succeeded === 0) {
+                        const firstErr = (results.find((r) => r.status === "rejected") as PromiseRejectedResult | undefined)?.reason;
+                        let msg = firstErr?.message || "Couldn't create expenses";
                         try { msg = JSON.parse(msg.split(": ").slice(1).join(": ")).error; } catch {}
-                        toast({ title: "Error", description: msg, variant: "destructive" });
+                        toast({ title: "Couldn't create expenses", description: msg, variant: "destructive" });
+                      } else {
+                        toast({
+                          title: `${succeeded} of ${results.length} expenses added`,
+                          description: `${failed} couldn't be created — try the manual form for those.`,
+                          variant: "destructive",
+                        });
                       }
                     }}
                     onResult={async (data, file, scanId) => {

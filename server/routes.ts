@@ -1292,12 +1292,20 @@ setInterval(loadAll,30000);
       return res.status(400).json({ error: "Invalid amount" });
     }
 
-    // Validate paidById must be the current user or their friend, and the split must be between actual friends
-    const friendId = splitAmongIds.find((id: string) => id !== userId);
-    if (!friendId || !(await storage.areFriends(userId, friendId))) {
-      return res.status(403).json({ error: "Unauthorized" });
+    // Validate every non-user ID in the split is actually a friend of the user.
+    // Allow single-user splits ([user.id] alone) — these come from the AI-scan
+    // per-item flow when a user assigns an item only to themselves, and also
+    // make sense for personal record-keeping. The previous "must have a
+    // non-user friendId" rule rejected these and produced 403s on otherwise-
+    // valid per-item splits.
+    const otherIdsInSplit = (splitAmongIds as string[]).filter((id) => id !== userId);
+    for (const otherId of otherIdsInSplit) {
+      if (!(await storage.areFriends(userId, otherId))) {
+        return res.status(403).json({ error: "Unauthorized" });
+      }
     }
-    if (paidById !== userId && paidById !== friendId) {
+    // paidById must be the user OR a friend of the user.
+    if (paidById !== userId && !(await storage.areFriends(userId, paidById))) {
       return res.status(403).json({ error: "Unauthorized" });
     }
 
