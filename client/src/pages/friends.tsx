@@ -442,21 +442,13 @@ export default function Friends() {
                   )}
                   <UpgradePromptSheet open={upgradeSheetOpen} onClose={() => setUpgradeSheetOpen(false)} />
 
-                  {/* Receipt: scan with AI (Premium) or plain attach */}
+                  {/* Receipt (optional) — plain photo attach for THIS manual
+                      expense. The AI scan lives BELOW the form (it fills in
+                      everything itself, so it's an alternative to manual entry,
+                      not a field within it). */}
                   {!isRecurring && (
                   <div className="space-y-2">
                     <Label>Receipt (optional)</Label>
-                    <ScanReceiptButton
-                      isPremium={!!user?.isPremium}
-                      onUpgrade={() => setUpgradeSheetOpen(true)}
-                      onResult={(data, file) => {
-                        if (data.merchant && !description.trim()) {
-                          setDescription(data.date ? `${data.merchant} — ${data.date}` : data.merchant);
-                        }
-                        if (data.total != null && !amount) setAmount(String(data.total));
-                        setReceiptFile(file);
-                      }}
-                    />
                     {receiptFile ? (
                       <div className="flex items-center gap-2 rounded-lg border border-border p-2.5">
                         <Camera className="w-4 h-4 text-primary shrink-0" />
@@ -507,6 +499,30 @@ export default function Friends() {
                         ? `Set Up Recurring (${recurringFrequency})`
                         : "Add Expense"}
                   </Button>
+
+                  {/* ── or — AI-scan the whole receipt instead of the manual form
+                      above. AI extracts the merchant, total and date so it's an
+                      alternative to the whole form, not a field within it. */}
+                  {!isRecurring && (
+                    <div className="space-y-3 pt-1">
+                      <div className="flex items-center gap-3">
+                        <div className="flex-1 h-px bg-border" />
+                        <span className="text-[10px] uppercase tracking-wider font-mono text-muted-foreground">or</span>
+                        <div className="flex-1 h-px bg-border" />
+                      </div>
+                      <ScanReceiptButton
+                        isPremium={!!user?.isPremium}
+                        onUpgrade={() => setUpgradeSheetOpen(true)}
+                        onResult={(data, file) => {
+                          if (data.merchant && !description.trim()) {
+                            setDescription(data.date ? `${data.merchant} — ${data.date}` : data.merchant);
+                          }
+                          if (data.total != null && !amount) setAmount(String(data.total));
+                          setReceiptFile(file);
+                        }}
+                      />
+                    </div>
+                  )}
                 </form>
               </DialogContent>
             </Dialog>
