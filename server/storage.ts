@@ -22,6 +22,7 @@ export interface IStorage {
   // Users
   getUser(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
+  getUserByNormalizedEmail(normalizedEmail: string): Promise<User | undefined>;
   getUserByGoogleId(googleId: string): Promise<User | undefined>;
   linkGoogleId(userId: string, googleId: string): Promise<void>;
   getUserByAppleId(appleId: string): Promise<User | undefined>;
@@ -131,6 +132,14 @@ export class PgStorage implements IStorage {
 
   async getUserByEmail(email: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.email, email.toLowerCase()));
+    return user;
+  }
+
+  // Used at signup to detect "same person, different alias" account recycling.
+  // Returns the first existing user with this normalized email (case is already
+  // lowered upstream by normalizeEmail). Indexed on users.normalized_email.
+  async getUserByNormalizedEmail(normalizedEmail: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.normalizedEmail, normalizedEmail));
     return user;
   }
 

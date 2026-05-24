@@ -123,6 +123,61 @@ async function runMigrations() {
     `);
     await pool.query(`CREATE INDEX IF NOT EXISTS activity_log_group_id_idx ON activity_log(group_id)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS activity_log_created_at_idx ON activity_log(created_at)`);
+
+    // ── Free AI scan quota (Phase 1+2 launch — May 2026) ──────────────────────
+    // Idempotent additions so new environments boot cleanly without a separate
+    // drizzle-kit push step. (We learned this lesson the hard way — bundling
+    // schema-changing code with no migration runner = production outage.)
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS free_ai_scans_used integer NOT NULL DEFAULT 0`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS free_ai_scans_granted integer NOT NULL DEFAULT 3`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS normalized_email text`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS users_normalized_email_idx ON users(normalized_email)`);
+
+    // One-time backfill for normalized_email on existing users. Matches the
+    // logic in server/premium-access.ts:normalizeEmail() — lowercase + strip
+    // +alias + strip dots in the local-part for Gmail/Googlemail only.
+    // Idempotent: WHERE normalized_email IS NULL gates it to first run only.
+    await pool.query(`
+      UPDATE users
+      SET normalized_email = (
+        CASE
+          WHEN split_part(lower(email), '@', 2) IN ('gmail.com', 'googlemail.com')
+          THEN replace(regexp_replace(split_part(lower(email), '@', 1), '\\+.*', ''), '.', '')
+          ELSE regexp_replace(split_part(lower(email), '@', 1), '\\+.*', '')
+        END
+      ) || '@' || split_part(lower(email), '@', 2)
+      WHERE normalized_email IS NULL
+        AND email IS NOT NULL
+        AND email LIKE '%@%'
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS device_scan_quota (
+        device_id text PRIMARY KEY,
+        scans_used integer NOT NULL DEFAULT 0,
+        first_scan_at text NOT NULL,
+        last_scan_at text NOT NULL,
+        platform text
+      )
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS ai_scan_audit (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id varchar NOT NULL,
+        normalized_email text,
+        device_id text,
+        ip text,
+        scanned_at text NOT NULL,
+        success boolean NOT NULL,
+        counted_against_free boolean NOT NULL DEFAULT false,
+        parse_error text
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS ai_scan_audit_user_id_idx ON ai_scan_audit(user_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS ai_scan_audit_device_id_idx ON ai_scan_audit(device_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS ai_scan_audit_normalized_email_idx ON ai_scan_audit(normalized_email)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS ai_scan_audit_scanned_at_idx ON ai_scan_audit(scanned_at)`);
+
     log("Startup migrations OK", "db");
   } catch (e) {
     log(`Startup migration error: ${e}`, "db");

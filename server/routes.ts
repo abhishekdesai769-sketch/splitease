@@ -15,6 +15,7 @@ import { notifyExpenseCreated, sendOtpEmail, sendResetPasswordEmail, sendExportE
 import { pushExpenseCreated, pushGroupMemberJoined, pushAddedToGroup, deleteDeviceToken as deleteDeviceTokenRow } from "./push";
 import { parseReceipt, RECEIPT_SCANNING_ENABLED } from "./receipt-parser";
 import { checkScanEligibility, incrementScanCounters, recordScanAudit, normalizeEmail } from "./premium-access";
+import { isDisposableEmail } from "./disposable-emails";
 import { stripe, STRIPE_PRICE_MONTHLY, STRIPE_PRICE_YEARLY, STRIPE_ENABLED } from "./stripe";
 import {
   upload, hashPassword, verifyPassword, needsHashUpgrade,
@@ -590,6 +591,31 @@ setInterval(loadAll,30000);
     // Capture signup IP for abuse detection (x-forwarded-for set by Render's proxy)
     const signupIp = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.socket.remoteAddress || null;
 
+    // ── Anti-abuse layer for the free AI scan trial ────────────────────────
+    // Block obvious disposable email signups outright. Block list is curated
+    // and intentionally short — we'd rather miss long-tail abuse than reject
+    // a real user. Add domains to server/disposable-emails.ts when we see
+    // patterns from a specific provider.
+    if (isDisposableEmail(cleanEmail)) {
+      return res.status(400).json({ error: "Please use a permanent email address" });
+    }
+
+    // Compute the normalized email for collision detection (Gmail dot/+ alias
+    // tricks). If a user with the same normalized email already exists, this
+    // new signup is almost certainly the same person trying to get another
+    // free trial — we still let the account be created (could be a legit
+    // family member sharing inbox infrastructure), but the new account starts
+    // with the free quota already exhausted. Soft block, no hard rejection.
+    const normalizedEmail = normalizeEmail(cleanEmail);
+    let normalizedCollisionExists = false;
+    try {
+      const collision = await storage.getUserByNormalizedEmail(normalizedEmail);
+      normalizedCollisionExists = !!collision;
+    } catch (e) {
+      // Fail open — if the lookup errors, don't penalize the user.
+      console.error("[signup] normalized email lookup failed:", e);
+    }
+
     // Verify OTP
     if (!otpCode) {
       return res.status(400).json({ error: "Verification code is required" });
@@ -636,6 +662,10 @@ setInterval(loadAll,30000);
       isApproved,
       isEmailVerified: true,
       referralCode: newReferralCode,
+      normalizedEmail,
+      // If a sibling-aliased account exists, start with zero free scans.
+      // (3 free scans is the default — overriding only on collision.)
+      ...(normalizedCollisionExists ? { freeAiScansUsed: 3 } : {}),
       ...(utmCampaign ? { utmCampaign } : {}),
       ...(referredByCode ? { referredByCode } : {}),
       ...(signupIp ? { signupIp } : {}),
@@ -2415,6 +2445,12 @@ setInterval(loadAll,30000);
     }
   });
 
+  // Per-IP rate limit for AI scanning. The Anthropic Haiku call costs real
+  // money (~$0.005-0.01 per scan) so a runaway bot on a single IP could burn
+  // serious credits. 30/IP/24h is generous for families (4 people × 3 scans/day
+  // = 12, well under) but tight enough to stop a script.
+  const scanLimiter = rateLimit(24 * 60 * 60 * 1000, 30);
+
   // ========== Quota status for the scan-receipt feature ==========
   // Returns the user's current eligibility — used by the client to render the
   // button label ("3 free scans left", "AI Scan · Premium", etc.) BEFORE the
@@ -2443,7 +2479,7 @@ setInterval(loadAll,30000);
   // (per-user AND per-device, whichever runs out first).
   // Failed parses (parser returns null, network errors, bad images) do NOT
   // count against the free quota — audited but not charged.
-  app.post("/api/scan-receipt", requireAuth, async (req, res) => {
+  app.post("/api/scan-receipt", scanLimiter, requireAuth, async (req, res) => {
     const userId = (req.session as any).userId;
     const user = await storage.getUser(userId);
     if (!user) return res.status(401).json({ error: "Unauthorized" });
