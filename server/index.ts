@@ -178,6 +178,43 @@ async function runMigrations() {
     await pool.query(`CREATE INDEX IF NOT EXISTS ai_scan_audit_normalized_email_idx ON ai_scan_audit(normalized_email)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS ai_scan_audit_scanned_at_idx ON ai_scan_audit(scanned_at)`);
 
+    // ── Plaid Money integration (May 2026 — Sandbox first, then Production)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS plaid_items (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id varchar NOT NULL,
+        plaid_item_id text NOT NULL,
+        access_token text NOT NULL,
+        institution_id text,
+        institution_name text,
+        status text NOT NULL DEFAULT 'active',
+        cursor text,
+        created_at text NOT NULL,
+        updated_at text NOT NULL
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS plaid_items_user_id_idx ON plaid_items(user_id)`);
+    await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS plaid_items_plaid_item_id_idx ON plaid_items(plaid_item_id)`);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS plaid_accounts (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        item_id varchar NOT NULL,
+        plaid_account_id text NOT NULL,
+        name text NOT NULL,
+        official_name text,
+        mask text,
+        type text NOT NULL,
+        subtype text,
+        current_balance real,
+        available_balance real,
+        iso_currency_code text,
+        last_synced_at text NOT NULL
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS plaid_accounts_item_id_idx ON plaid_accounts(item_id)`);
+    await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS plaid_accounts_plaid_account_id_idx ON plaid_accounts(plaid_account_id)`);
+
     log("Startup migrations OK", "db");
   } catch (e) {
     log(`Startup migration error: ${e}`, "db");

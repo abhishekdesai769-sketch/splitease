@@ -90,6 +90,54 @@ export const aiScanAudit = pgTable("ai_scan_audit", {
 export type AiScanAudit = typeof aiScanAudit.$inferSelect;
 export type InsertAiScanAudit = typeof aiScanAudit.$inferInsert;
 
+// ── Plaid (Money tab) ─────────────────────────────────────────────────────
+// One row per bank-connection ("item" in Plaid's vocabulary). access_token
+// is the long-lived credential that lets us read this user's bank data —
+// TODO when going to Production: encrypt at rest via a PLAID_TOKEN_KEY env
+// var. For Sandbox it's fake test data; Neon disk encryption is the floor.
+export const plaidItems = pgTable("plaid_items", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  plaidItemId: text("plaid_item_id").notNull(),       // Plaid's unique item ID
+  accessToken: text("access_token").notNull(),         // long-lived; KEEP SECRET
+  institutionId: text("institution_id"),               // e.g. "ins_109508"
+  institutionName: text("institution_name"),           // e.g. "Chase"
+  status: text("status").notNull().default("active"),  // "active" | "error" | "disconnected"
+  // Sync cursor for /transactions/sync (used when we wire the feed later)
+  cursor: text("cursor"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+}, (table) => [
+  index("plaid_items_user_id_idx").on(table.userId),
+  uniqueIndex("plaid_items_plaid_item_id_idx").on(table.plaidItemId),
+]);
+
+export type PlaidItem = typeof plaidItems.$inferSelect;
+export type InsertPlaidItem = typeof plaidItems.$inferInsert;
+
+// One row per account WITHIN an item (a single bank can expose multiple
+// accounts — chequing + savings + credit card all in one connection).
+export const plaidAccounts = pgTable("plaid_accounts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  itemId: varchar("item_id").notNull(),                // fk → plaid_items.id
+  plaidAccountId: text("plaid_account_id").notNull(),  // Plaid's account ID (stable)
+  name: text("name").notNull(),                        // display name from Plaid
+  officialName: text("official_name"),                 // longer bank-provided name
+  mask: text("mask"),                                  // last 4 digits (or null)
+  type: text("type").notNull(),                        // "depository" | "credit" | "loan" | "investment" | "brokerage" | "other"
+  subtype: text("subtype"),                            // "checking" | "savings" | "credit card" | ...
+  currentBalance: real("current_balance"),
+  availableBalance: real("available_balance"),
+  isoCurrencyCode: text("iso_currency_code"),          // "CAD" | "USD" | ...
+  lastSyncedAt: text("last_synced_at").notNull(),
+}, (table) => [
+  index("plaid_accounts_item_id_idx").on(table.itemId),
+  uniqueIndex("plaid_accounts_plaid_account_id_idx").on(table.plaidAccountId),
+]);
+
+export type PlaidAccount = typeof plaidAccounts.$inferSelect;
+export type InsertPlaidAccount = typeof plaidAccounts.$inferInsert;
+
 // OTP codes for email verification
 export const otpCodes = pgTable("otp_codes", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

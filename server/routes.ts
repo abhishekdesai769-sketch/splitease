@@ -16,6 +16,8 @@ import { pushExpenseCreated, pushGroupMemberJoined, pushAddedToGroup, deleteDevi
 import { parseReceipt, RECEIPT_SCANNING_ENABLED } from "./receipt-parser";
 import { checkScanEligibility, incrementScanCounters, recordScanAudit, normalizeEmail, commitScanByScanId } from "./premium-access";
 import { isDisposableEmail } from "./disposable-emails";
+import * as plaid from "./plaid";
+import { plaidItems, plaidAccounts } from "@shared/schema";
 import { stripe, STRIPE_PRICE_MONTHLY, STRIPE_PRICE_YEARLY, STRIPE_ENABLED } from "./stripe";
 import {
   upload, hashPassword, verifyPassword, needsHashUpgrade,
@@ -114,19 +116,193 @@ export async function registerRoutes(
       return res.status(403).json({ error: "premium_required" });
     }
     res.json({
-      enabled: false,
-      stage: "beta_preview",
-      version: "v0",
-      message: "Money is in early-access beta. We'll notify you when bank connections are live.",
+      enabled: plaid.PLAID_ENABLED,    // true once PLAID_CLIENT_ID is wired
+      stage: plaid.PLAID_ENABLED ? "bank_connect_live" : "beta_preview",
+      version: "v1",
+      message: plaid.PLAID_ENABLED
+        ? "Money is live in beta — connect a bank to get started."
+        : "Money is in early-access beta. We'll notify you when bank connections are live.",
       roadmap: [
-        { id: "backend",       label: "Backend infrastructure", status: "in_progress" },
-        { id: "bank_connect",  label: "Bank connection",         status: "next" },
+        { id: "backend",       label: "Backend infrastructure", status: "done" },
+        { id: "bank_connect",  label: "Bank connection",         status: plaid.PLAID_ENABLED ? "done" : "in_progress" },
         { id: "tx_feed",       label: "Transaction feed",        status: "next" },
         { id: "split_one_tap", label: "One-tap split",           status: "later" },
         { id: "summary",       label: "Monthly summary",         status: "later" },
         { id: "ai_qa",         label: "Ask anything (AI)",       status: "later" },
       ],
     });
+  });
+
+  // ─── Plaid Money endpoints ─────────────────────────────────────────────
+  // All gated on user.isPremium. If Plaid isn't configured (PLAID_CLIENT_ID
+  // missing from env), every endpoint returns 503 so the client can render
+  // a "coming soon" state gracefully instead of a generic crash.
+
+  function plaidGuard(req: any, res: any): boolean {
+    if (!plaid.PLAID_ENABLED) {
+      res.status(503).json({ error: "plaid_not_configured", message: "Bank connections aren't live yet — coming soon." });
+      return false;
+    }
+    return true;
+  }
+
+  // 1. Create a Link token — short-lived, scoped to this user. The client
+  //    sends it to Plaid Link UI to open the bank-connection flow.
+  app.post("/api/money/plaid-link-token", requireAuth, async (req: any, res) => {
+    if (!plaidGuard(req, res)) return;
+    const user = await storage.getUser(req.session.userId);
+    if (!user) return res.status(401).json({ error: "unauthorized" });
+    if (!user.isPremium) return res.status(403).json({ error: "premium_required" });
+    try {
+      const linkToken = await plaid.createLinkToken({ userId: user.id, userName: user.name });
+      res.json({ link_token: linkToken });
+    } catch (err: any) {
+      console.error("[plaid] createLinkToken failed:", err);
+      res.status(500).json({ error: "link_token_failed", message: err?.message || "Failed to start bank connection" });
+    }
+  });
+
+  // 2. Exchange a one-time public_token (received from Plaid Link on success)
+  //    for a long-lived access_token. Persist item + accounts to our DB.
+  app.post("/api/money/plaid-exchange", requireAuth, async (req: any, res) => {
+    if (!plaidGuard(req, res)) return;
+    const user = await storage.getUser(req.session.userId);
+    if (!user) return res.status(401).json({ error: "unauthorized" });
+    if (!user.isPremium) return res.status(403).json({ error: "premium_required" });
+
+    const publicToken = req.body?.public_token;
+    if (typeof publicToken !== "string" || !publicToken) {
+      return res.status(400).json({ error: "public_token_required" });
+    }
+
+    try {
+      const { accessToken, itemId } = await plaid.exchangePublicToken(publicToken);
+      const accounts = await plaid.getAccounts(accessToken);
+      const institutionId = accounts[0]?.institutionId ?? null;
+      const institutionMeta = institutionId ? await plaid.getInstitution(institutionId) : { name: null };
+      const now = new Date().toISOString();
+
+      // Persist item + accounts. Idempotent on plaid_item_id (unique index)
+      // and plaid_account_id (unique index) — re-connecting the same bank
+      // upserts the access_token instead of duplicating.
+      const [item] = await db.insert(plaidItems).values({
+        userId: user.id,
+        plaidItemId: itemId,
+        accessToken,
+        institutionId,
+        institutionName: institutionMeta.name,
+        status: "active",
+        createdAt: now,
+        updatedAt: now,
+      }).onConflictDoUpdate({
+        target: plaidItems.plaidItemId,
+        set: { accessToken, status: "active", updatedAt: now, userId: user.id },
+      }).returning();
+
+      // Upsert accounts
+      for (const a of accounts) {
+        await db.insert(plaidAccounts).values({
+          itemId: item.id,
+          plaidAccountId: a.plaidAccountId,
+          name: a.name,
+          officialName: a.officialName,
+          mask: a.mask,
+          type: a.type,
+          subtype: a.subtype,
+          currentBalance: a.currentBalance,
+          availableBalance: a.availableBalance,
+          isoCurrencyCode: a.isoCurrencyCode,
+          lastSyncedAt: now,
+        }).onConflictDoUpdate({
+          target: plaidAccounts.plaidAccountId,
+          set: {
+            name: a.name,
+            officialName: a.officialName,
+            mask: a.mask,
+            type: a.type,
+            subtype: a.subtype,
+            currentBalance: a.currentBalance,
+            availableBalance: a.availableBalance,
+            isoCurrencyCode: a.isoCurrencyCode,
+            lastSyncedAt: now,
+          },
+        });
+      }
+
+      res.json({
+        ok: true,
+        item: {
+          id: item.id,
+          institutionName: item.institutionName,
+          accountCount: accounts.length,
+        },
+      });
+    } catch (err: any) {
+      console.error("[plaid] exchange failed:", err);
+      res.status(500).json({ error: "exchange_failed", message: err?.message || "Failed to complete bank connection" });
+    }
+  });
+
+  // 3. List the user's connected banks + accounts. Used by the Money page UI.
+  app.get("/api/money/accounts", requireAuth, async (req: any, res) => {
+    if (!plaidGuard(req, res)) return;
+    const user = await storage.getUser(req.session.userId);
+    if (!user) return res.status(401).json({ error: "unauthorized" });
+    if (!user.isPremium) return res.status(403).json({ error: "premium_required" });
+
+    try {
+      const items = await db.select().from(plaidItems).where(eq(plaidItems.userId, user.id));
+      const result = await Promise.all(items.map(async (item) => {
+        const accounts = await db.select().from(plaidAccounts).where(eq(plaidAccounts.itemId, item.id));
+        return {
+          id: item.id,
+          institutionName: item.institutionName,
+          institutionId: item.institutionId,
+          status: item.status,
+          createdAt: item.createdAt,
+          accounts: accounts.map((a) => ({
+            id: a.id,
+            name: a.name,
+            officialName: a.officialName,
+            mask: a.mask,
+            type: a.type,
+            subtype: a.subtype,
+            currentBalance: a.currentBalance,
+            availableBalance: a.availableBalance,
+            isoCurrencyCode: a.isoCurrencyCode,
+            lastSyncedAt: a.lastSyncedAt,
+          })),
+        };
+      }));
+      res.json({ items: result });
+    } catch (err: any) {
+      console.error("[plaid] list accounts failed:", err);
+      res.status(500).json({ error: "list_failed", message: err?.message || "Failed to load accounts" });
+    }
+  });
+
+  // 4. Disconnect a bank. Removes from Plaid + cascade-deletes local rows.
+  app.delete("/api/money/items/:id", requireAuth, async (req: any, res) => {
+    if (!plaidGuard(req, res)) return;
+    const user = await storage.getUser(req.session.userId);
+    if (!user) return res.status(401).json({ error: "unauthorized" });
+    if (!user.isPremium) return res.status(403).json({ error: "premium_required" });
+
+    const itemId = req.params.id;
+    try {
+      const [item] = await db.select().from(plaidItems).where(eq(plaidItems.id, itemId));
+      if (!item || item.userId !== user.id) {
+        return res.status(404).json({ error: "not_found" });
+      }
+      // Best-effort Plaid-side removal — local cleanup happens regardless.
+      await plaid.removeItem(item.accessToken);
+      await db.delete(plaidAccounts).where(eq(plaidAccounts.itemId, item.id));
+      await db.delete(plaidItems).where(eq(plaidItems.id, item.id));
+      res.json({ ok: true });
+    } catch (err: any) {
+      console.error("[plaid] disconnect failed:", err);
+      res.status(500).json({ error: "disconnect_failed", message: err?.message || "Failed to disconnect" });
+    }
   });
 
   // Apple App Site Association — iOS Universal Links.
