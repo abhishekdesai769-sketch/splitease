@@ -45,9 +45,16 @@ const sheetVariants = cva(
         // partially covered by the home-indicator zone.
         bottom:
           "inset-x-0 bottom-0 border-t pb-[env(safe-area-inset-bottom)] data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom",
-        left: "inset-y-0 left-0 h-full w-3/4 border-r data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left sm:max-w-sm",
+        // Left and right side sheets span FULL HEIGHT (inset-y-0) so they
+        // touch both the notch + home indicator zones. They need BOTH
+        // safe-area-insets, unlike top (only top) and bottom (only bottom).
+        // Callers using className="... p-0 ..." will need to also pass an
+        // inline `style={{ paddingTop/Bottom: 'env(safe-area-inset-*)' }}`
+        // since `p-0` would otherwise zero out the safe-area padding (CSS
+        // shorthand vs longhand resolution depends on declaration order).
+        left: "inset-y-0 left-0 h-full w-3/4 border-r pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left sm:max-w-sm",
         right:
-          "inset-y-0 right-0 h-full w-3/4  border-l data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right sm:max-w-sm",
+          "inset-y-0 right-0 h-full w-3/4 border-l pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right sm:max-w-sm",
       },
     },
     defaultVariants: {

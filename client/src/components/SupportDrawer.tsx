@@ -185,7 +185,18 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
       <SheetTrigger asChild>
         {children}
       </SheetTrigger>
-      <SheetContent side="left" className="w-[320px] sm:w-[360px] flex flex-col p-0">
+      <SheetContent
+        side="left"
+        className="w-[320px] sm:w-[360px] flex flex-col p-0"
+        // Inline style because p-0 above zeros out the sheet variant's
+        // padding (CSS shorthand vs longhand source-order resolution makes
+        // class-based safe-area unreliable when there's also a `p-0`).
+        // Inline styles always beat class declarations, so this is robust.
+        style={{
+          paddingTop: "env(safe-area-inset-top)",
+          paddingBottom: "env(safe-area-inset-bottom)",
+        }}
+      >
         {/* Header */}
         <SheetHeader className="px-5 pt-5 pb-3">
           <div className="flex items-center gap-2.5">
