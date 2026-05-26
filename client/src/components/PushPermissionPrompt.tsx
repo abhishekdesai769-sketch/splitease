@@ -140,11 +140,15 @@ interface PromptCardProps {
   testId: string;
 }
 
+// bottom-[calc(6rem+env(safe-area-inset-bottom))] keeps the card above the
+// 64px bottom nav. The nav also pads itself by env(safe-area-inset-bottom),
+// so the card has to budget for that same inset — otherwise on iPhones
+// with a home indicator, the prompt sits inside the nav zone.
 function PromptCard({
   icon, title, body, primaryLabel, primaryDisabled, onPrimary, dismissLabel, onDismiss, testId,
 }: PromptCardProps) {
   return (
-    <div className="fixed left-0 right-0 bottom-24 z-40 px-4 pointer-events-none">
+    <div className="fixed left-0 right-0 bottom-[calc(6rem+env(safe-area-inset-bottom))] z-40 px-4 pointer-events-none">
       <div
         className="max-w-md mx-auto bg-card border border-border rounded-2xl shadow-lg p-4 pointer-events-auto"
         data-testid={testId}

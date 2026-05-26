@@ -470,7 +470,12 @@ export function VoiceMicButton() {
             ? "w-14 h-14 bg-primary text-primary-foreground hover:scale-105 active:scale-95"
             : "w-14 h-14 bg-muted border border-border text-muted-foreground hover:bg-muted/80"
           }`}
-        style={{ bottom: "76px" }}
+        // 76px keeps it just above the 64px bottom nav. The bottom nav
+        // now also pads itself by env(safe-area-inset-bottom) — so the
+        // mic button has to budget for that same inset, otherwise on
+        // iPhones with home indicator the button gets pushed INSIDE the
+        // nav zone (looks broken).
+        style={{ bottom: "calc(76px + env(safe-area-inset-bottom))" }}
         onClick={handleMicTap}
         aria-label="Voice mode"
         data-testid="voice-mic-button"

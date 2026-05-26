@@ -43,7 +43,10 @@ const DrawerContent = React.forwardRef<
     <DrawerPrimitive.Content
       ref={ref}
       className={cn(
-        "fixed inset-x-0 bottom-0 z-50 mt-24 flex h-auto flex-col rounded-t-[10px] border bg-background",
+        // pb-[env(safe-area-inset-bottom)] keeps drawer content above the
+        // home-indicator zone (contentInset:"never" means the WebView fills
+        // the whole screen — we own the safe-area budget now).
+        "fixed inset-x-0 bottom-0 z-50 mt-24 flex h-auto flex-col rounded-t-[10px] border bg-background pb-[env(safe-area-inset-bottom)]",
         className
       )}
       {...props}
