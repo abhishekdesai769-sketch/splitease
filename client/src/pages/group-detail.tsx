@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Plus, ArrowLeft, Trash2, Shuffle, Receipt, UserPlus, X, HandCoins, CheckCircle2, AlertTriangle, Camera, Mail, Loader2, Crown, Shield, LogOut, UserMinus, Clock, Check, Ghost, FileText, Pencil, MoreVertical, Upload, Download, Repeat, ChevronDown, Copy, MessageCircle, Share2 } from "lucide-react";
+import { Plus, ArrowLeft, Trash2, Shuffle, Receipt, UserPlus, X, HandCoins, CheckCircle2, AlertTriangle, Camera, Mail, Loader2, Crown, Shield, LogOut, UserMinus, Clock, Check, Ghost, FileText, Pencil, MoreVertical, Upload, Download, Repeat, ChevronDown, Copy, MessageCircle, Share2, Users2 } from "lucide-react";
 import { shareInviteLink, shareAppLink } from "@/lib/share";
 import { Switch } from "@/components/ui/switch";
 import { UpgradePromptSheet } from "@/components/UpgradePromptSheet";
@@ -45,6 +45,11 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurringFrequency, setRecurringFrequency] = useState<"monthly" | "weekly">("monthly");
   const [upgradeSheetOpen, setUpgradeSheetOpen] = useState(false);
+  // Member-balances accordion — collapsed by default. The user's own
+  // balance is always visible above ("You owe X"); the everyone-else
+  // breakdown is opt-in to keep the group view tidy on large groups
+  // (e.g., 10-person trips where the list would otherwise dominate).
+  const [memberBalancesOpen, setMemberBalancesOpen] = useState(false);
 
   // Tax & tip adjustments
   const [taxPercent, setTaxPercent] = useState("");
@@ -1757,25 +1762,48 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
         </div>
       )}
 
-      {/* Member Balances — right before expenses (excludes current user) */}
+      {/* Member Balances — collapsible. Default hidden so the group view
+          stays tidy on large groups (e.g., 10-person trips). The user's
+          own balance is already shown above in the "You owe X" card —
+          this section is the everyone-else breakdown, opt-in via tap. */}
       {balances.filter(b => b.personId !== user?.id).length > 0 && (
-        <div>
-          <h3 className="text-sm font-medium text-muted-foreground mb-2 font-serif">Member Balances</h3>
-          <div className="space-y-1.5">
-            {balances.filter(b => b.personId !== user?.id).map((b) => (
-              <div key={b.personId} className="flex items-center justify-between gap-2 px-1 py-0.5">
-                <span className="text-base">{getPersonName(b.personId)}</span>
-                <span
-                  className={`text-base font-semibold ${
-                    b.amount > 0 ? "text-primary" : b.amount < 0 ? "text-destructive" : "text-muted-foreground"
-                  }`}
-                >
-                  {b.amount > 0 ? "gets back" : b.amount < 0 ? "pays" : "settled"}{" "}
-                  {b.amount !== 0 && `$${Math.abs(b.amount).toFixed(2)}`}
-                </span>
-              </div>
-            ))}
-          </div>
+        <div className="space-y-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full justify-between"
+            onClick={() => setMemberBalancesOpen(o => !o)}
+            data-testid="member-balances-toggle"
+            aria-expanded={memberBalancesOpen}
+          >
+            <span className="flex items-center gap-1.5">
+              <Users2 className="w-4 h-4" />
+              Member Balances
+              <span className="text-xs text-muted-foreground font-normal ml-1">
+                ({balances.filter(b => b.personId !== user?.id).length})
+              </span>
+            </span>
+            <ChevronDown
+              className={`w-4 h-4 transition-transform duration-200 ${memberBalancesOpen ? "rotate-180" : ""}`}
+            />
+          </Button>
+          {memberBalancesOpen && (
+            <div className="space-y-1.5 pt-1 animate-in fade-in slide-in-from-top-2 duration-200">
+              {balances.filter(b => b.personId !== user?.id).map((b) => (
+                <div key={b.personId} className="flex items-center justify-between gap-2 px-1 py-0.5">
+                  <span className="text-base">{getPersonName(b.personId)}</span>
+                  <span
+                    className={`text-base font-semibold ${
+                      b.amount > 0 ? "text-primary" : b.amount < 0 ? "text-destructive" : "text-muted-foreground"
+                    }`}
+                  >
+                    {b.amount > 0 ? "gets back" : b.amount < 0 ? "pays" : "settled"}{" "}
+                    {b.amount !== 0 && `$${Math.abs(b.amount).toFixed(2)}`}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
