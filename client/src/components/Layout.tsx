@@ -45,8 +45,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      {/* Top header */}
-      <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-md">
+      {/* Top header — pt-[env(safe-area-inset-top)] pushes the header content
+          below the iOS notch/Dynamic Island. The bg fills the safe-area zone
+          so the status-bar background looks intentional. */}
+      <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-md pt-[env(safe-area-inset-top)]">
         <div className="max-w-3xl mx-auto px-4 h-14 flex items-center justify-between gap-2">
           <SupportDrawer>
             <button
@@ -92,8 +94,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </div>
       </header>
 
-      {/* Main content */}
-      <main className="flex-1 max-w-3xl mx-auto w-full px-4 py-5 pb-24">
+      {/* Main content — pb-24 keeps content above the nav. Extra
+          env(safe-area-inset-bottom) accounts for the home-indicator zone
+          on iPhones with no physical button (now that contentInset is
+          "never", we have to budget for that ourselves). */}
+      <main className="flex-1 max-w-3xl mx-auto w-full px-4 py-5 pb-[calc(6rem+env(safe-area-inset-bottom))]">
         {children}
       </main>
 
@@ -104,8 +109,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
           iOS-native only — renders nothing on web/Android. */}
       <PushPermissionPrompt />
 
-      {/* Bottom navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-background/90 backdrop-blur-md">
+      {/* Bottom navigation — pb-[env(safe-area-inset-bottom)] lifts the nav
+          content above the home-indicator zone. The nav bg fills the safe
+          area so the home-indicator area looks intentional, not like a gap. */}
+      <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-background/90 backdrop-blur-md pb-[env(safe-area-inset-bottom)]">
         <div className="max-w-3xl mx-auto flex items-center justify-around h-16">
           {navItems.map((item) => {
             const isActive = location === item.path ||

@@ -2,6 +2,17 @@
 @tailwind components;
 @tailwind utilities;
 
+/* iOS rubber-band over-scroll: when the user scroll-pulls past the top or
+   bottom, the area exposed shows the BODY's background color. Default Tailwind
+   preflight leaves body bg = white, which produces a white strip flashing in
+   on hard scroll. Pinning html/body to the app's background var makes the
+   over-scroll zone look like the app's canvas instead. Works in both light
+   and dark theme since --background swaps with theme. */
+html,
+body {
+  background-color: hsl(var(--background));
+}
+
 /* LIGHT MODE - Klarity-inspired dark-first design */
 :root {
   --button-outline: rgba(0,0,0, .10);

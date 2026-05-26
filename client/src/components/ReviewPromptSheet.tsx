@@ -25,6 +25,7 @@ import {
   getStoreLink,
 } from "@/lib/reviewPrompt";
 import { track } from "@/lib/analytics";
+import { requestNativeReview } from "@/lib/native-review";
 
 // ─── Trigger-specific copy (from GROWTH_BLUEPRINT.md) ────────────────────────
 
@@ -66,10 +67,18 @@ export function ReviewPromptSheet() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleLeaveReview = () => {
+  const handleLeaveReview = async () => {
     markRated();
     track("review_prompt_clicked", { trigger, platform });
-    window.open(storeLink, "_blank", "noopener,noreferrer");
+    // On iOS native, try Apple's in-app star prompt FIRST. The user never
+    // leaves Spliiit — they rate inside an Apple-rendered modal. If the call
+    // succeeds (or even silently no-ops past Apple's 3/year cap), we don't
+    // fall through to the App Store link.
+    const nativeFired = await requestNativeReview();
+    if (!nativeFired) {
+      // Web, Android TWA, or native call errored → original link-out.
+      window.open(storeLink, "_blank", "noopener,noreferrer");
+    }
     setOpen(false);
   };
 

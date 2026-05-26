@@ -11,7 +11,12 @@ const config: CapacitorConfig = {
     iosScheme: "https",
   },
   ios: {
-    contentInset: "automatic",
+    // "never" lets the web content fill the entire screen including under
+    // the notch and home indicator. We handle safe-area positioning ourselves
+    // via env(safe-area-inset-*) on the sticky header + fixed bottom nav.
+    // Previously "automatic" was leaving white strips along the home-indicator
+    // and notch zones because WKWebView's auto-inset competed with our CSS.
+    contentInset: "never",
     preferredContentMode: "mobile",
     scheme: "Spliiit",
     minVersion: "16.0",
