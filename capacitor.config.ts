@@ -50,6 +50,17 @@ const config: CapacitorConfig = {
     PushNotifications: {
       presentationOptions: ["badge", "sound", "alert"],
     },
+    // Keyboard behavior — "native" resize tells iOS WKWebView to shrink
+    // its height when the keyboard appears, so position:fixed elements
+    // (sticky header, bottom nav) stay correctly positioned and the
+    // focused input stays visible above the keyboard. Without this, the
+    // keyboard floats over content and form fields disappear behind it
+    // — which is the "feels web-y, not native" problem we had earlier.
+    // Matches the canonical Capacitor pattern; Splitwise uses the same.
+    Keyboard: {
+      resize: "native",
+      resizeOnFullScreen: true,
+    },
   },
 };
 

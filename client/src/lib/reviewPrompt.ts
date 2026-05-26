@@ -1,9 +1,11 @@
 /**
  * reviewPrompt.ts — In-app review prompt logic
  *
- * 3 triggers (from GROWTH_BLUEPRINT.md):
- *   "expense_6"    — user adds their 6th expense (past Splitwise's daily cap)
- *   "receipt"      — user uploads their first receipt photo (Splitwise charges for this)
+ * 3 triggers:
+ *   "expense_6"    — name kept for localStorage compat, NOW fires on 2nd expense
+ *                    (May 2026: shifted from 6 → 2 per product decision; users
+ *                    are still fresh + novelty-driven, captures more 5-stars)
+ *   "receipt"      — user uploads their first receipt photo
  *   "group"        — user creates a group with 3+ members
  *
  * Rules:
@@ -58,12 +60,15 @@ export function shouldShowReview(type: ReviewTrigger): boolean {
   return true;
 }
 
-/** Track expense count and return true when the 6th expense is reached. */
+/** Track expense count and return true at the configured trigger point.
+ *  Currently fires at the 2nd expense (shifted from 6 in May 2026 — see
+ *  the file header for rationale). The trigger KEY ("expense_6") is kept
+ *  for localStorage backwards-compat with users who already have it set. */
 export function recordExpenseAndCheck(): boolean {
   if (triggerFired("expense_6") || hasRated()) return false;
   const count = parseInt(get(K_EXPENSE_CT) ?? "0") + 1;
   set(K_EXPENSE_CT, count.toString());
-  return count === 6; // fires exactly once
+  return count === 2; // fires exactly once at expense #2
 }
 
 /** Called when the prompt is shown. */

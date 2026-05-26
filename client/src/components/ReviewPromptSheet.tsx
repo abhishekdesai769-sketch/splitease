@@ -31,8 +31,11 @@ import { requestNativeReview } from "@/lib/native-review";
 
 const COPY: Record<ReviewTrigger, { headline: string; body: string }> = {
   expense_6: {
-    headline: "Other apps would've stopped you by now 🚫",
-    body: "You've added 6 expenses — most well-known apps would've cut you off or started throwing ads at you by now. We didn't. If Spliiit is already treating you better, a 30-second review helps us keep that commitment and keep the basics free for you, forever. It means the world to us. 🙏",
+    // Fires at the 2nd expense now — copy is intentionally generic about
+    // the count so users don't notice the number. Focus on the "we're not
+    // charging or limiting you" psychological hook, which is true regardless.
+    headline: "Loving Spliiit already? 🌟",
+    body: "You're using it the way it was meant to be used — no caps, no nagging upgrade screens, no ads. If Spliiit is already working for you, a 30-second review helps us keep the basics free for everyone, forever. It means the world to us. 🙏",
   },
   receipt: {
     headline: "Receipt attached — and it was free",

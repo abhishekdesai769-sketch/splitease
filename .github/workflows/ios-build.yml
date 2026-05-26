@@ -74,7 +74,7 @@ jobs:
 
       - name: Install Capacitor (pinned to v7)
         run: |
-          npm install @capacitor/core@7 @capacitor/ios@7 @capacitor/cli@7 "@capacitor-community/apple-sign-in@^7.0.0" "@capacitor-community/in-app-review@^7.0.0"
+          npm install @capacitor/core@7 @capacitor/ios@7 @capacitor/cli@7 "@capacitor-community/apple-sign-in@^7.0.0" "@capacitor-community/in-app-review@^7.0.0" "@capacitor/keyboard@^7.0.0"
 
       - name: Add iOS platform (allow pod install to fail — we fix it next)
         run: |
