@@ -14,7 +14,14 @@ const ToastViewport = React.forwardRef<
   <ToastPrimitives.Viewport
     ref={ref}
     className={cn(
-      "fixed top-0 z-[100] flex max-h-screen w-full flex-col-reverse p-4 sm:bottom-0 sm:right-0 sm:top-auto sm:flex-col md:max-w-[420px]",
+      // Mobile (default): toast sticks to the top. Without an explicit
+      // safe-area-inset-top in the padding, the toast slides up under the
+      // iPhone status bar / notch (now that capacitor.config has contentInset:
+      // "never", the web content fills the entire screen — we have to budget
+      // for the system UI ourselves).
+      // Desktop (sm: and up): same logic for safe-area-inset-bottom on the
+      // bottom-anchored variant (no-op on browsers that don't expose env()).
+      "fixed top-0 z-[100] flex max-h-screen w-full flex-col-reverse px-4 pb-4 pt-[calc(1rem+env(safe-area-inset-top))] sm:bottom-0 sm:right-0 sm:top-auto sm:flex-col sm:pt-4 sm:pb-[calc(1rem+env(safe-area-inset-bottom))] md:max-w-[420px]",
       className
     )}
     {...props}
