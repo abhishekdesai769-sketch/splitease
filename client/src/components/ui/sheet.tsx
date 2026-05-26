@@ -79,7 +79,20 @@ const SheetContent = React.forwardRef<
       {...props}
     >
       {children}
-      <SheetPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-secondary">
+      {/* The X close button is absolutely positioned, so the parent's
+          padding-top doesn't push it down. For sheets that TOUCH the screen
+          top (top, left, right variants), we add safe-area-inset-top to its
+          `top` so it sits below the iOS status bar. Bottom sheets keep the
+          plain top-4 since their sheet starts mid-screen (adding safe-area
+          there would push the X down into the sheet's header content). */}
+      <SheetPrimitive.Close
+        className={cn(
+          "absolute right-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-secondary",
+          side === "bottom"
+            ? "top-4"
+            : "top-[calc(1rem+env(safe-area-inset-top))]",
+        )}
+      >
         <X className="h-4 w-4" />
         <span className="sr-only">Close</span>
       </SheetPrimitive.Close>
