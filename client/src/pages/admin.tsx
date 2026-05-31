@@ -129,7 +129,7 @@ const UserCard = memo(function UserCard({
 });
 
 export default function Admin() {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
   const [userSearchQuery, setUserSearchQuery] = useState("");
@@ -254,8 +254,16 @@ export default function Admin() {
       const res = await apiRequest("POST", `/api/admin/users/${userId}/grant-premium`, { months });
       return res.json();
     },
-    onSuccess: (data: any) => {
+    onSuccess: async (data: any, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      // If the admin granted/revoked Premium on THEMSELVES, useAuth's
+      // local `user` state is now stale (it loaded once at app boot and
+      // never auto-refreshes). Re-fetch /api/auth/me so the rest of the
+      // app (Money tab, AI scan quota, recurring expenses, etc.) treats
+      // the admin as Premium immediately, not after the next full reload.
+      if (variables.userId === user?.id) {
+        await refreshUser();
+      }
       toast({ title: "Premium updated", description: data.message });
     },
     onError: (err: Error) => {
