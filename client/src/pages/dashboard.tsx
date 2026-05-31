@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import type { Group, Expense, SafeUser, RecurringExpense } from "@shared/schema";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { UsersRound, Users2, TrendingDown, TrendingUp, MailPlus, Check, X, Repeat, Trash2 } from "lucide-react";
+import { UsersRound, Users2, TrendingDown, TrendingUp, MailPlus, Check, X, Repeat, Trash2, Sparkles, ArrowRight } from "lucide-react";
 import { Link } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { calculateGroupBalances, calculatePairwiseBalances, simplifyDebts } from "@/lib/simplify";
@@ -253,6 +253,36 @@ export default function Dashboard() {
         <StatCard icon={TrendingDown} label="You Owe" value={`$${youOwe.toFixed(2)}`} color="text-destructive" />
         <StatCard icon={TrendingUp} label="You're Owed" value={`$${youAreOwed.toFixed(2)}`} color="text-primary" />
       </div>
+
+      {/* AI Mode tile — full-width, gradient, dashboard-prominent. Visible
+          to all users; the page itself shows a Premium-gate teaser for
+          non-Premium users (same psychology as Money tab). TWA users get
+          it too — the page handles gating internally. */}
+      <Link href="/ai">
+        <button
+          type="button"
+          className="w-full group relative overflow-hidden rounded-xl border border-primary/30 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent p-4 text-left transition-all active:scale-[0.99] hover:border-primary/50"
+          data-testid="dashboard-ai-mode-tile"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-xl bg-primary/15 flex items-center justify-center shrink-0">
+              <Sparkles className="w-5 h-5 text-primary" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1.5">
+                <h3 className="text-base font-semibold">AI Mode</h3>
+                <span className="text-[9px] uppercase tracking-wider font-mono font-semibold text-primary/70 bg-primary/10 px-1.5 py-0.5 rounded">
+                  New
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Describe a split or send a receipt — done in seconds.
+              </p>
+            </div>
+            <ArrowRight className="w-4 h-4 text-muted-foreground shrink-0 group-hover:translate-x-0.5 transition-transform" />
+          </div>
+        </button>
+      </Link>
 
       {/* Your settlements */}
       {mySettlements.length > 0 && (

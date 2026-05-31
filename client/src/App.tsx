@@ -24,6 +24,7 @@ import NotFound from "@/pages/not-found";
 import Import from "@/pages/import";
 import Upgrade from "@/pages/upgrade";
 import Money from "@/pages/money";
+import AiMode from "@/pages/ai-mode";
 import OnboardingPreferences from "@/pages/onboarding";
 import FirstRunWizard from "@/pages/first-run";
 import OnboardingV2 from "@/pages/onboarding-v2";
@@ -202,6 +203,8 @@ function AppRouter() {
           {(params) => <GroupDetail groupId={params.id} />}
         </Route>
         <Route path="/expenses" component={Expenses} />
+        <Route path="/ai" component={AiMode} />
+        <Route path="/ai/:id" component={AiMode} />
         <Route path="/invite/:code" component={InvitePage} />
         <Route path="/import" component={Import} />
         {/* /upgrade route is hidden inside the Android TWA — Google Play policy

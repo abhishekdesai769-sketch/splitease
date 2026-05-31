@@ -215,6 +215,36 @@ async function runMigrations() {
     await pool.query(`CREATE INDEX IF NOT EXISTS plaid_accounts_item_id_idx ON plaid_accounts(item_id)`);
     await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS plaid_accounts_plaid_account_id_idx ON plaid_accounts(plaid_account_id)`);
 
+    // ── AI Mode (May 2026) — conversational expense entry ────────────────
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS ai_conversations (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id varchar NOT NULL,
+        title text,
+        status text NOT NULL DEFAULT 'active',
+        created_at text NOT NULL,
+        updated_at text NOT NULL
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS ai_conversations_user_id_idx ON ai_conversations(user_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS ai_conversations_updated_at_idx ON ai_conversations(updated_at)`);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS ai_messages (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        conversation_id varchar NOT NULL,
+        role text NOT NULL,
+        content text,
+        tool_calls text,
+        proposal text,
+        attachments text,
+        confirmed_at text,
+        created_at text NOT NULL
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS ai_messages_conversation_id_idx ON ai_messages(conversation_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS ai_messages_created_at_idx ON ai_messages(created_at)`);
+
     log("Startup migrations OK", "db");
   } catch (e) {
     log(`Startup migration error: ${e}`, "db");

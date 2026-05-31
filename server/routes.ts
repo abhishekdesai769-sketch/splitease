@@ -17,7 +17,8 @@ import { parseReceipt, RECEIPT_SCANNING_ENABLED } from "./receipt-parser";
 import { checkScanEligibility, incrementScanCounters, recordScanAudit, normalizeEmail, commitScanByScanId } from "./premium-access";
 import { isDisposableEmail } from "./disposable-emails";
 import * as plaid from "./plaid";
-import { plaidItems, plaidAccounts } from "@shared/schema";
+import { plaidItems, plaidAccounts, aiConversations, aiMessages } from "@shared/schema";
+import * as ai from "./ai";
 import { stripe, STRIPE_PRICE_MONTHLY, STRIPE_PRICE_YEARLY, STRIPE_ENABLED } from "./stripe";
 import {
   upload, hashPassword, verifyPassword, needsHashUpgrade,
@@ -2995,6 +2996,244 @@ setInterval(loadAll,30000);
       console.error("Feedback email failed:", err);
       res.status(500).json({ error: "Failed to send. Please try again later." });
     }
+  });
+
+  // ========== AI Mode (conversational expense entry) ==========
+  // All endpoints are Premium-gated. The AI proposes; users confirm via the
+  // existing /api/expenses + /api/friends/expenses endpoints (no new write
+  // paths). This means the locked balance-calc logic in lib/simplify.ts is
+  // never touched by AI Mode — it just creates expense rows the same way
+  // the manual form does.
+
+  // Rate-limited so a runaway client can't burn through Anthropic budget.
+  // 30 turns per user per 24h is generous (a typical conversation is 2-6 turns).
+  const aiLimiter = rateLimit(24 * 60 * 60 * 1000, 30);
+
+  // Guard: feature flag + Premium gate + Anthropic key present
+  async function aiGuard(req: any, res: any): Promise<{ user: any } | null> {
+    if (!ai.AI_MODE_ENABLED) {
+      res.status(503).json({ error: "ai_not_configured", message: "AI Mode isn't live yet." });
+      return null;
+    }
+    const userId = (req.session as any).userId;
+    const user = await storage.getUser(userId);
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return null; }
+    if (!user.isPremium) {
+      res.status(403).json({ error: "premium_required", message: "AI Mode is a Premium feature." });
+      return null;
+    }
+    return { user };
+  }
+
+  // Helper: build the AI context (friends + groups + name lookup) for a user
+  async function buildAiContextForUser(user: any) {
+    const friends = await storage.getFriends(user.id);
+    const groupsRaw = await storage.getGroupsForUser(user.id);
+    // Build a member-name lookup. friends gives most of what we need; we
+    // also include the user themself and any group members not in friends.
+    const allKnownUserNames: Record<string, string> = { [user.id]: user.name };
+    for (const f of friends) allKnownUserNames[f.id] = f.name;
+    // For group members not in friends, fetch their safe profiles
+    const missingMemberIds = new Set<string>();
+    for (const g of groupsRaw) {
+      for (const id of g.memberIds) if (!allKnownUserNames[id]) missingMemberIds.add(id);
+    }
+    if (missingMemberIds.size > 0) {
+      const extras = await storage.getUsersSafe(Array.from(missingMemberIds));
+      for (const u of extras) allKnownUserNames[u.id] = u.name;
+    }
+    return ai.buildUserContext({
+      userId: user.id,
+      userName: user.name,
+      friends: friends.map((f) => ({ id: f.id, name: f.name, email: f.email })),
+      groups: groupsRaw.map((g) => ({ id: g.id, name: g.name, memberIds: g.memberIds })),
+      allKnownUserNames,
+    });
+  }
+
+  // 1. Create a new conversation (returns id; doesn't trigger Claude yet)
+  app.post("/api/ai/conversations", requireAuth, async (req: any, res) => {
+    const guard = await aiGuard(req, res); if (!guard) return;
+    const now = new Date().toISOString();
+    const [conv] = await db.insert(aiConversations).values({
+      userId: guard.user.id,
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+    }).returning();
+    res.json({ id: conv.id, createdAt: conv.createdAt });
+  });
+
+  // 2. List the user's conversations (for the sidebar / history view)
+  app.get("/api/ai/conversations", requireAuth, async (req: any, res) => {
+    const guard = await aiGuard(req, res); if (!guard) return;
+    const list = await db
+      .select()
+      .from(aiConversations)
+      .where(and(eq(aiConversations.userId, guard.user.id), eq(aiConversations.status, "active")))
+      .orderBy(desc(aiConversations.updatedAt));
+    res.json({ conversations: list });
+  });
+
+  // 3. Get a conversation + all its messages
+  app.get("/api/ai/conversations/:id", requireAuth, async (req: any, res) => {
+    const guard = await aiGuard(req, res); if (!guard) return;
+    const [conv] = await db.select().from(aiConversations).where(eq(aiConversations.id, req.params.id));
+    if (!conv || conv.userId !== guard.user.id) return res.status(404).json({ error: "not_found" });
+    const msgs = await db.select().from(aiMessages).where(eq(aiMessages.conversationId, conv.id)).orderBy(aiMessages.createdAt);
+    res.json({ conversation: conv, messages: msgs });
+  });
+
+  // 4. Send a message (the main one — calls Claude)
+  app.post("/api/ai/conversations/:id/message", requireAuth, aiLimiter, async (req: any, res) => {
+    const guard = await aiGuard(req, res); if (!guard) return;
+    const text = typeof req.body?.text === "string" ? req.body.text.trim() : "";
+    if (!text) return res.status(400).json({ error: "text_required" });
+    if (text.length > 4000) return res.status(400).json({ error: "text_too_long" });
+
+    const [conv] = await db.select().from(aiConversations).where(eq(aiConversations.id, req.params.id));
+    if (!conv || conv.userId !== guard.user.id) return res.status(404).json({ error: "not_found" });
+
+    const now = new Date().toISOString();
+
+    // Persist the user message immediately so it shows in the transcript
+    // even if Claude errors out.
+    const [userMsg] = await db.insert(aiMessages).values({
+      conversationId: conv.id,
+      role: "user",
+      content: text,
+      createdAt: now,
+    }).returning();
+
+    // Load prior history to give Claude context for multi-turn refinements
+    const priorMsgs = await db.select().from(aiMessages)
+      .where(eq(aiMessages.conversationId, conv.id))
+      .orderBy(aiMessages.createdAt);
+    // Exclude the just-inserted user message (it'll be passed as newUserMessage)
+    const history = priorMsgs
+      .filter((m) => m.id !== userMsg.id)
+      .map((m) => ({
+        role: m.role as "user" | "assistant",
+        content: m.content || "",
+        proposalJson: m.proposal,
+      }));
+
+    try {
+      const aiCtx = await buildAiContextForUser(guard.user);
+      const result = await ai.runAiTurn({ ctx: aiCtx, history, newUserMessage: text });
+
+      // Persist the assistant response
+      const [assistantMsg] = await db.insert(aiMessages).values({
+        conversationId: conv.id,
+        role: "assistant",
+        content: result.assistantText ?? null,
+        toolCalls: result.rawToolCalls ? JSON.stringify(result.rawToolCalls) : null,
+        proposal: result.proposal
+          ? JSON.stringify(result.proposal)
+          : result.multiProposal
+            ? JSON.stringify({ multi: result.multiProposal })
+            : null,
+        createdAt: new Date().toISOString(),
+      }).returning();
+
+      // Update conversation's updatedAt + title (if not set yet)
+      const titleUpdate = !conv.title ? { title: text.slice(0, 60) } : {};
+      await db.update(aiConversations)
+        .set({ updatedAt: new Date().toISOString(), ...titleUpdate })
+        .where(eq(aiConversations.id, conv.id));
+
+      res.json({
+        userMessage: userMsg,
+        assistantMessage: assistantMsg,
+        kind: result.kind,
+        proposal: result.proposal ?? null,
+        multiProposal: result.multiProposal ?? null,
+      });
+    } catch (err: any) {
+      console.error("[ai] turn failed:", err);
+      // Still record an assistant error message so the transcript stays sane
+      await db.insert(aiMessages).values({
+        conversationId: conv.id,
+        role: "assistant",
+        content: "Sorry — something went wrong on my end. Try again in a sec.",
+        createdAt: new Date().toISOString(),
+      });
+      res.status(500).json({ error: "ai_turn_failed", message: err?.message || "Unknown error" });
+    }
+  });
+
+  // 5. Confirm a proposal — actually creates the expense(s) via existing logic
+  app.post("/api/ai/conversations/:id/confirm", requireAuth, async (req: any, res) => {
+    const guard = await aiGuard(req, res); if (!guard) return;
+    const messageId = typeof req.body?.messageId === "string" ? req.body.messageId : null;
+    if (!messageId) return res.status(400).json({ error: "messageId_required" });
+
+    // Load the conversation + the message holding the proposal
+    const [conv] = await db.select().from(aiConversations).where(eq(aiConversations.id, req.params.id));
+    if (!conv || conv.userId !== guard.user.id) return res.status(404).json({ error: "not_found" });
+
+    const [msg] = await db.select().from(aiMessages).where(eq(aiMessages.id, messageId));
+    if (!msg || msg.conversationId !== conv.id || !msg.proposal) {
+      return res.status(404).json({ error: "proposal_not_found" });
+    }
+    if (msg.confirmedAt) {
+      return res.status(409).json({ error: "already_confirmed" });
+    }
+
+    let parsed: any;
+    try { parsed = JSON.parse(msg.proposal); } catch {
+      return res.status(500).json({ error: "proposal_corrupt" });
+    }
+
+    // Build list of expenses (either single or multi)
+    const proposals: ai.ExpenseProposal[] = Array.isArray(parsed?.multi)
+      ? parsed.multi
+      : [parsed];
+
+    // Create each via storage.createExpense — same path the manual form uses
+    const created: any[] = [];
+    const failed: any[] = [];
+    for (const p of proposals) {
+      try {
+        const expense = await storage.createExpense({
+          description: sanitize(p.description, 200),
+          amount: Number(p.amount),
+          paidById: p.paidByUserId,
+          splitAmongIds: p.splitAmongUserIds,
+          groupId: p.groupId || null,
+          date: new Date().toISOString(),
+          addedById: guard.user.id,
+          isSettlement: false,
+          notes: null,
+          splitAmounts: p.splitAmounts ? JSON.stringify(p.splitAmounts) : null,
+          currency: p.currency && p.currency !== "CAD" ? p.currency : null,
+          originalAmount: null,
+        });
+        created.push(expense);
+      } catch (err: any) {
+        console.error("[ai] expense create failed:", err);
+        failed.push({ proposal: p, error: err?.message });
+      }
+    }
+
+    // Mark the message confirmed regardless of partial failures so we don't
+    // double-create on retry. Caller sees both arrays in the response.
+    await db.update(aiMessages)
+      .set({ confirmedAt: new Date().toISOString() })
+      .where(eq(aiMessages.id, msg.id));
+
+    res.json({ created, failed });
+  });
+
+  // 6. Archive (soft-delete) a conversation
+  app.delete("/api/ai/conversations/:id", requireAuth, async (req: any, res) => {
+    const guard = await aiGuard(req, res); if (!guard) return;
+    const [conv] = await db.select().from(aiConversations).where(eq(aiConversations.id, req.params.id));
+    if (!conv || conv.userId !== guard.user.id) return res.status(404).json({ error: "not_found" });
+    await db.update(aiConversations)
+      .set({ status: "archived", updatedAt: new Date().toISOString() })
+      .where(eq(aiConversations.id, conv.id));
+    res.json({ ok: true });
   });
 
   // CSV line parser helper for Splitwise import (handles quoted fields)

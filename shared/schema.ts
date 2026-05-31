@@ -138,6 +138,53 @@ export const plaidAccounts = pgTable("plaid_accounts", {
 export type PlaidAccount = typeof plaidAccounts.$inferSelect;
 export type InsertPlaidAccount = typeof plaidAccounts.$inferInsert;
 
+// ── AI Mode (conversational expense entry) ───────────────────────────────
+// Each conversation belongs to one user. Messages are append-only — the
+// "transcript" of one chat session. A conversation can have multiple turns
+// (Claude responses can propose expenses, ask clarifications, or just chat).
+//
+// proposal column on ai_messages: when Claude calls the propose_expense
+// tool, we serialize the structured proposal here so the client can render
+// a confirmation card. Stays unset for chitchat / clarification turns.
+export const aiConversations = pgTable("ai_conversations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  title: text("title"),                              // first 60 chars of the user's first message
+  status: text("status").notNull().default("active"), // "active" | "archived"
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+}, (table) => [
+  index("ai_conversations_user_id_idx").on(table.userId),
+  index("ai_conversations_updated_at_idx").on(table.updatedAt),
+]);
+
+export type AiConversation = typeof aiConversations.$inferSelect;
+export type InsertAiConversation = typeof aiConversations.$inferInsert;
+
+export const aiMessages = pgTable("ai_messages", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  conversationId: varchar("conversation_id").notNull(),
+  role: text("role").notNull(),       // "user" | "assistant"
+  content: text("content"),            // markdown / plain text body
+  // toolCalls / proposal / attachments stored as JSON strings (Postgres jsonb
+  // would be cleaner but text JSON works with our existing Drizzle setup and
+  // we already use this pattern in other places).
+  toolCalls: text("tool_calls"),       // JSON: claude's tool_use blocks
+  proposal: text("proposal"),          // JSON: ExpenseProposal | MultiExpenseProposal | null
+  attachments: text("attachments"),    // JSON: { receiptImageRef?, ... }
+  // Tracks whether this message's proposal was confirmed by the user. Once
+  // confirmed, we don't allow re-confirming (idempotent — same pattern as
+  // the ai_scan_audit countedAgainstFree flag).
+  confirmedAt: text("confirmed_at"),   // ISO timestamp or null
+  createdAt: text("created_at").notNull(),
+}, (table) => [
+  index("ai_messages_conversation_id_idx").on(table.conversationId),
+  index("ai_messages_created_at_idx").on(table.createdAt),
+]);
+
+export type AiMessage = typeof aiMessages.$inferSelect;
+export type InsertAiMessage = typeof aiMessages.$inferInsert;
+
 // OTP codes for email verification
 export const otpCodes = pgTable("otp_codes", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
