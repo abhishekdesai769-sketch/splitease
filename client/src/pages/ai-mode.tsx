@@ -249,65 +249,94 @@ export default function AiMode() {
   }
 
   // ── Render: live AI Mode ──────────────────────────────────────────────
+  // Layout strategy:
+  //   - PageHeader + messages render in normal Layout flow (scrollable page)
+  //   - Input bar is position: fixed, anchored ABOVE the bottom nav so it's
+  //     always visible no matter where the user scrolled to.
+  //   - Messages container has paddingBottom to make room for the fixed bar.
+  //
+  // The previous attempt used calc(100vh - 8rem) which underestimated the
+  // chrome (safe-area-inset-top + header + main py + nav + safe-area-inset-
+  // bottom add up to >> 8rem on iPhones). The input bar fell below the
+  // viewport and required scrolling to find. position:fixed sidesteps the
+  // whole flex-height math problem.
   return (
-    <div className="flex flex-col" style={{ height: "calc(100vh - 8rem)" }}>
-      <PageHeader onBack={() => setLocation("/")} />
+    <>
+      {/* Hide Layout's floating mic on AI Mode — it covers the input bar.
+          Voice input arrives natively here in Phase 4. */}
+      <style>{`[data-testid="voice-mic-button"] { display: none !important; }`}</style>
 
-      {/* Messages */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto pb-3 space-y-3">
-        {messages.length === 0 && <EmptyState />}
-        {messages.map((m) => (
-          <MessageBubble
-            key={m.id}
-            message={m}
-            renderName={renderName}
-            renderGroupName={renderGroupName}
-            onConfirm={() => m.serverMessageId && confirmMutation.mutate(m.serverMessageId)}
-            confirmPending={confirmMutation.isPending}
-          />
-        ))}
-        {sendMutation.isPending && (
-          <div className="flex items-center gap-2 text-xs text-muted-foreground px-1">
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            Thinking…
-          </div>
-        )}
-      </div>
+      <div className="flex flex-col">
+        <PageHeader onBack={() => setLocation("/")} />
 
-      {/* Input bar */}
-      <div className="border-t border-border pt-3 mt-2">
-        <div className="flex items-end gap-2">
-          <Textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder='Describe a split… e.g. "Sushi $45 with Krish, I paid"'
-            rows={2}
-            className="resize-none text-sm"
-            disabled={sendMutation.isPending}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                handleSend();
-              }
-            }}
-            data-testid="ai-mode-input"
-          />
-          <Button
-            type="button"
-            size="icon"
-            onClick={handleSend}
-            disabled={sendMutation.isPending || !input.trim()}
-            className="shrink-0 h-[68px] w-12"
-            data-testid="ai-mode-send"
-          >
-            {sendMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-          </Button>
+        {/* Messages — padded at bottom to clear the fixed input bar
+            (~150px including the bar's height + bottom nav + safe area). */}
+        <div
+          ref={scrollRef}
+          className="space-y-3"
+          style={{ paddingBottom: "calc(170px + env(safe-area-inset-bottom))" }}
+        >
+          {messages.length === 0 && <EmptyState />}
+          {messages.map((m) => (
+            <MessageBubble
+              key={m.id}
+              message={m}
+              renderName={renderName}
+              renderGroupName={renderGroupName}
+              onConfirm={() => m.serverMessageId && confirmMutation.mutate(m.serverMessageId)}
+              confirmPending={confirmMutation.isPending}
+            />
+          ))}
+          {sendMutation.isPending && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground px-1">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              Thinking…
+            </div>
+          )}
         </div>
-        <p className="text-[10px] text-muted-foreground/70 mt-1.5 text-center">
-          AI proposes — you confirm. Nothing is created until you tap Create.
-        </p>
       </div>
-    </div>
+
+      {/* Fixed input bar — sits above the bottom nav. The bar's bottom
+          offset = nav height (4rem) + nav's safe-area inset, so it lifts
+          above the home-indicator zone consistently. */}
+      <div
+        className="fixed left-0 right-0 z-30 border-t border-border bg-background/95 backdrop-blur-md px-4 pt-3 pb-2"
+        style={{ bottom: "calc(4rem + env(safe-area-inset-bottom))" }}
+      >
+        <div className="max-w-3xl mx-auto">
+          <div className="flex items-end gap-2">
+            <Textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder='Describe a split… e.g. "Sushi $45 with Krish, I paid"'
+              rows={2}
+              className="resize-none text-sm"
+              disabled={sendMutation.isPending}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSend();
+                }
+              }}
+              data-testid="ai-mode-input"
+            />
+            <Button
+              type="button"
+              size="icon"
+              onClick={handleSend}
+              disabled={sendMutation.isPending || !input.trim()}
+              className="shrink-0 h-[68px] w-12"
+              data-testid="ai-mode-send"
+            >
+              {sendMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+            </Button>
+          </div>
+          <p className="text-[10px] text-muted-foreground/70 mt-1.5 text-center">
+            AI proposes — you confirm. Nothing is created until you tap Create.
+          </p>
+        </div>
+      </div>
+    </>
   );
 }
 
