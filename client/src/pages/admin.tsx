@@ -119,11 +119,15 @@ const UserCard = memo(function UserCard({
           <p className="text-[10px] text-yellow-500/70">Until {premiumUntilDate}</p>
         )}
       </div>
-      {!isCurrent && (
-        <Button size="icon" variant="ghost" title="Manage user" onClick={() => onManage(u)}>
-          <Settings className="w-4 h-4 text-muted-foreground" />
-        </Button>
-      )}
+      {/* Manage button shown for ALL users including the current admin.
+          Self-management is needed so the admin can grant themselves
+          Premium for testing / personal use. Truly destructive actions
+          (Delete User) are already gated by !selectedUser.isAdmin inside
+          the modal, so the admin can't accidentally delete their own
+          account from here. */}
+      <Button size="icon" variant="ghost" title="Manage user" onClick={() => onManage(u)}>
+        <Settings className="w-4 h-4 text-muted-foreground" />
+      </Button>
     </Card>
   );
 });
