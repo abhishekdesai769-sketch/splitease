@@ -2958,6 +2958,45 @@ setInterval(loadAll,30000);
     }
   });
 
+  // ========== Review prompt — 1-3 star feedback ==========
+  // Fired when a user taps 1, 2, or 3 stars in the in-app review sheet.
+  // We DON'T send these users to the App Store (saves us from public bad
+  // reviews); instead we capture their feedback here and forward it to
+  // support@klarityit.ca so we can actually act on it. Reuses the existing
+  // sendSupportEmail infrastructure — no new email template needed.
+  const feedbackLimiter = rateLimit(60 * 60 * 1000, 10); // 10 feedback submissions per hour per IP
+  app.post("/api/feedback", requireAuth, feedbackLimiter, async (req, res) => {
+    const ratingRaw = req.body?.rating;
+    const comment = typeof req.body?.comment === "string" ? req.body.comment : "";
+    const rating = Number(ratingRaw);
+    if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+      return res.status(400).json({ error: "Rating must be an integer 1–5" });
+    }
+    if (!comment.trim()) {
+      return res.status(400).json({ error: "Comment is required" });
+    }
+    if (comment.length > 2000) {
+      return res.status(400).json({ error: "Comment too long (max 2000 characters)" });
+    }
+    const userId = (req.session as any).userId;
+    const user = await storage.getUser(userId);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+    try {
+      await sendSupportEmail({
+        fromName: sanitize(user.name, 100),
+        fromEmail: sanitize(user.email, 200),
+        subject: `${rating}-star in-app feedback`,
+        message: sanitize(comment, 2000),
+        userId,
+      });
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("Feedback email failed:", err);
+      res.status(500).json({ error: "Failed to send. Please try again later." });
+    }
+  });
+
   // CSV line parser helper for Splitwise import (handles quoted fields)
   function importParseCSVLine(line: string): string[] {
     const result: string[] = [];
