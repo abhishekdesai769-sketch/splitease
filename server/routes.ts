@@ -461,6 +461,14 @@ export async function registerRoutes(
       secret: sessionSecret,
       resave: false,
       saveUninitialized: false,
+      // rolling: true → refresh the cookie expiry on every authenticated
+      // request. Without this, users were being forced to log back in 7
+      // days after their LOGIN regardless of activity. Now the 90-day
+      // clock resets on every API call, so active users (open the app
+      // at least once every 90 days) never log out. Standard pattern
+      // for consumer apps; one extra DB write per request — negligible
+      // on connect-pg-simple's perf budget.
+      rolling: true,
       store: new PgStore({
         pool: sessionPool,
         tableName: "session",
@@ -470,7 +478,7 @@ export async function registerRoutes(
       cookie: {
         secure: process.env.NODE_ENV === "production", // HTTPS-only in prod (Render terminates TLS at proxy)
         httpOnly: true, // prevents JS access to cookie
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+        maxAge: 90 * 24 * 60 * 60 * 1000, // 90 days (rolling — refreshed on activity)
         sameSite: "lax", // CSRF protection
       },
     })
