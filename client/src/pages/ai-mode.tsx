@@ -22,11 +22,15 @@ import { useState, useEffect, useRef } from "react";
 import { useLocation, useParams } from "wouter";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, apiFormRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Sparkles, ArrowLeft, Send, Loader2, Crown, Check, X, MessageSquare } from "lucide-react";
+import { Sparkles, ArrowLeft, Send, Loader2, Crown, Check, X, MessageSquare, Paperclip, FileText, Image as ImageIcon } from "lucide-react";
+
+const MAX_ATTACHMENTS = 5;
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;        // 10 MB per file — matches server
+const ACCEPTED_TYPES = "image/*,application/pdf";
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -63,6 +67,12 @@ export default function AiMode() {
   const [conversationId, setConversationId] = useState<string | null>(routeConvId ?? null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
+  // Attachments selected for the NEXT send. Cleared on send + on error.
+  // These are File objects held in browser memory only — never persisted
+  // client-side, never written to disk server-side, only forwarded to the
+  // AI for parsing then discarded.
+  const [attachments, setAttachments] = useState<File[]>([]);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   // Lookup tables (id → name) so we can render proposal cards readably
@@ -123,7 +133,7 @@ export default function AiMode() {
 
   // ── Send message mutation ─────────────────────────────────────────────
   const sendMutation = useMutation({
-    mutationFn: async (text: string) => {
+    mutationFn: async ({ text, files }: { text: string; files: File[] }) => {
       // 1) Ensure we have a conversation
       let convId = conversationId;
       if (!convId) {
@@ -134,7 +144,14 @@ export default function AiMode() {
         // Reflect in URL so refresh keeps the conversation
         window.history.replaceState({}, "", `#/ai/${convId}`);
       }
-      // 2) Post the message
+      // 2) Post the message. Attachments → FormData; text-only → JSON.
+      if (files.length > 0) {
+        const fd = new FormData();
+        if (text) fd.append("text", text);
+        for (const f of files) fd.append("attachments", f);
+        const r = await apiFormRequest("POST", `/api/ai/conversations/${convId}/message`, fd);
+        return r.json();
+      }
       const r = await apiRequest("POST", `/api/ai/conversations/${convId}/message`, { text });
       return r.json();
     },
@@ -206,14 +223,56 @@ export default function AiMode() {
   // ── Handlers ──────────────────────────────────────────────────────────
   const handleSend = () => {
     const text = input.trim();
-    if (!text || sendMutation.isPending) return;
-    // Optimistic: add user message immediately
+    const files = attachments;
+    if ((!text && files.length === 0) || sendMutation.isPending) return;
+    // Optimistic: add user message immediately. If attachments exist but
+    // no text, show a placeholder so the bubble doesn't render blank.
+    const optimisticContent = text || `📎 ${files.length} attachment${files.length !== 1 ? "s" : ""}`;
     setMessages((prev) => [
       ...prev,
-      { id: `pending-${Date.now()}`, role: "user", content: text, pending: true },
+      { id: `pending-${Date.now()}`, role: "user", content: optimisticContent, pending: true },
     ]);
     setInput("");
-    sendMutation.mutate(text);
+    setAttachments([]);
+    sendMutation.mutate({ text, files });
+  };
+
+  // File picker handler — validates count + size before adding to state.
+  const handleFilesPicked = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const picked = Array.from(e.target.files || []);
+    if (picked.length === 0) return;
+    // Reset the file input so re-picking the same file works
+    if (fileInputRef.current) fileInputRef.current.value = "";
+
+    const rejected: string[] = [];
+    const accepted: File[] = [];
+    for (const f of picked) {
+      if (f.size > MAX_FILE_SIZE_BYTES) {
+        rejected.push(`${f.name} is over 10 MB`);
+        continue;
+      }
+      const okType = f.type === "application/pdf" || f.type.startsWith("image/");
+      if (!okType) {
+        rejected.push(`${f.name} isn't a PDF or image`);
+        continue;
+      }
+      accepted.push(f);
+    }
+    if (rejected.length > 0) {
+      toast({ title: "Some files were skipped", description: rejected.join(" · "), variant: "destructive" });
+    }
+    setAttachments((prev) => {
+      const next = [...prev, ...accepted];
+      if (next.length > MAX_ATTACHMENTS) {
+        toast({ title: `Max ${MAX_ATTACHMENTS} attachments`, description: "Removed extras over the limit.", variant: "destructive" });
+        return next.slice(0, MAX_ATTACHMENTS);
+      }
+      return next;
+    });
+  };
+
+  const removeAttachment = (idx: number) => {
+    setAttachments((prev) => prev.filter((_, i) => i !== idx));
   };
 
   const renderName = (id: string) => nameLookup[id] || id.slice(0, 6);
@@ -304,11 +363,50 @@ export default function AiMode() {
         style={{ bottom: "calc(4rem + env(safe-area-inset-bottom))" }}
       >
         <div className="max-w-3xl mx-auto">
+          {/* Hidden file input — triggered by the paperclip button below */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept={ACCEPTED_TYPES}
+            multiple
+            className="hidden"
+            onChange={handleFilesPicked}
+            data-testid="ai-mode-file-input"
+          />
+
+          {/* Attachment chips — visible above the input when files queued */}
+          {attachments.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-2.5">
+              {attachments.map((f, i) => (
+                <AttachmentChip key={`${f.name}-${i}`} file={f} onRemove={() => removeAttachment(i)} />
+              ))}
+            </div>
+          )}
+
           <div className="flex items-end gap-2">
+            {/* Paperclip attach button */}
+            <Button
+              type="button"
+              size="icon"
+              variant="outline"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={sendMutation.isPending || attachments.length >= MAX_ATTACHMENTS}
+              className="shrink-0 h-[68px] w-11"
+              title="Attach PDF, screenshot, or photo"
+              data-testid="ai-mode-attach"
+              aria-label="Attach file"
+            >
+              <Paperclip className="w-4 h-4" />
+            </Button>
+
             <Textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder='Describe a split… e.g. "Sushi $45 with Krish, I paid"'
+              placeholder={
+                attachments.length > 0
+                  ? "Add context (optional)… e.g. 'split equally with Krish'"
+                  : 'Describe a split, or attach a receipt PDF / screenshot'
+              }
               rows={2}
               className="resize-none text-sm"
               disabled={sendMutation.isPending}
@@ -324,7 +422,7 @@ export default function AiMode() {
               type="button"
               size="icon"
               onClick={handleSend}
-              disabled={sendMutation.isPending || !input.trim()}
+              disabled={sendMutation.isPending || (!input.trim() && attachments.length === 0)}
               className="shrink-0 h-[68px] w-12"
               data-testid="ai-mode-send"
             >
@@ -332,7 +430,7 @@ export default function AiMode() {
             </Button>
           </div>
           <p className="text-[10px] text-muted-foreground/70 mt-1.5 text-center">
-            AI proposes — you confirm. Nothing is created until you tap Create.
+            AI proposes — you confirm. Receipts are parsed then discarded, never stored.
           </p>
         </div>
       </div>
@@ -358,21 +456,63 @@ function PageHeader({ onBack }: { onBack: () => void }) {
 
 function EmptyState() {
   return (
-    <div className="text-center py-12 px-4 space-y-4">
+    <div className="text-center py-10 px-4 space-y-5">
       <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-primary/10 mx-auto">
         <MessageSquare className="w-7 h-7 text-primary" />
       </div>
       <div className="space-y-1.5">
         <h2 className="text-base font-semibold">What's the split?</h2>
         <p className="text-xs text-muted-foreground max-w-sm mx-auto">
-          Just describe it in plain English. I'll figure out the rest and show you a proposal to confirm.
+          Describe it, attach a receipt PDF, or send screenshots — I'll figure out the rest and show you a proposal to confirm.
         </p>
       </div>
-      <div className="space-y-2 max-w-sm mx-auto pt-2">
+
+      {/* Big differentiator — call it out prominently */}
+      <div className="mx-auto max-w-sm rounded-xl border border-primary/30 bg-primary/5 p-3 text-left">
+        <div className="flex items-start gap-2.5">
+          <div className="w-7 h-7 rounded-lg bg-primary/15 flex items-center justify-center shrink-0 mt-0.5">
+            <FileText className="w-3.5 h-3.5 text-primary" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs font-semibold">PDF receipts work too</p>
+            <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
+              Got a digital receipt from Uber, DoorDash, Amazon? Just attach it. Multiple screenshots also work for in-app orders. Parsed on the fly, never stored.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-2 max-w-sm mx-auto pt-1">
         <ExampleLine text='"Split groceries $45 with Krish"' />
         <ExampleLine text='"Dinner with my Halifax group, $200, I paid"' />
-        <ExampleLine text='"Krish bought me coffee for $5"' />
+        <ExampleLine text='"📎 Uber Eats receipt — split with Srushti"' />
       </div>
+    </div>
+  );
+}
+
+// File chip shown above the input bar when attachments are queued
+function AttachmentChip({ file, onRemove }: { file: File; onRemove: () => void }) {
+  const isPdf = file.type === "application/pdf";
+  const sizeKb = Math.round(file.size / 1024);
+  const sizeLabel = sizeKb >= 1024 ? `${(sizeKb / 1024).toFixed(1)} MB` : `${sizeKb} KB`;
+  return (
+    <div className="flex items-center gap-2 max-w-[200px] rounded-lg border border-border bg-card pl-2 pr-1 py-1">
+      <div className={`w-6 h-6 rounded shrink-0 flex items-center justify-center ${isPdf ? "bg-red-500/15 text-red-600" : "bg-primary/15 text-primary"}`}>
+        {isPdf ? <FileText className="w-3.5 h-3.5" /> : <ImageIcon className="w-3.5 h-3.5" />}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-xs font-medium truncate">{file.name}</p>
+        <p className="text-[10px] text-muted-foreground">{sizeLabel}</p>
+      </div>
+      <button
+        type="button"
+        onClick={onRemove}
+        className="shrink-0 p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+        aria-label="Remove attachment"
+      >
+        <X className="w-3.5 h-3.5" />
+      </button>
     </div>
   );
 }

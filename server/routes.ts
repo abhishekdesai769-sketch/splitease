@@ -19,6 +19,7 @@ import { isDisposableEmail } from "./disposable-emails";
 import * as plaid from "./plaid";
 import { plaidItems, plaidAccounts, aiConversations, aiMessages } from "@shared/schema";
 import * as ai from "./ai";
+import multer from "multer";
 import { stripe, STRIPE_PRICE_MONTHLY, STRIPE_PRICE_YEARLY, STRIPE_ENABLED } from "./stripe";
 import {
   upload, hashPassword, verifyPassword, needsHashUpgrade,
@@ -3009,6 +3010,23 @@ setInterval(loadAll,30000);
   // 30 turns per user per 24h is generous (a typical conversation is 2-6 turns).
   const aiLimiter = rateLimit(24 * 60 * 60 * 1000, 30);
 
+  // Dedicated multer instance for AI Mode attachments. memoryStorage means
+  // file bytes never touch disk — they're read into a buffer, forwarded to
+  // Anthropic, and discarded when the request completes. 10MB per file, 5
+  // files max per request. Accepts PDFs + common image formats only.
+  const aiAttachUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: {
+      fileSize: 10 * 1024 * 1024,  // 10 MB per file
+      files: 5,                     // max 5 attachments per turn
+    },
+    fileFilter: (_req, file, cb) => {
+      const ok = file.mimetype === "application/pdf" || file.mimetype.startsWith("image/");
+      if (!ok) return cb(new Error("Only PDFs and images are supported"));
+      cb(null, true);
+    },
+  });
+
   // Guard: feature flag + Premium gate + Anthropic key present
   async function aiGuard(req: any, res: any): Promise<{ user: any } | null> {
     if (!ai.AI_MODE_ENABLED) {
@@ -3084,11 +3102,17 @@ setInterval(loadAll,30000);
     res.json({ conversation: conv, messages: msgs });
   });
 
-  // 4. Send a message (the main one — calls Claude)
-  app.post("/api/ai/conversations/:id/message", requireAuth, aiLimiter, async (req: any, res) => {
+  // 4. Send a message (the main one — calls Claude).
+  // Accepts multipart/form-data with optional `attachments` files (1-5 PDFs
+  // or images). Attachments are processed in-memory and forwarded to Claude
+  // — we NEVER persist file bytes. The message row records metadata only
+  // (filename + size + mime) for transcript display.
+  app.post("/api/ai/conversations/:id/message", requireAuth, aiLimiter, aiAttachUpload.array("attachments", 5), async (req: any, res) => {
     const guard = await aiGuard(req, res); if (!guard) return;
     const text = typeof req.body?.text === "string" ? req.body.text.trim() : "";
-    if (!text) return res.status(400).json({ error: "text_required" });
+    const files = (req.files || []) as Express.Multer.File[];
+    // Need either text OR attachments (or both). Empty empty = nothing to do.
+    if (!text && files.length === 0) return res.status(400).json({ error: "text_or_attachment_required" });
     if (text.length > 4000) return res.status(400).json({ error: "text_too_long" });
 
     const [conv] = await db.select().from(aiConversations).where(eq(aiConversations.id, req.params.id));
@@ -3096,12 +3120,20 @@ setInterval(loadAll,30000);
 
     const now = new Date().toISOString();
 
+    // Build attachment metadata (NOT the bytes — those stay in memory only).
+    const attachmentsMeta = files.map((f) => ({
+      filename: f.originalname,
+      mimeType: f.mimetype,
+      sizeBytes: f.size,
+    }));
+
     // Persist the user message immediately so it shows in the transcript
-    // even if Claude errors out.
+    // even if Claude errors out. attachments column stores metadata only.
     const [userMsg] = await db.insert(aiMessages).values({
       conversationId: conv.id,
       role: "user",
-      content: text,
+      content: text || "[receipt attached]",  // placeholder for transcript when text is empty
+      attachments: attachmentsMeta.length > 0 ? JSON.stringify(attachmentsMeta) : null,
       createdAt: now,
     }).returning();
 
@@ -3118,9 +3150,24 @@ setInterval(loadAll,30000);
         proposalJson: m.proposal,
       }));
 
+    // Build the in-memory attachments payload for Claude. Buffers stay in
+    // scope only for the duration of this request — once `result` resolves,
+    // they're GC'd. We never write them to disk or to the DB.
+    const aiAttachments: ai.AiAttachment[] = files.map((f) => ({
+      base64: f.buffer.toString("base64"),
+      mimeType: f.mimetype,
+      filename: f.originalname,
+      sizeBytes: f.size,
+    }));
+
     try {
       const aiCtx = await buildAiContextForUser(guard.user);
-      const result = await ai.runAiTurn({ ctx: aiCtx, history, newUserMessage: text });
+      const result = await ai.runAiTurn({
+        ctx: aiCtx,
+        history,
+        newUserMessage: text,
+        attachments: aiAttachments.length > 0 ? aiAttachments : undefined,
+      });
 
       // Persist the assistant response
       const [assistantMsg] = await db.insert(aiMessages).values({

@@ -63,6 +63,20 @@ export interface AiMessageInput {
   proposalJson?: string | null;
 }
 
+/**
+ * Attachment passed to Claude for vision/document parsing. We never persist
+ * the actual `base64` bytes — the buffer lives in memory for one request,
+ * gets sent to Anthropic, and is discarded as soon as the response returns.
+ * The message's audit row in Postgres only records metadata (filename, mime,
+ * size) for transcript display purposes — NOT the contents.
+ */
+export interface AiAttachment {
+  base64: string;
+  mimeType: string;       // "application/pdf" | "image/jpeg" | "image/png" | "image/webp" | "image/gif"
+  filename?: string;
+  sizeBytes?: number;
+}
+
 // ── Tool definitions ────────────────────────────────────────────────────
 
 const TOOLS: Anthropic.Tool[] = [
@@ -239,27 +253,67 @@ If the user asks something unrelated to expenses (jokes, support, "how do I use 
  * @param ctx - Current user's context (friends, groups, etc.)
  * @param history - Prior messages in this conversation (user + assistant turns)
  * @param newUserMessage - The user's just-typed message
+ * @param attachments - Optional images/PDFs to pass to Claude as content blocks.
+ *                       Bytes are sent to Anthropic and then forgotten — we
+ *                       never persist the file data anywhere on our side.
  */
 export async function runAiTurn(params: {
   ctx: UserContext;
   history: AiMessageInput[];
   newUserMessage: string;
+  attachments?: AiAttachment[];
 }): Promise<AiTurnResult> {
   const client = getClient();
   if (!client) {
     throw new Error("AI Mode not configured — ANTHROPIC_API_KEY missing");
   }
 
-  const { ctx, history, newUserMessage } = params;
+  const { ctx, history, newUserMessage, attachments } = params;
 
   // Build messages array. Truncate history to last 20 entries to avoid
   // runaway token costs — most real conversations are 2-6 turns anyway.
+  // Note: prior turns' attachments are NOT replayed (token cost + Claude has
+  // already absorbed their content into prior responses). Only the current
+  // turn's attachments are sent.
   const trimmedHistory = history.slice(-20);
   const messages: Anthropic.MessageParam[] = trimmedHistory.map((m) => ({
     role: m.role,
     content: m.content,
   }));
-  messages.push({ role: "user", content: newUserMessage });
+
+  // Build the current user turn — text-only OR text + multimodal content blocks
+  if (attachments && attachments.length > 0) {
+    const userContent: any[] = [];
+    // Per Anthropic's docs, putting attachments BEFORE the text prompt
+    // generally yields better extraction quality on receipts.
+    for (const att of attachments) {
+      if (att.mimeType === "application/pdf") {
+        userContent.push({
+          type: "document",
+          source: { type: "base64", media_type: "application/pdf", data: att.base64 },
+        });
+      } else if (att.mimeType.startsWith("image/")) {
+        const validImageTypes = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+        const mt = validImageTypes.includes(att.mimeType) ? att.mimeType : "image/jpeg";
+        userContent.push({
+          type: "image",
+          source: { type: "base64", media_type: mt, data: att.base64 },
+        });
+      }
+      // Silently skip anything that isn't an image or PDF (validation
+      // already happened at the route layer, but defensive double-check).
+    }
+    // Add the user's text last, with a contextual instruction for the model
+    // about how to handle the attachments.
+    const textPart = newUserMessage.trim().length > 0
+      ? newUserMessage
+      : "Here's the receipt — please parse it and propose how to split it. If I haven't told you who to split it with, propose splitting it with the people you can reasonably infer or ask for clarification.";
+    userContent.push({ type: "text", text: textPart });
+
+    messages.push({ role: "user", content: userContent });
+  } else {
+    messages.push({ role: "user", content: newUserMessage });
+  }
 
   const response = await client.messages.create({
     model: "claude-haiku-4-5-20251001",

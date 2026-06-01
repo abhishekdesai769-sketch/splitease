@@ -276,7 +276,7 @@ export default function Dashboard() {
                 </span>
               </div>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Describe a split or send a receipt — done in seconds.
+                Describe a split, drop a PDF receipt, or send screenshots — split in seconds.
               </p>
             </div>
             <ArrowRight className="w-4 h-4 text-muted-foreground shrink-0 group-hover:translate-x-0.5 transition-transform" />
