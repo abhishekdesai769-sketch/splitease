@@ -20,6 +20,7 @@ import * as plaid from "./plaid";
 import { plaidItems, plaidAccounts, aiConversations, aiMessages } from "@shared/schema";
 import * as ai from "./ai";
 import { buildAttachmentContext } from "./receiptTranscription";
+import * as aiQuota from "./aiQuota";
 import multer from "multer";
 import { stripe, STRIPE_PRICE_MONTHLY, STRIPE_PRICE_YEARLY, STRIPE_ENABLED } from "./stripe";
 import {
@@ -1321,6 +1322,46 @@ setInterval(loadAll,30000);
     const updated = await storage.updateUser(req.params.id, { adminNotes: notes.slice(0, 2000) });
     if (!updated) return res.status(404).json({ error: "User not found" });
     res.json({ message: "Notes saved" });
+  });
+
+  // AI Mode usage observability — for admin to spot abuse + monitor cost.
+  // Returns today's totals + top spenders + last-7-days trend.
+  app.get("/api/admin/ai-usage", requireAuth, requireAdmin, async (_req, res) => {
+    try {
+      const [today, history] = await Promise.all([
+        aiQuota.getDailyUsageSummary(),
+        aiQuota.getRecentUsageWindow(7),
+      ]);
+      // Enrich top spenders with user names + emails so the admin UI can show
+      // who they actually are (not just opaque UUIDs).
+      const userIds = today.topSpenders.map((s) => s.userId);
+      const users = userIds.length > 0 ? await storage.getUsersSafe(userIds) : [];
+      const userMap: Record<string, { name: string; email: string }> = {};
+      users.forEach((u) => { userMap[u.id] = { name: u.name, email: u.email }; });
+
+      const enrichedTop = today.topSpenders.map((s) => ({
+        ...s,
+        userName: userMap[s.userId]?.name || "(unknown)",
+        userEmail: userMap[s.userId]?.email || "",
+      }));
+
+      // Also surface the degraded state + threshold config so admin can see
+      // how close we are to a kill.
+      const degraded = aiQuota.isGloballyDegraded();
+      res.json({
+        today: { ...today, topSpenders: enrichedTop },
+        history,
+        thresholds: {
+          warningCents: aiQuota.QUOTAS.global.warningCents,
+          killCents: aiQuota.QUOTAS.global.killCents,
+        },
+        degraded: degraded.degraded,
+        degradedReason: degraded.reason,
+      });
+    } catch (err: any) {
+      console.error("[admin] ai-usage failed:", err);
+      res.status(500).json({ error: "ai_usage_failed", message: err?.message });
+    }
   });
 
   // Get soft-deleted groups and expenses (enriched with user names)
@@ -3119,6 +3160,60 @@ setInterval(loadAll,30000);
     const [conv] = await db.select().from(aiConversations).where(eq(aiConversations.id, req.params.id));
     if (!conv || conv.userId !== guard.user.id) return res.status(404).json({ error: "not_found" });
 
+    // ── ABUSE PREVENTION GAUNTLET ────────────────────────────────────────
+    //
+    // Four checks before we even think about calling Anthropic. Each layer
+    // catches a different failure mode:
+    //   1. Global kill switch — if today's spend crossed the kill threshold
+    //      OR an admin manually flipped AI_MODE_DEGRADED on Render
+    //   2. Per-user rate limit — burst protection (in-memory, keyed by userId)
+    //   3. Per-conversation turn cap — stops runaway loops in one chat
+    //   4. Per-user daily quota — the main lever, persisted in ai_usage_daily
+    //
+    // Each refusal returns a friendly message in `message` so the client
+    // toast shows the actual reason.
+
+    const degraded = aiQuota.isGloballyDegraded();
+    if (degraded.degraded) {
+      return res.status(503).json({
+        error: "ai_mode_degraded",
+        message: "AI Mode is taking a breather right now — try again tomorrow. The manual Add Expense form still works.",
+      });
+    }
+
+    const imageFiles = files.filter((f) => f.mimetype.startsWith("image/"));
+    const pdfFiles = files.filter((f) => f.mimetype === "application/pdf");
+    const hasAttachment = files.length > 0;
+
+    const rateCheck = aiQuota.checkPerUserRate(guard.user.id, hasAttachment);
+    if (!rateCheck.ok) {
+      const retrySec = Math.ceil(rateCheck.retryAfterMs / 1000);
+      res.setHeader("Retry-After", String(retrySec));
+      return res.status(429).json({
+        error: "ai_rate_limited",
+        message: `${rateCheck.reason} Try again in ${retrySec}s.`,
+      });
+    }
+
+    const convCheck = await aiQuota.checkConversationTurns(conv.id);
+    if (!convCheck.ok) {
+      return res.status(429).json({
+        error: "ai_conversation_too_long",
+        message: convCheck.reason!,
+      });
+    }
+
+    const quotaCheck = await aiQuota.checkDailyQuota(guard.user.id, {
+      hasAttachment,
+      imageCount: imageFiles.length,
+    });
+    if (!quotaCheck.ok) {
+      return res.status(429).json({
+        error: "ai_quota_exceeded",
+        message: quotaCheck.reason!,
+      });
+    }
+
     const now = new Date().toISOString();
 
     // Build attachment metadata (NOT the bytes — those stay in memory only).
@@ -3216,6 +3311,16 @@ setInterval(loadAll,30000);
       await db.update(aiConversations)
         .set({ updatedAt: new Date().toISOString(), ...titleUpdate })
         .where(eq(aiConversations.id, conv.id));
+
+      // Track usage (Premium-only feature so guard.user is Premium). Don't
+      // await — usage tracking is fire-and-forget so it can't delay the
+      // user's response. Errors here are logged but don't fail the request.
+      aiQuota.incrementUsage(guard.user.id, {
+        textTurn: true,                          // every turn is a "text turn"
+        hasAttachment: files.length > 0,
+        imageCount: imageFiles.length,
+        pdfCount: pdfFiles.length,
+      }).catch((err) => console.error("[ai] usage tracking failed:", err));
 
       res.json({
         userMessage: userMsg,

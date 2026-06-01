@@ -251,6 +251,35 @@ async function runMigrations() {
     // after the file bytes have been discarded.
     await pool.query(`ALTER TABLE ai_messages ADD COLUMN IF NOT EXISTS attachment_context text`);
 
+    // ── AI Mode usage tracking (June 2026 — abuse / quota) ────────────────
+    // Per-user-per-day counters for quota enforcement + admin observability.
+    // Written on every successful AI turn via aiQuota.incrementUsage().
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS ai_usage_daily (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id varchar NOT NULL,
+        usage_date text NOT NULL,
+        text_turns integer NOT NULL DEFAULT 0,
+        attachment_turns integer NOT NULL DEFAULT 0,
+        image_attachments integer NOT NULL DEFAULT 0,
+        pdf_attachments integer NOT NULL DEFAULT 0,
+        estimated_cost_cents integer NOT NULL DEFAULT 0
+      )
+    `);
+    await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS ai_usage_daily_user_date_unique ON ai_usage_daily(user_id, usage_date)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS ai_usage_daily_date_idx ON ai_usage_daily(usage_date)`);
+
+    // Prevents flooding admin inbox with alert emails — one row per
+    // (date, alert_kind). INSERT ON CONFLICT DO NOTHING is the lock.
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS ai_alerts_sent (
+        alert_date text NOT NULL,
+        alert_kind text NOT NULL,
+        sent_at text NOT NULL,
+        PRIMARY KEY (alert_date, alert_kind)
+      )
+    `);
+
     log("Startup migrations OK", "db");
   } catch (e) {
     log(`Startup migration error: ${e}`, "db");

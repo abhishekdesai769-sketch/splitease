@@ -191,6 +191,38 @@ export const aiMessages = pgTable("ai_messages", {
 export type AiMessage = typeof aiMessages.$inferSelect;
 export type InsertAiMessage = typeof aiMessages.$inferInsert;
 
+// AI Mode usage tracking — per-user-per-day counters for quota enforcement
+// + abuse observability. Written on every successful AI turn. The estimated
+// cost is OUR estimate (not Anthropic's actual billed amount); it's good
+// enough for "is this user burning too much" type alerts.
+export const aiUsageDaily = pgTable("ai_usage_daily", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  usageDate: text("usage_date").notNull(),       // YYYY-MM-DD UTC
+  textTurns: integer("text_turns").notNull().default(0),
+  attachmentTurns: integer("attachment_turns").notNull().default(0),
+  imageAttachments: integer("image_attachments").notNull().default(0),   // expensive vision calls
+  pdfAttachments: integer("pdf_attachments").notNull().default(0),
+  estimatedCostCents: integer("estimated_cost_cents").notNull().default(0),
+}, (table) => [
+  uniqueIndex("ai_usage_daily_user_date_unique").on(table.userId, table.usageDate),
+  index("ai_usage_daily_date_idx").on(table.usageDate),
+]);
+
+export type AiUsageDaily = typeof aiUsageDaily.$inferSelect;
+export type InsertAiUsageDaily = typeof aiUsageDaily.$inferInsert;
+
+// Tracks which days we've already fired the "global spend threshold crossed"
+// alert email. Prevents flooding the admin inbox — at most one alert per
+// day per threshold. Cleared automatically when the date rolls over.
+export const aiAlertsSent = pgTable("ai_alerts_sent", {
+  alertDate: text("alert_date").notNull(),       // YYYY-MM-DD UTC
+  alertKind: text("alert_kind").notNull(),       // "spend_warning" | "spend_kill"
+  sentAt: text("sent_at").notNull(),
+}, (table) => [
+  index("ai_alerts_sent_date_kind_idx").on(table.alertDate, table.alertKind),
+]);
+
 // OTP codes for email verification
 export const otpCodes = pgTable("otp_codes", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

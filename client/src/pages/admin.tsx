@@ -337,6 +337,8 @@ export default function Admin() {
         </p>
       </div>
 
+      {/* AI Mode usage observability — quota / spend / top spenders */}
+      <AiUsagePanel />
 
       {/* Approved Users */}
       <div>
@@ -768,5 +770,180 @@ export default function Admin() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// AI Mode usage panel — observability for admin
+// Renders today's total spend, top spenders, last-7-day trend, plus the
+// global degraded-state warning if AI Mode has been auto-paused.
+// ───────────────────────────────────────────────────────────────────────────
+
+interface AiUsageResponse {
+  today: {
+    date: string;
+    totalEstimatedCents: number;
+    uniqueUsers: number;
+    totalTextTurns: number;
+    totalImageAttachments: number;
+    topSpenders: Array<{
+      userId: string;
+      userName: string;
+      userEmail: string;
+      textTurns: number;
+      attachmentTurns: number;
+      imageAttachments: number;
+      pdfAttachments: number;
+      estimatedCostCents: number;
+    }>;
+  };
+  history: Array<{ date: string; totalCents: number; uniqueUsers: number }>;
+  thresholds: { warningCents: number; killCents: number };
+  degraded: boolean;
+  degradedReason: string | null;
+}
+
+function AiUsagePanel() {
+  const { data, isLoading } = useQuery<AiUsageResponse>({
+    queryKey: ["/api/admin/ai-usage"],
+    queryFn: async () => {
+      const r = await apiRequest("GET", "/api/admin/ai-usage");
+      return r.json();
+    },
+    refetchInterval: 60_000, // refresh once a minute
+  });
+
+  if (isLoading) {
+    return (
+      <Card className="p-4">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <BarChart2 className="w-4 h-4" />
+          Loading AI Mode usage…
+        </div>
+      </Card>
+    );
+  }
+
+  if (!data) return null;
+
+  const todayDollars = (data.today.totalEstimatedCents / 100).toFixed(2);
+  const warningDollars = (data.thresholds.warningCents / 100).toFixed(2);
+  const killDollars = (data.thresholds.killCents / 100).toFixed(2);
+  const pctOfWarning = Math.min(100, (data.today.totalEstimatedCents / data.thresholds.warningCents) * 100);
+  const pctOfKill = Math.min(100, (data.today.totalEstimatedCents / data.thresholds.killCents) * 100);
+
+  return (
+    <Card className="p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <BarChart2 className="w-4 h-4 text-primary" />
+          <h2 className="text-sm font-semibold">AI Mode Usage — {data.today.date}</h2>
+        </div>
+        {data.degraded && (
+          <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-red-500/15 text-red-600 border border-red-500/30">
+            <AlertTriangle className="w-3 h-3" />
+            DEGRADED
+          </span>
+        )}
+      </div>
+
+      {data.degraded && data.degradedReason && (
+        <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-2.5 text-xs text-red-700 dark:text-red-300">
+          <strong>AI Mode auto-paused:</strong> {data.degradedReason}
+        </div>
+      )}
+
+      {/* Top-line numbers */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+        <div className="rounded-lg bg-muted/40 p-2.5">
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Today spend</p>
+          <p className="text-base font-semibold font-mono">${todayDollars}</p>
+        </div>
+        <div className="rounded-lg bg-muted/40 p-2.5">
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Active users</p>
+          <p className="text-base font-semibold font-mono">{data.today.uniqueUsers}</p>
+        </div>
+        <div className="rounded-lg bg-muted/40 p-2.5">
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Text turns</p>
+          <p className="text-base font-semibold font-mono">{data.today.totalTextTurns}</p>
+        </div>
+        <div className="rounded-lg bg-muted/40 p-2.5">
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Image uploads</p>
+          <p className="text-base font-semibold font-mono">{data.today.totalImageAttachments}</p>
+        </div>
+      </div>
+
+      {/* Spend vs thresholds — visual bar */}
+      <div className="space-y-1.5">
+        <div className="flex justify-between text-[11px] text-muted-foreground">
+          <span>Spend vs thresholds</span>
+          <span>Warning: ${warningDollars} · Kill: ${killDollars}</span>
+        </div>
+        <div className="relative h-2 rounded-full bg-muted overflow-hidden">
+          <div
+            className={`h-full ${pctOfKill > 75 ? "bg-red-500" : pctOfWarning > 75 ? "bg-amber-500" : "bg-primary"}`}
+            style={{ width: `${pctOfKill}%` }}
+          />
+          {/* Tick marker at warning threshold position */}
+          <div
+            className="absolute top-0 bottom-0 w-px bg-amber-500/60"
+            style={{ left: `${(data.thresholds.warningCents / data.thresholds.killCents) * 100}%` }}
+          />
+        </div>
+      </div>
+
+      {/* Top spenders */}
+      {data.today.topSpenders.length > 0 ? (
+        <div className="space-y-1">
+          <p className="text-[11px] text-muted-foreground uppercase tracking-wider">Top spenders today</p>
+          <div className="space-y-1">
+            {data.today.topSpenders.slice(0, 10).map((s) => (
+              <div key={s.userId} className="flex items-center justify-between text-xs border-b border-border last:border-0 py-1.5">
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium truncate">{s.userName}</p>
+                  <p className="text-[10px] text-muted-foreground truncate">{s.userEmail}</p>
+                </div>
+                <div className="flex items-center gap-3 text-[11px] text-muted-foreground font-mono shrink-0">
+                  <span>{s.textTurns}T</span>
+                  <span>{s.imageAttachments}I</span>
+                  <span>{s.pdfAttachments}P</span>
+                  <span className="font-semibold text-foreground min-w-[42px] text-right">
+                    ${(s.estimatedCostCents / 100).toFixed(2)}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="text-[10px] text-muted-foreground italic">
+            T = text turns · I = image uploads · P = PDF uploads
+          </p>
+        </div>
+      ) : (
+        <p className="text-xs text-muted-foreground italic">No AI Mode usage yet today.</p>
+      )}
+
+      {/* Last 7 days mini-trend */}
+      {data.history.length > 0 && (
+        <div className="space-y-1">
+          <p className="text-[11px] text-muted-foreground uppercase tracking-wider">Last 7 days</p>
+          <div className="flex items-end gap-1 h-12">
+            {data.history.slice().reverse().map((h) => {
+              const maxCents = Math.max(...data.history.map((x) => x.totalCents), 1);
+              const heightPct = (h.totalCents / maxCents) * 100;
+              return (
+                <div key={h.date} className="flex-1 flex flex-col items-center gap-0.5">
+                  <div
+                    className="w-full bg-primary/30 rounded-t-sm transition-all"
+                    style={{ height: `${heightPct}%`, minHeight: "2px" }}
+                    title={`${h.date}: $${(h.totalCents / 100).toFixed(2)} · ${h.uniqueUsers} users`}
+                  />
+                  <span className="text-[9px] text-muted-foreground">{h.date.slice(5)}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </Card>
   );
 }
