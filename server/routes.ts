@@ -3278,7 +3278,7 @@ setInterval(loadAll,30000);
       return res.status(400).json({
         error: "ai_mode_payer_locked",
         message:
-          "AI Mode can only log expenses you paid for. To split an expense someone else paid, please use the manual Add Expense form — it supports any payer.",
+          "AI Mode only logs expenses you paid for, keeps things honest. For someone else's tab, pop it into the manual Add Expense form (any payer works), or have them drop it into their own AI Mode.",
       });
     }
 
