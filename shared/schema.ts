@@ -212,6 +212,29 @@ export const aiUsageDaily = pgTable("ai_usage_daily", {
 export type AiUsageDaily = typeof aiUsageDaily.$inferSelect;
 export type InsertAiUsageDaily = typeof aiUsageDaily.$inferInsert;
 
+// Campaign sends — audit + dedup for one-off thank-you / milestone /
+// announcement campaigns. One row per (user, campaign, channel) combo.
+// The UNIQUE constraint on those three columns makes the runner naturally
+// idempotent: a retry / accidental re-click sends nothing twice.
+//
+// channel values: "email", "ios_push", "premium_grant", "banner_seen"
+export const campaignSends = pgTable("campaign_sends", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  campaignId: text("campaign_id").notNull(),                  // e.g. "milestone_1k_2026_06"
+  channel: text("channel").notNull(),                          // see above
+  sentAt: text("sent_at").notNull(),
+  success: boolean("success").notNull().default(true),
+  errorMessage: text("error_message"),                         // populated only on failure
+}, (table) => [
+  uniqueIndex("campaign_sends_user_campaign_channel_unique").on(
+    table.userId, table.campaignId, table.channel,
+  ),
+  index("campaign_sends_campaign_idx").on(table.campaignId),
+]);
+
+export type CampaignSend = typeof campaignSends.$inferSelect;
+
 // Tracks which days we've already fired the "global spend threshold crossed"
 // alert email. Prevents flooding the admin inbox — at most one alert per
 // day per threshold. Cleared automatically when the date rolls over.

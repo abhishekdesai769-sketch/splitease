@@ -9,6 +9,7 @@ import { useAuth } from "@/lib/auth";
 import { calculateGroupBalances, calculatePairwiseBalances, simplifyDebts } from "@/lib/simplify";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { CelebrationBanner } from "@/components/CelebrationBanner";
 
 function StatCard({ icon: Icon, label, value, href, color }: { icon: any; label: string; value: string; href?: string; color?: string }) {
   const inner = (
@@ -184,6 +185,9 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
+      {/* Milestone / promo banner — only renders if user has an active campaign */}
+      <CelebrationBanner />
+
       {/* Incoming Group Invites — shown at top if any */}
       {incomingInvites.length > 0 && (
         <div className="space-y-2">

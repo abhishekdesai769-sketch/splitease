@@ -280,6 +280,23 @@ async function runMigrations() {
       )
     `);
 
+    // ── Campaign sends (June 2026 — one-off thank-you / milestone blasts) ──
+    // One row per (user, campaign, channel). UNIQUE constraint makes the
+    // runner idempotent — re-running a campaign skips users already sent.
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS campaign_sends (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id varchar NOT NULL,
+        campaign_id text NOT NULL,
+        channel text NOT NULL,
+        sent_at text NOT NULL,
+        success boolean NOT NULL DEFAULT true,
+        error_message text
+      )
+    `);
+    await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS campaign_sends_user_campaign_channel_unique ON campaign_sends(user_id, campaign_id, channel)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS campaign_sends_campaign_idx ON campaign_sends(campaign_id)`);
+
     log("Startup migrations OK", "db");
   } catch (e) {
     log(`Startup migration error: ${e}`, "db");

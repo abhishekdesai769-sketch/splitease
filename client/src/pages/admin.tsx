@@ -11,7 +11,7 @@ import {
 import {
   Shield, Trash2, RotateCcw, FolderX, ReceiptText,
   Search, Clock, AlertTriangle, KeyRound, Crown, Settings,
-  Users, BarChart2, StickyNote, Smartphone, Mail, Chrome
+  Users, BarChart2, StickyNote, Smartphone, Mail, Chrome,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
@@ -339,6 +339,9 @@ export default function Admin() {
 
       {/* AI Mode usage observability — quota / spend / top spenders */}
       <AiUsagePanel />
+
+      {/* Campaign runner — milestone / promo blasts (dry-run first) */}
+      <CampaignPanel />
 
       {/* Approved Users */}
       <div>
@@ -944,6 +947,152 @@ function AiUsagePanel() {
           </div>
         </div>
       )}
+    </Card>
+  );
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// CampaignPanel — admin panel for milestone / promo campaigns.
+// Dry-run first (always shows audience counts before live), then live run.
+// Uses the campaign_sends audit table so retries are idempotent.
+// ───────────────────────────────────────────────────────────────────────────
+
+interface CampaignRunReport {
+  campaignId: string;
+  dryRun: boolean;
+  audience: {
+    totalEligible: number;
+    iosUsers: number;
+    excludedByCurrency: number;
+    alreadySentEmail: number;
+    alreadySentPush: number;
+    alreadyGrantedPremium: number;
+  };
+  results: {
+    emailSent: number; emailSkipped: number; emailFailed: number;
+    pushSent: number; pushSkipped: number; pushFailed: number;
+    premiumGranted: number; premiumSkipped: number; premiumFailed: number;
+  };
+}
+
+function CampaignPanel() {
+  const { toast } = useToast();
+  const [campaignId] = useState("milestone_1k_2026_06");
+  const [report, setReport] = useState<CampaignRunReport | null>(null);
+  const [isRunning, setIsRunning] = useState(false);
+  const [confirmLive, setConfirmLive] = useState(false);
+
+  const run = async (dryRun: boolean) => {
+    setIsRunning(true);
+    try {
+      const r = await apiRequest("POST", "/api/admin/campaigns/run", { campaignId, dryRun });
+      const data = await r.json();
+      setReport(data);
+      if (!dryRun) {
+        const { emailSent, pushSent, premiumGranted, emailFailed, pushFailed, premiumFailed } = data.results;
+        toast({
+          title: `Campaign sent`,
+          description: `${emailSent} emails, ${pushSent} pushes, ${premiumGranted} Premium grants. Failures: ${emailFailed + pushFailed + premiumFailed}.`,
+        });
+        setConfirmLive(false);
+      }
+    } catch (err: any) {
+      let msg = err.message;
+      try {
+        const body = JSON.parse(err.message.split(": ").slice(1).join(": "));
+        msg = body.message || body.error || msg;
+      } catch { /* */ }
+      toast({ title: "Campaign run failed", description: msg, variant: "destructive" });
+    } finally {
+      setIsRunning(false);
+    }
+  };
+
+  return (
+    <Card className="p-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <Mail className="w-4 h-4 text-primary" />
+        <h2 className="text-sm font-semibold">Campaigns — 1k milestone</h2>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Sends email + iOS push + 30-day Premium grant (iOS only) + in-app banner.
+        Excludes users with currency = INR. Idempotent — re-running skips users already sent.
+      </p>
+
+      <div className="flex gap-2">
+        <Button size="sm" variant="outline" onClick={() => run(true)} disabled={isRunning}>
+          {isRunning ? "Running…" : "Dry-run (preview)"}
+        </Button>
+        {report && !confirmLive && (
+          <Button size="sm" variant="default" onClick={() => setConfirmLive(true)} disabled={isRunning}>
+            Send for real…
+          </Button>
+        )}
+        {confirmLive && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-red-600 font-medium">Are you sure?</span>
+            <Button size="sm" variant="destructive" onClick={() => run(false)} disabled={isRunning}>
+              {isRunning ? "Sending…" : "Yes, send"}
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setConfirmLive(false)} disabled={isRunning}>
+              Cancel
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {report && (
+        <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-2 text-xs">
+          <div className="flex items-center justify-between">
+            <span className="font-semibold uppercase tracking-wider text-[10px] text-muted-foreground">
+              {report.dryRun ? "Preview (no side effects)" : "Live run result"}
+            </span>
+            {!report.dryRun && (
+              <span className="text-[10px] text-green-600 font-semibold">SENT</span>
+            )}
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <div>
+              <p className="text-[10px] text-muted-foreground">Eligible</p>
+              <p className="font-semibold font-mono">{report.audience.totalEligible}</p>
+            </div>
+            <div>
+              <p className="text-[10px] text-muted-foreground">iOS users</p>
+              <p className="font-semibold font-mono">{report.audience.iosUsers}</p>
+            </div>
+            <div>
+              <p className="text-[10px] text-muted-foreground">Excluded (INR)</p>
+              <p className="font-semibold font-mono">{report.audience.excludedByCurrency}</p>
+            </div>
+          </div>
+          {report.dryRun ? (
+            <p className="text-[11px] text-muted-foreground italic pt-1 border-t border-border">
+              Would send: {report.audience.totalEligible - report.audience.alreadySentEmail} emails,
+              {" "}{report.audience.iosUsers - report.audience.alreadySentPush} pushes,
+              {" "}{report.audience.iosUsers - report.audience.alreadyGrantedPremium} Premium grants.
+            </p>
+          ) : (
+            <div className="pt-1 border-t border-border space-y-0.5">
+              <p className="text-[11px]">
+                <span className="text-green-600 font-medium">Sent:</span>{" "}
+                {report.results.emailSent} emails · {report.results.pushSent} pushes · {report.results.premiumGranted} Premium grants
+              </p>
+              {(report.results.emailFailed + report.results.pushFailed + report.results.premiumFailed > 0) && (
+                <p className="text-[11px] text-red-600">
+                  Failed: {report.results.emailFailed} emails · {report.results.pushFailed} pushes · {report.results.premiumFailed} grants
+                </p>
+              )}
+              <p className="text-[11px] text-muted-foreground">
+                Skipped (already sent): {report.results.emailSkipped + report.results.pushSkipped + report.results.premiumSkipped}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      <p className="text-[10px] text-muted-foreground italic">
+        Required to fire: set <code className="px-1 bg-muted/60 rounded font-mono">CAMPAIGN_1K_ENABLED=true</code> on Render + redeploy.
+      </p>
     </Card>
   );
 }

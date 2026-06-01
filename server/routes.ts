@@ -21,6 +21,7 @@ import { plaidItems, plaidAccounts, aiConversations, aiMessages } from "@shared/
 import * as ai from "./ai";
 import { buildAttachmentContext } from "./receiptTranscription";
 import * as aiQuota from "./aiQuota";
+import * as campaigns from "./campaigns";
 import multer from "multer";
 import { stripe, STRIPE_PRICE_MONTHLY, STRIPE_PRICE_YEARLY, STRIPE_ENABLED } from "./stripe";
 import {
@@ -1361,6 +1362,54 @@ setInterval(loadAll,30000);
     } catch (err: any) {
       console.error("[admin] ai-usage failed:", err);
       res.status(500).json({ error: "ai_usage_failed", message: err?.message });
+    }
+  });
+
+  // ─── Campaigns (admin: dry-run + live trigger; user: active banner) ──
+  //
+  // Admin trigger: POST /api/admin/campaigns/run { campaignId, dryRun }
+  //   dryRun=true returns audience counts only (no side effects)
+  //   dryRun=false sends through all enabled channels, idempotent
+  //
+  // User endpoints: fetch + dismiss the in-app banner
+  //   GET  /api/user/campaigns/active
+  //   POST /api/user/campaigns/:id/dismiss
+
+  app.post("/api/admin/campaigns/run", requireAuth, requireAdmin, async (req, res) => {
+    const campaignId = typeof req.body?.campaignId === "string" ? req.body.campaignId : "";
+    const dryRun = req.body?.dryRun !== false;  // default to safe: dry-run unless explicitly false
+    if (!campaignId) return res.status(400).json({ error: "campaignId_required" });
+    try {
+      const report = await campaigns.runCampaign(campaignId, { dryRun });
+      res.json(report);
+    } catch (err: any) {
+      console.error("[admin] campaign run failed:", err);
+      res.status(500).json({ error: "campaign_failed", message: err?.message || "Unknown error" });
+    }
+  });
+
+  app.get("/api/user/campaigns/active", requireAuth, async (req: any, res) => {
+    const userId = (req.session as any).userId;
+    if (!userId) return res.json({ banner: null });
+    try {
+      const banner = await campaigns.getActiveBannerForUser(userId);
+      res.json({ banner });
+    } catch (err: any) {
+      // Don't break the app for a banner — just return null
+      console.error("[campaigns] active banner fetch failed:", err);
+      res.json({ banner: null });
+    }
+  });
+
+  app.post("/api/user/campaigns/:id/dismiss", requireAuth, async (req: any, res) => {
+    const userId = (req.session as any).userId;
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+    try {
+      await campaigns.dismissBanner(userId, req.params.id);
+      res.json({ ok: true });
+    } catch (err: any) {
+      console.error("[campaigns] dismiss failed:", err);
+      res.status(500).json({ error: "dismiss_failed" });
     }
   });
 
