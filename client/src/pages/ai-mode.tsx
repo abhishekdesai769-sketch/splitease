@@ -28,6 +28,8 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Sparkles, ArrowLeft, Send, Loader2, Crown, Check, X, Paperclip, FileText, Image as ImageIcon, Mic, Keyboard, MicOff } from "lucide-react";
 import { useVoiceMode } from "@/hooks/useVoiceMode";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 const MAX_ATTACHMENTS = 5;
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;        // 10 MB per file — matches server
@@ -673,7 +675,7 @@ function MessageBubble({
     <div className="flex flex-col items-start gap-2 max-w-[90%]">
       {message.content && (
         <div className="rounded-2xl rounded-tl-sm bg-muted px-3.5 py-2 text-sm">
-          {message.content}
+          <AssistantMarkdown content={message.content} />
         </div>
       )}
       {/* Single proposal card */}
@@ -781,6 +783,62 @@ function ProposalCard({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// Markdown renderer for assistant messages. Claude is instructed via the
+// system prompt to format responses with bullet points, bold labels, line
+// breaks — but the raw text contains "**bold**" / "- item" / etc. We render
+// that as actual formatted markdown so it doesn't look like raw asterisks
+// in the chat bubble. Custom component overrides keep the rendering tight
+// for a mobile chat-bubble context (no huge headings, no big margins).
+function AssistantMarkdown({ content }: { content: string }) {
+  return (
+    <div className="text-sm leading-relaxed">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          // Paragraphs: tight margin, normal text
+          p: ({ children }) => <p className="my-1.5 first:mt-0 last:mb-0">{children}</p>,
+          // Bold: semibold, slightly darker
+          strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
+          // Italic
+          em: ({ children }) => <em className="italic">{children}</em>,
+          // Bullet lists: tight, indented
+          ul: ({ children }) => <ul className="my-1.5 ml-4 space-y-0.5 list-disc marker:text-muted-foreground">{children}</ul>,
+          // Numbered lists
+          ol: ({ children }) => <ol className="my-1.5 ml-5 space-y-0.5 list-decimal marker:text-muted-foreground">{children}</ol>,
+          // List items
+          li: ({ children }) => <li className="pl-0.5">{children}</li>,
+          // Headers — demote them to bold prose so they don't look enormous
+          // in a chat bubble (Claude is told not to use # in the prompt, but
+          // be defensive).
+          h1: ({ children }) => <p className="font-semibold mt-2 mb-1 first:mt-0">{children}</p>,
+          h2: ({ children }) => <p className="font-semibold mt-2 mb-1 first:mt-0">{children}</p>,
+          h3: ({ children }) => <p className="font-semibold mt-2 mb-1 first:mt-0">{children}</p>,
+          // Inline code: subtle highlight
+          code: ({ children }) => (
+            <code className="px-1 py-0.5 rounded bg-background/60 font-mono text-[0.85em]">{children}</code>
+          ),
+          // Block code: fenced rare in chat, but support gracefully
+          pre: ({ children }) => (
+            <pre className="my-1.5 p-2 rounded-lg bg-background/60 font-mono text-xs overflow-x-auto">{children}</pre>
+          ),
+          // Links: open in new tab (rare in AI responses but safe default)
+          a: ({ children, href }) => (
+            <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary underline">{children}</a>
+          ),
+          // Blockquotes
+          blockquote: ({ children }) => (
+            <blockquote className="border-l-2 border-border pl-2 my-1.5 text-muted-foreground italic">{children}</blockquote>
+          ),
+          // Horizontal rule (Claude occasionally uses --- for section separation)
+          hr: () => <hr className="my-2 border-border" />,
+        }}
+      >
+        {content}
+      </ReactMarkdown>
     </div>
   );
 }

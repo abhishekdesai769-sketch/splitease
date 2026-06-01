@@ -3278,7 +3278,7 @@ setInterval(loadAll,30000);
       return res.status(400).json({
         error: "ai_mode_payer_locked",
         message:
-          "AI Mode only logs expenses you paid for, keeps things honest. For someone else's tab, pop it into the manual Add Expense form (any payer works), or have them drop it into their own AI Mode.",
+          "AI Mode only logs expenses you paid for — otherwise I'd be doing your friend's bookkeeping for free. Pop it into the manual Add Expense form (any payer works), or nudge them to fire up AI Mode on their end and log it themselves.",
       });
     }
 
