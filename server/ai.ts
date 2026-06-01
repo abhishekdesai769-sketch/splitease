@@ -221,6 +221,33 @@ ${groupsList}
 
 When the user describes a shared expense, call propose_expense (or propose_multiple_expenses for receipts split by item) with a structured proposal. The user will see your proposal as a card with a Create button — they confirm before anything actually saves.
 
+## HANDLING RECEIPTS (PDF OR IMAGE ATTACHMENTS) — CRITICAL
+
+When a user attaches a receipt (PDF or image), the file bytes are ONLY available to you in THIS single turn. After this turn they are discarded — they will NOT be in conversation history for subsequent turns. The only thing that survives is your text response. Therefore:
+
+A. **You MUST itemize the receipt in your text response.** Before (or alongside) proposing splits, write out a complete bulleted list of every line item from the receipt with its individual price. Include subtotal, tax, and tip lines if visible. Use this format:
+
+\`\`\`
+Receipt contents:
+- Milk: $4.50
+- Protein yogurt: $7.00
+- Bananas: $3.20
+- ... (every item)
+Subtotal: $X
+Tax: $Y
+Total: $Z
+\`\`\`
+
+This is non-negotiable — without this itemized record, follow-up turns will have no memory of what was on the receipt. Even if you also call a proposal tool, the text response still must contain the itemized list.
+
+B. **Propose splits immediately if you can infer the participants.** Don't ask clarifying questions when you can make a reasonable proposal:
+- If the user mentioned a group or friend in this turn or earlier in the conversation, use it.
+- If the user said "split among the four of us" and is in a 4-person group, use that group.
+- Only call ask_clarification if there is GENUINE ambiguity that you cannot resolve from context (e.g., two friends with the same first name).
+- If the user gave per-item assignment rules ("X is mine, Y is split 4 ways"), follow them — and if amounts are visible in the receipt, compute the splits yourself; don't ask the user for amounts that are right there in the receipt.
+
+C. **In follow-up turns that reference "the receipt"**: look at your OWN prior assistant messages in conversation history for the itemized list. If you find it, use those numbers — you do NOT need the file re-attached. If you DON'T find an itemized list in history (e.g., a prior turn missed step A), be honest: tell the user the receipt content wasn't preserved in memory and ask them to re-attach it. NEVER tell the user "I don't have access to the receipt image" if you simply have an attachment in the current turn — check the current turn's content blocks first.
+
 ## CRITICAL RULES
 
 1. **Never invent user IDs.** Only use IDs from the friends + groups context above. If a name doesn't match, use ask_clarification.
@@ -239,7 +266,7 @@ When the user describes a shared expense, call propose_expense (or propose_multi
 
 8. **When uncertain about AMOUNT or DESCRIPTION**, default reasonably and proceed — the user will edit on the proposal card if it's wrong.
 
-9. **Keep responses BRIEF.** A one-line confirmation is enough ("Here's what I'm proposing." or "Got it — let me know if any of these need adjusting."). Don't repeat the proposal details in prose; the UI shows them.
+9. **Keep responses BRIEF in non-receipt cases.** A one-line confirmation is enough ("Here's what I'm proposing.") — don't repeat proposal details in prose; the UI shows them. EXCEPTION: receipts MUST include the full itemized list per section A above.
 
 10. **You CANNOT settle balances, delete expenses, change subscriptions, or invite users.** Stay strictly within expense-logging.
 
@@ -303,12 +330,28 @@ export async function runAiTurn(params: {
       // Silently skip anything that isn't an image or PDF (validation
       // already happened at the route layer, but defensive double-check).
     }
-    // Add the user's text last, with a contextual instruction for the model
-    // about how to handle the attachments.
-    const textPart = newUserMessage.trim().length > 0
+    // Add the user's text last. We prepend a non-negotiable instruction
+    // about itemizing the receipt, because:
+    //   (a) the file bytes won't survive to the next turn (parse-and-discard
+    //       privacy policy), so the parsed contents MUST go into the text
+    //       response to be available for follow-ups
+    //   (b) Claude's default behaviour is to ask clarifying questions before
+    //       parsing — we want it to itemize first, propose splits second
+    const itemizationInstruction =
+      "SYSTEM INSTRUCTION FOR THIS TURN: A receipt is attached above. " +
+      "You MUST: (1) read every line item and price from the receipt and write " +
+      "them out as a bulleted list in your response (include subtotal, tax, tip, " +
+      "total if visible) — this is required because the file is discarded after " +
+      "this turn and the itemized list is the only way to remember the contents " +
+      "in future turns; (2) THEN propose splits using propose_expense or " +
+      "propose_multiple_expenses based on the user's instructions and the " +
+      "amounts you just extracted — don't ask the user for amounts that are " +
+      "visible in the receipt; (3) only ask for clarification if you genuinely " +
+      "cannot infer the participants.\n\n";
+    const userText = newUserMessage.trim().length > 0
       ? newUserMessage
-      : "Here's the receipt — please parse it and propose how to split it. If I haven't told you who to split it with, propose splitting it with the people you can reasonably infer or ask for clarification.";
-    userContent.push({ type: "text", text: textPart });
+      : "Here's the receipt — parse it and propose how to split it. If I haven't told you who to split with, infer from our group / friend context.";
+    userContent.push({ type: "text", text: itemizationInstruction + "USER MESSAGE: " + userText });
 
     messages.push({ role: "user", content: userContent });
   } else {
