@@ -26,7 +26,8 @@ import { apiRequest, apiFormRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Sparkles, ArrowLeft, Send, Loader2, Crown, Check, X, MessageSquare, Paperclip, FileText, Image as ImageIcon } from "lucide-react";
+import { Sparkles, ArrowLeft, Send, Loader2, Crown, Check, X, Paperclip, FileText, Image as ImageIcon, Mic, Keyboard, MicOff } from "lucide-react";
+import { useVoiceMode } from "@/hooks/useVoiceMode";
 
 const MAX_ATTACHMENTS = 5;
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;        // 10 MB per file — matches server
@@ -220,6 +221,67 @@ export default function AiMode() {
     },
   });
 
+  // ── Voice transcription ──────────────────────────────────────────────
+  // We reuse the existing useVoiceMode hook (handles iOS-native Capacitor
+  // path + Web Speech API path), but we IGNORE its built-in intent parser
+  // — AI Mode doesn't need it. We just want the raw transcript dropped
+  // into the textarea so the user can review/edit before sending. From
+  // there the normal AI Mode flow takes over: Claude parses, proposes,
+  // user confirms. That's the whole point of "voice in AI Mode" — it's
+  // dictation, not a separate command system.
+  const voiceCtx = {
+    currentUserId: user?.id ?? "",
+    friends: [],
+    groups: [],
+    defaultCurrency: user?.defaultCurrency ?? "CAD",
+  };
+  const {
+    voiceState,
+    transcript: voiceTranscript,
+    interimTranscript,
+    errorMessage: voiceError,
+    isSupported: voiceSupported,
+    startListening,
+    stopListening,
+    reset: resetVoice,
+  } = useVoiceMode(voiceCtx);
+
+  // When a final transcript arrives, append it to whatever the user has
+  // already typed (so they can mix voice + keyboard) and reset the hook
+  // back to idle so the next tap is a fresh session.
+  useEffect(() => {
+    if (voiceState === "result" && voiceTranscript) {
+      setInput((prev) => (prev ? `${prev.trim()} ${voiceTranscript}` : voiceTranscript));
+      resetVoice();
+    }
+    if (voiceState === "error" && voiceError) {
+      toast({
+        title: "Voice didn't catch that",
+        description: voiceError,
+        variant: "destructive",
+      });
+      resetVoice();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [voiceState, voiceTranscript, voiceError]);
+
+  const handleMicTap = () => {
+    if (voiceState === "listening") {
+      stopListening();
+    } else if (voiceSupported) {
+      startListening();
+    } else {
+      toast({
+        title: "Voice needs the iOS app",
+        description: "iOS Safari blocks microphone access. Install the Spliiit app from the App Store to use voice.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const isListening = voiceState === "listening";
+  const isVoiceProcessing = voiceState === "processing";
+
   // ── Handlers ──────────────────────────────────────────────────────────
   const handleSend = () => {
     const text = input.trim();
@@ -290,7 +352,10 @@ export default function AiMode() {
           <div className="space-y-1.5">
             <h2 className="text-lg font-semibold">AI Mode is a Premium feature</h2>
             <p className="text-sm text-muted-foreground max-w-md mx-auto">
-              Describe any split in plain English, send a receipt photo, or just talk to Spliiit. The AI turns it into a structured expense in seconds — you confirm with one tap.
+              Talk to Spliiit, type a one-liner, or drop a <span className="font-medium text-foreground">PDF receipt</span> from Uber Eats, DoorDash, Amazon. The AI parses every item and proposes the split — you confirm with one tap.
+            </p>
+            <p className="text-xs text-muted-foreground/80 max-w-md mx-auto pt-1">
+              The only splitter that reads PDFs. Other apps can't.
             </p>
           </div>
           <Button
@@ -321,10 +386,6 @@ export default function AiMode() {
   // whole flex-height math problem.
   return (
     <>
-      {/* Hide Layout's floating mic on AI Mode — it covers the input bar.
-          Voice input arrives natively here in Phase 4. */}
-      <style>{`[data-testid="voice-mic-button"] { display: none !important; }`}</style>
-
       <div className="flex flex-col">
         <PageHeader onBack={() => setLocation("/")} />
 
@@ -383,29 +444,77 @@ export default function AiMode() {
             </div>
           )}
 
+          {/* Live voice transcript — shown above the input when listening,
+              so the user sees what's being captured in real time. */}
+          {(isListening || isVoiceProcessing) && (
+            <div className="flex items-center gap-2 mb-2 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/30 animate-pulse">
+              <div className="w-2 h-2 rounded-full bg-red-500" />
+              <p className="text-xs text-foreground flex-1 truncate">
+                {isVoiceProcessing
+                  ? "Got it — processing…"
+                  : interimTranscript || "Listening… speak now"}
+              </p>
+            </div>
+          )}
+
           <div className="flex items-end gap-2">
-            {/* Paperclip attach button */}
-            <Button
-              type="button"
-              size="icon"
-              variant="outline"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={sendMutation.isPending || attachments.length >= MAX_ATTACHMENTS}
-              className="shrink-0 h-[68px] w-11"
-              title="Attach PDF, screenshot, or photo"
-              data-testid="ai-mode-attach"
-              aria-label="Attach file"
-            >
-              <Paperclip className="w-4 h-4" />
-            </Button>
+            {/* Left stack: Paperclip (attach) + Mic (voice) */}
+            <div className="flex flex-col gap-1 shrink-0">
+              <Button
+                type="button"
+                size="icon"
+                variant="outline"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={sendMutation.isPending || attachments.length >= MAX_ATTACHMENTS}
+                className="h-[32px] w-11"
+                title="Attach PDF, screenshot, or photo"
+                data-testid="ai-mode-attach"
+                aria-label="Attach file"
+              >
+                <Paperclip className="w-4 h-4" />
+              </Button>
+              <Button
+                type="button"
+                size="icon"
+                variant={isListening ? "default" : "outline"}
+                onClick={handleMicTap}
+                disabled={sendMutation.isPending || isVoiceProcessing}
+                className={`h-[32px] w-11 ${
+                  isListening
+                    ? "bg-red-500 hover:bg-red-600 text-white border-red-500"
+                    : ""
+                }`}
+                title={
+                  isListening
+                    ? "Tap to stop"
+                    : voiceSupported
+                    ? "Talk to AI"
+                    : "Voice needs the iOS app"
+                }
+                data-testid="ai-mode-voice"
+                aria-label={isListening ? "Stop listening" : "Start voice input"}
+              >
+                {isVoiceProcessing ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : isListening ? (
+                  <Mic className="w-4 h-4" />
+                ) : voiceSupported ? (
+                  <Mic className="w-4 h-4" />
+                ) : (
+                  <MicOff className="w-4 h-4 opacity-50" />
+                )}
+              </Button>
+            </div>
 
             <Textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder={
-                attachments.length > 0
+                isListening
+                  ? "Listening — keep going…"
+                  : attachments.length > 0
                   ? "Add context (optional)… e.g. 'split equally with Krish'"
-                  : 'Describe a split, or attach a receipt PDF / screenshot'
+                  : "Type, talk, or attach a receipt PDF / screenshot"
               }
               rows={2}
               className="resize-none text-sm"
@@ -430,7 +539,7 @@ export default function AiMode() {
             </Button>
           </div>
           <p className="text-[10px] text-muted-foreground/70 mt-1.5 text-center">
-            AI proposes — you confirm. Receipts are parsed then discarded, never stored.
+            🎙️ Talk · 📎 Attach · ⌨️ Type — AI proposes, you confirm. Receipts parsed then discarded, never stored.
           </p>
         </div>
       </div>
@@ -456,36 +565,42 @@ function PageHeader({ onBack }: { onBack: () => void }) {
 
 function EmptyState() {
   return (
-    <div className="text-center py-10 px-4 space-y-5">
+    <div className="text-center py-8 px-4 space-y-5">
       <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-primary/10 mx-auto">
-        <MessageSquare className="w-7 h-7 text-primary" />
+        <Sparkles className="w-7 h-7 text-primary" />
       </div>
       <div className="space-y-1.5">
         <h2 className="text-base font-semibold">What's the split?</h2>
         <p className="text-xs text-muted-foreground max-w-sm mx-auto">
-          Describe it, attach a receipt PDF, or send screenshots — I'll figure out the rest and show you a proposal to confirm.
+          Talk to me, drop a receipt, or just type. I'll do the rest.
         </p>
       </div>
 
-      {/* Big differentiator — call it out prominently */}
-      <div className="mx-auto max-w-sm rounded-xl border border-primary/30 bg-primary/5 p-3 text-left">
+      {/* THE differentiator — pain point → "wow no other app does that". */}
+      <div className="mx-auto max-w-sm rounded-xl border border-primary/30 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent p-3.5 text-left">
         <div className="flex items-start gap-2.5">
-          <div className="w-7 h-7 rounded-lg bg-primary/15 flex items-center justify-center shrink-0 mt-0.5">
-            <FileText className="w-3.5 h-3.5 text-primary" />
+          <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center shrink-0">
+            <FileText className="w-4 h-4 text-primary" />
           </div>
           <div className="min-w-0">
-            <p className="text-xs font-semibold">PDF receipts work too</p>
-            <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
-              Got a digital receipt from Uber, DoorDash, Amazon? Just attach it. Multiple screenshots also work for in-app orders. Parsed on the fly, never stored.
+            <p className="text-[13px] font-semibold leading-tight">
+              The receipts other apps can't read.
+            </p>
+            <p className="text-[11px] text-muted-foreground mt-1 leading-relaxed">
+              Uber Eats. DoorDash. Amazon. Your subscriptions. They all email <span className="font-medium text-foreground">PDFs</span> now — not paper. Other splitting apps can only scan photos, so those receipts have nowhere to go.
+            </p>
+            <p className="text-[11px] mt-1.5 leading-relaxed">
+              <span className="font-semibold text-primary">Drop yours here.</span> <span className="text-muted-foreground">I'll read every item, every tax, every tip — and split it the way you would.</span>
             </p>
           </div>
         </div>
       </div>
 
+      {/* Three input modes, called out as examples */}
       <div className="space-y-2 max-w-sm mx-auto pt-1">
-        <ExampleLine text='"Split groceries $45 with Krish"' />
-        <ExampleLine text='"Dinner with my Halifax group, $200, I paid"' />
-        <ExampleLine text='"📎 Uber Eats receipt — split with Srushti"' />
+        <ModeExample icon="mic" text='"Split groceries $45 with Krish"' />
+        <ModeExample icon="type" text='"Dinner with my Halifax group, $200, I paid"' />
+        <ModeExample icon="paperclip" text="Drop a PDF or screenshot — I'll do the rest" />
       </div>
     </div>
   );
@@ -517,10 +632,14 @@ function AttachmentChip({ file, onRemove }: { file: File; onRemove: () => void }
   );
 }
 
-function ExampleLine({ text }: { text: string }) {
+function ModeExample({ icon, text }: { icon: "mic" | "type" | "paperclip"; text: string }) {
+  const Icon = icon === "mic" ? Mic : icon === "paperclip" ? Paperclip : Keyboard;
   return (
-    <div className="text-xs text-muted-foreground/70 italic px-3 py-2 rounded-lg bg-muted/30 border border-border">
-      {text}
+    <div className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-muted/30 border border-border text-left">
+      <div className="w-6 h-6 rounded-md bg-background border border-border flex items-center justify-center shrink-0">
+        <Icon className="w-3 h-3 text-primary" />
+      </div>
+      <span className="text-xs text-muted-foreground italic flex-1">{text}</span>
     </div>
   );
 }

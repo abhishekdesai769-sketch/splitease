@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { SupportDrawer } from "@/components/SupportDrawer";
-import { VoiceMicButton } from "@/components/VoiceMicButton";
 import { PushPermissionPrompt } from "@/components/PushPermissionPrompt";
 import { isInTWA } from "@/lib/platform";
 
@@ -102,8 +101,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
         {children}
       </main>
 
-      {/* Voice Mode floating mic button — sits above the bottom nav */}
-      <VoiceMicButton />
+      {/* Voice input lives inside AI Mode now (the /ai page). The global
+          floating mic was replaced by a Mic button next to the AI Mode
+          textarea — same Premium-gated speech-to-text, but as part of the
+          conversational flow instead of a separate wizard. */}
 
       {/* Contextual notification-permission card / recovery banner.
           iOS-native only — renders nothing on web/Android. */}
