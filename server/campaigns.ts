@@ -37,13 +37,17 @@ export interface CampaignConfig {
   id: string;
   enabled: boolean;
   description: string;
-  // Audience filters
-  excludeCurrencies: string[];      // e.g. ["INR"]
+  // Audience filters — applied BEFORE any channel is considered
+  audience: {
+    excludeCurrencies: string[];     // e.g. ["INR"]
+    iosOnly: boolean;                // when true, all channels (email/push/grant/banner)
+                                     // skip users without an iOS device token
+  };
   // Channels to fire — each can be enabled independently
   channels: {
     email: boolean;
     iosPush: boolean;
-    premiumGrant: { enabled: boolean; durationDays: number };  // iOS users only
+    premiumGrant: { enabled: boolean; durationDays: number };  // iOS users only by nature
     inAppBanner: boolean;
   };
   // Copy
@@ -76,8 +80,11 @@ export interface CampaignConfig {
 export const CAMPAIGN_1K: CampaignConfig = {
   id: "milestone_1k_2026_06",
   enabled: process.env.CAMPAIGN_1K_ENABLED === "true",
-  description: "1,000-user milestone thank-you (June 2026)",
-  excludeCurrencies: ["INR"],
+  description: "1,000-user milestone thank-you (June 2026) — iOS only",
+  audience: {
+    excludeCurrencies: ["INR"],
+    iosOnly: true,                   // Skip web + Android entirely
+  },
   channels: {
     email: true,
     iosPush: true,
@@ -149,9 +156,12 @@ async function getAudience(config: CampaignConfig): Promise<AudienceUser[]> {
       if ((u as any).deletedAt) return false;
       // Exclude requested currencies
       const cur = (u.defaultCurrency || "").toUpperCase();
-      if (config.excludeCurrencies.includes(cur)) return false;
+      if (config.audience.excludeCurrencies.includes(cur)) return false;
       // Must have an email to receive anything meaningful
       if (!u.email) return false;
+      // iOS-only campaigns: skip everyone without an APNs token. This is the
+      // master gate — applies to email + push + banner + grant uniformly.
+      if (config.audience.iosOnly && !iosUserSet.has(u.id)) return false;
       return true;
     })
     .map((u) => ({
@@ -169,7 +179,7 @@ export async function getAudienceCounts(config: CampaignConfig): Promise<Audienc
   const audience = await getAudience(config);
   const allUsers = await db.select({ defaultCurrency: users.defaultCurrency }).from(users);
   const excludedByCurrency = allUsers.filter((u) =>
-    config.excludeCurrencies.includes((u.defaultCurrency || "").toUpperCase()),
+    config.audience.excludeCurrencies.includes((u.defaultCurrency || "").toUpperCase()),
   ).length;
 
   // Already-sent counts per channel
@@ -259,7 +269,18 @@ export async function getActiveBannerForUser(userId: string): Promise<{
     const [u] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
     if (!u) continue;
     const cur = (u.defaultCurrency || "").toUpperCase();
-    if (cfg.excludeCurrencies.includes(cur)) continue;
+    if (cfg.audience.excludeCurrencies.includes(cur)) continue;
+
+    // iOS-only campaigns: hide banner from web/Android users. Same gate as
+    // every other channel — keeps the audience definition consistent.
+    if (cfg.audience.iosOnly) {
+      const [iosToken] = await db
+        .select()
+        .from(deviceTokens)
+        .where(and(eq(deviceTokens.userId, userId), eq(deviceTokens.platform, "ios")))
+        .limit(1);
+      if (!iosToken) continue;
+    }
 
     return {
       campaignId: cfg.id,
@@ -465,12 +486,11 @@ function milestone1kEmailHtml(name: string): string {
   ${EMAIL_LOGO}
   <h1 style="font-size:22px;font-weight:700;margin:0 0 16px;letter-spacing:-0.3px;">Hey ${escapeHtml(firstName)} — we just hit 1,000 users.</h1>
   <p style="font-size:15px;margin:0 0 16px;">Honestly that's wild for a side project that started because I couldn't split a roommate dinner fairly.</p>
-  <p style="font-size:15px;margin:0 0 16px;">Quick thank-you: every iOS user gets <strong>Premium free for 30 days</strong> as of today. No card, no catch. Open Spliiit and AI Mode is unlocked — PDF receipts, voice splits, the whole thing.</p>
+  <p style="font-size:15px;margin:0 0 16px;">Quick thank-you: you've got <strong>Premium free for 30 days</strong> on the house, starting today. No card, no catch. Open Spliiit and AI Mode is already unlocked — PDF receipts, voice splits, the whole thing.</p>
   <div style="background:#f0fdfa;border:1px solid #99f6e4;border-radius:12px;padding:16px;margin:20px 0;">
     <p style="font-size:14px;margin:0 0 8px;font-weight:600;color:#0f766e;">What's AI Mode?</p>
     <p style="font-size:14px;margin:0;color:#134e4a;">Drop a receipt PDF (Uber Eats, Amazon, anything). Tell it how to split. Done. The only split app that reads PDFs.</p>
   </div>
-  <p style="font-size:15px;margin:0 0 16px;">Web + Android folks: I haven't forgotten you — the same gift is coming, but Premium-on-Android has to wait on Google's payment plumbing.</p>
   <p style="font-size:15px;margin:0 0 24px;">If Spliiit's made your life even slightly easier, the best way to thank me back is to tell one person about it.</p>
   <p style="font-size:15px;margin:0;color:#1a1a1a;">— Abhishek<br/><span style="font-size:13px;color:#6b7280;">Solo dev, Spliiit</span></p>
   <hr style="border:none;border-top:1px solid #e5e7eb;margin:32px 0 16px;" />
@@ -485,11 +505,9 @@ function milestone1kEmailText(name: string): string {
 
 Honestly that's wild for a side project that started because I couldn't split a roommate dinner fairly.
 
-Quick thank-you: every iOS user gets Premium free for 30 days as of today. No card, no catch. Open Spliiit and AI Mode is unlocked — PDF receipts, voice splits, the whole thing.
+Quick thank-you: you've got Premium free for 30 days on the house, starting today. No card, no catch. Open Spliiit and AI Mode is already unlocked — PDF receipts, voice splits, the whole thing.
 
 What's AI Mode? Drop a receipt PDF (Uber Eats, Amazon, anything). Tell it how to split. Done. The only split app that reads PDFs.
-
-Web + Android folks: I haven't forgotten you — the same gift is coming, but Premium-on-Android has to wait on Google's payment plumbing.
 
 If Spliiit's made your life even slightly easier, the best way to thank me back is to tell one person about it.
 
