@@ -61,14 +61,24 @@ export interface AiMessageInput {
   // If a previous assistant message proposed something, include it so Claude
   // can reference / refine. Stringified JSON.
   proposalJson?: string | null;
+  // If THIS past message had receipts attached, the verbatim text transcription
+  // is stored here and replayed into Claude's context every turn. The actual
+  // file bytes were discarded after the upload turn — this text is the only
+  // record of what the receipt said.
+  attachmentContext?: string | null;
 }
 
 /**
- * Attachment passed to Claude for vision/document parsing. We never persist
- * the actual `base64` bytes — the buffer lives in memory for one request,
- * gets sent to Anthropic, and is discarded as soon as the response returns.
- * The message's audit row in Postgres only records metadata (filename, mime,
- * size) for transcript display purposes — NOT the contents.
+ * Attachment passed to the transcription pipeline. We never persist the actual
+ * `base64` bytes — the buffer lives in memory for one request, gets sent to
+ * Anthropic (and/or pdf-parse), and is discarded as soon as the response
+ * returns. The message's audit row in Postgres only records metadata
+ * (filename, mime, size) for transcript display — NOT the contents.
+ *
+ * NOTE: AiAttachment is consumed by server/receiptTranscription.ts, not by
+ * runAiTurn directly. The route handler transcribes attachments FIRST, then
+ * passes only the verbatim text to runAiTurn. This keeps runAiTurn pure
+ * text-in-text-out and makes it easy to replay attachment context in history.
  */
 export interface AiAttachment {
   base64: string;
@@ -221,32 +231,27 @@ ${groupsList}
 
 When the user describes a shared expense, call propose_expense (or propose_multiple_expenses for receipts split by item) with a structured proposal. The user will see your proposal as a card with a Create button — they confirm before anything actually saves.
 
-## HANDLING RECEIPTS (PDF OR IMAGE ATTACHMENTS) — CRITICAL
+## HANDLING RECEIPTS
 
-When a user attaches a receipt (PDF or image), the file bytes are ONLY available to you in THIS single turn. After this turn they are discarded — they will NOT be in conversation history for subsequent turns. The only thing that survives is your text response. Therefore:
-
-A. **You MUST itemize the receipt in your text response.** Before (or alongside) proposing splits, write out a complete bulleted list of every line item from the receipt with its individual price. Include subtotal, tax, and tip lines if visible. Use this format:
+When a user attaches a receipt (PDF or image), the server transcribes it BEFORE you see the conversation. The verbatim transcription is injected into the user's message under a "RECEIPT CONTEXT" header. You will see something like:
 
 \`\`\`
-Receipt contents:
-- Milk: $4.50
-- Protein yogurt: $7.00
-- Bananas: $3.20
-- ... (every item)
-Subtotal: $X
-Tax: $Y
-Total: $Z
+RECEIPT CONTEXT (verbatim transcription of attached file(s)):
+<every line of the receipt, exactly as printed>
+
+USER MESSAGE:
+<what the user actually typed>
 \`\`\`
 
-This is non-negotiable — without this itemized record, follow-up turns will have no memory of what was on the receipt. Even if you also call a proposal tool, the text response still must contain the itemized list.
+How to use it:
 
-B. **Propose splits immediately if you can infer the participants.** Don't ask clarifying questions when you can make a reasonable proposal:
-- If the user mentioned a group or friend in this turn or earlier in the conversation, use it.
-- If the user said "split among the four of us" and is in a 4-person group, use that group.
-- Only call ask_clarification if there is GENUINE ambiguity that you cannot resolve from context (e.g., two friends with the same first name).
-- If the user gave per-item assignment rules ("X is mine, Y is split 4 ways"), follow them — and if amounts are visible in the receipt, compute the splits yourself; don't ask the user for amounts that are right there in the receipt.
+A. **Treat RECEIPT CONTEXT as the authoritative reference.** Every amount, item, tax line, and annotation (unavailable, refunded, comp'd, etc.) you need is in there. Don't ever ask the user for amounts you can read from the RECEIPT CONTEXT — compute the splits yourself.
 
-C. **In follow-up turns that reference "the receipt"**: look at your OWN prior assistant messages in conversation history for the itemized list. If you find it, use those numbers — you do NOT need the file re-attached. If you DON'T find an itemized list in history (e.g., a prior turn missed step A), be honest: tell the user the receipt content wasn't preserved in memory and ask them to re-attach it. NEVER tell the user "I don't have access to the receipt image" if you simply have an attachment in the current turn — check the current turn's content blocks first.
+B. **The same RECEIPT CONTEXT is replayed in every future turn of this conversation** (the server inlines it from history). So a follow-up like "change the milk to split with Krish only" still has the receipt available — go look at the RECEIPT CONTEXT block on the earlier user message and act from there.
+
+C. **Propose splits immediately when participants are clear.** Don't ask clarifying questions when you can make a reasonable proposal from the context: the user's text, prior turns, the group/friend list, and the receipt content. Only call ask_clarification for genuine ambiguity (e.g., two friends with the same first name).
+
+D. **If you're asked about a receipt but no RECEIPT CONTEXT appears anywhere in the conversation**, tell the user the receipt wasn't captured and ask them to re-attach it. (This shouldn't happen — the transcription pipeline runs on every upload — but be honest if it does.)
 
 ## CRITICAL RULES
 
@@ -266,7 +271,7 @@ C. **In follow-up turns that reference "the receipt"**: look at your OWN prior a
 
 8. **When uncertain about AMOUNT or DESCRIPTION**, default reasonably and proceed — the user will edit on the proposal card if it's wrong.
 
-9. **Keep responses BRIEF in non-receipt cases.** A one-line confirmation is enough ("Here's what I'm proposing.") — don't repeat proposal details in prose; the UI shows them. EXCEPTION: receipts MUST include the full itemized list per section A above.
+9. **Keep responses BRIEF.** A one-line confirmation is enough ("Here's what I'm proposing." or "Got it — let me know if any of these need adjusting."). Don't repeat the proposal or receipt details in prose; the UI shows the proposal card, and the RECEIPT CONTEXT is the source of truth for line items.
 
 10. **You CANNOT settle balances, delete expenses, change subscriptions, or invite users.** Stay strictly within expense-logging.
 
@@ -276,87 +281,72 @@ If the user asks something unrelated to expenses (jokes, support, "how do I use 
 // ── Main entrypoint ──────────────────────────────────────────────────────
 
 /**
- * Run one turn of the AI conversation.
- * @param ctx - Current user's context (friends, groups, etc.)
- * @param history - Prior messages in this conversation (user + assistant turns)
- * @param newUserMessage - The user's just-typed message
- * @param attachments - Optional images/PDFs to pass to Claude as content blocks.
- *                       Bytes are sent to Anthropic and then forgotten — we
- *                       never persist the file data anywhere on our side.
+ * Compose a user-message body that inlines RECEIPT CONTEXT (if any) above
+ * the user's typed message. Used for both the current turn and replayed
+ * history. Keeps the format consistent so Claude can pattern-match on the
+ * "RECEIPT CONTEXT:" / "USER MESSAGE:" headers described in the system prompt.
+ */
+function composeUserBody(text: string, attachmentContext?: string | null): string {
+  const trimmed = (text || "").trim();
+  if (!attachmentContext || attachmentContext.trim().length === 0) {
+    return trimmed;
+  }
+  const userPart = trimmed.length > 0
+    ? trimmed
+    : "(no text — receipt attached, parse and propose)";
+  return (
+    "RECEIPT CONTEXT (verbatim transcription of attached file(s)):\n" +
+    attachmentContext.trim() +
+    "\n\nUSER MESSAGE:\n" +
+    userPart
+  );
+}
+
+/**
+ * Run one turn of the AI conversation. Pure text in, structured tool calls out.
+ *
+ * Receipt handling: the route handler runs the transcription pipeline (see
+ * server/receiptTranscription.ts) BEFORE calling this function, then passes
+ * the verbatim text as `newAttachmentContext`. We inline it into the current
+ * turn's user message, and we also inline each prior turn's attachmentContext
+ * back into its replayed history entry — so Claude sees the same RECEIPT
+ * CONTEXT in every turn for the life of the conversation.
+ *
+ * @param ctx                   Current user's context (friends, groups, etc.)
+ * @param history               Prior messages — content + optional attachmentContext per entry
+ * @param newUserMessage        The user's just-typed message text
+ * @param newAttachmentContext  Verbatim transcription of THIS turn's attachments, if any
  */
 export async function runAiTurn(params: {
   ctx: UserContext;
   history: AiMessageInput[];
   newUserMessage: string;
-  attachments?: AiAttachment[];
+  newAttachmentContext?: string | null;
 }): Promise<AiTurnResult> {
   const client = getClient();
   if (!client) {
     throw new Error("AI Mode not configured — ANTHROPIC_API_KEY missing");
   }
 
-  const { ctx, history, newUserMessage, attachments } = params;
+  const { ctx, history, newUserMessage, newAttachmentContext } = params;
 
   // Build messages array. Truncate history to last 20 entries to avoid
   // runaway token costs — most real conversations are 2-6 turns anyway.
-  // Note: prior turns' attachments are NOT replayed (token cost + Claude has
-  // already absorbed their content into prior responses). Only the current
-  // turn's attachments are sent.
+  // For user messages, inline any prior attachmentContext so the receipt
+  // content is available in every turn, not just the upload turn.
   const trimmedHistory = history.slice(-20);
   const messages: Anthropic.MessageParam[] = trimmedHistory.map((m) => ({
     role: m.role,
-    content: m.content,
+    content: m.role === "user"
+      ? composeUserBody(m.content, m.attachmentContext)
+      : (m.content || ""),
   }));
 
-  // Build the current user turn — text-only OR text + multimodal content blocks
-  if (attachments && attachments.length > 0) {
-    const userContent: any[] = [];
-    // Per Anthropic's docs, putting attachments BEFORE the text prompt
-    // generally yields better extraction quality on receipts.
-    for (const att of attachments) {
-      if (att.mimeType === "application/pdf") {
-        userContent.push({
-          type: "document",
-          source: { type: "base64", media_type: "application/pdf", data: att.base64 },
-        });
-      } else if (att.mimeType.startsWith("image/")) {
-        const validImageTypes = ["image/jpeg", "image/png", "image/webp", "image/gif"];
-        const mt = validImageTypes.includes(att.mimeType) ? att.mimeType : "image/jpeg";
-        userContent.push({
-          type: "image",
-          source: { type: "base64", media_type: mt, data: att.base64 },
-        });
-      }
-      // Silently skip anything that isn't an image or PDF (validation
-      // already happened at the route layer, but defensive double-check).
-    }
-    // Add the user's text last. We prepend a non-negotiable instruction
-    // about itemizing the receipt, because:
-    //   (a) the file bytes won't survive to the next turn (parse-and-discard
-    //       privacy policy), so the parsed contents MUST go into the text
-    //       response to be available for follow-ups
-    //   (b) Claude's default behaviour is to ask clarifying questions before
-    //       parsing — we want it to itemize first, propose splits second
-    const itemizationInstruction =
-      "SYSTEM INSTRUCTION FOR THIS TURN: A receipt is attached above. " +
-      "You MUST: (1) read every line item and price from the receipt and write " +
-      "them out as a bulleted list in your response (include subtotal, tax, tip, " +
-      "total if visible) — this is required because the file is discarded after " +
-      "this turn and the itemized list is the only way to remember the contents " +
-      "in future turns; (2) THEN propose splits using propose_expense or " +
-      "propose_multiple_expenses based on the user's instructions and the " +
-      "amounts you just extracted — don't ask the user for amounts that are " +
-      "visible in the receipt; (3) only ask for clarification if you genuinely " +
-      "cannot infer the participants.\n\n";
-    const userText = newUserMessage.trim().length > 0
-      ? newUserMessage
-      : "Here's the receipt — parse it and propose how to split it. If I haven't told you who to split with, infer from our group / friend context.";
-    userContent.push({ type: "text", text: itemizationInstruction + "USER MESSAGE: " + userText });
-
-    messages.push({ role: "user", content: userContent });
-  } else {
-    messages.push({ role: "user", content: newUserMessage });
-  }
+  // Current turn — same composition, with this turn's transcription if present.
+  messages.push({
+    role: "user",
+    content: composeUserBody(newUserMessage, newAttachmentContext),
+  });
 
   const response = await client.messages.create({
     model: "claude-haiku-4-5-20251001",

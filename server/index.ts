@@ -245,6 +245,12 @@ async function runMigrations() {
     await pool.query(`CREATE INDEX IF NOT EXISTS ai_messages_conversation_id_idx ON ai_messages(conversation_id)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS ai_messages_created_at_idx ON ai_messages(created_at)`);
 
+    // attachment_context: added June 2026. Stores the verbatim text
+    // transcription of any receipts attached to a user message, so future
+    // turns of the conversation can reference the receipt content even
+    // after the file bytes have been discarded.
+    await pool.query(`ALTER TABLE ai_messages ADD COLUMN IF NOT EXISTS attachment_context text`);
+
     log("Startup migrations OK", "db");
   } catch (e) {
     log(`Startup migration error: ${e}`, "db");

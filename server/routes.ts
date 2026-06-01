@@ -19,6 +19,7 @@ import { isDisposableEmail } from "./disposable-emails";
 import * as plaid from "./plaid";
 import { plaidItems, plaidAccounts, aiConversations, aiMessages } from "@shared/schema";
 import * as ai from "./ai";
+import { buildAttachmentContext } from "./receiptTranscription";
 import multer from "multer";
 import { stripe, STRIPE_PRICE_MONTHLY, STRIPE_PRICE_YEARLY, STRIPE_ENABLED } from "./stripe";
 import {
@@ -3127,13 +3128,47 @@ setInterval(loadAll,30000);
       sizeBytes: f.size,
     }));
 
+    // ── Step 1: TRANSCRIBE attachments (if any) before persisting anything ──
+    //
+    // The verbatim transcription is the durable record of what was on the
+    // receipt. Bytes are discarded as soon as buildAttachmentContext returns
+    // — we never store the file content. The TEXT goes onto the user message
+    // row in attachment_context and gets replayed in every future turn so
+    // Claude always has the receipt available.
+    //
+    // We do this BEFORE inserting the user row so that if transcription fails
+    // catastrophically (Anthropic outage etc.) we surface a clean error rather
+    // than persisting a half-broken state. The function itself is defensive —
+    // it returns "[transcription failed]" placeholders rather than throwing
+    // unless every path fails.
+    let attachmentContext: string | null = null;
+    if (files.length > 0) {
+      const aiAttachments: ai.AiAttachment[] = files.map((f) => ({
+        base64: f.buffer.toString("base64"),
+        mimeType: f.mimetype,
+        filename: f.originalname,
+        sizeBytes: f.size,
+      }));
+      try {
+        attachmentContext = (await buildAttachmentContext(aiAttachments)).trim() || null;
+      } catch (err) {
+        console.error("[ai] attachment transcription failed:", err);
+        // Don't fail the whole turn — let Claude proceed without receipt
+        // context. It'll handle the missing-receipt case per its system
+        // prompt (ask the user to re-attach).
+        attachmentContext = null;
+      }
+    }
+
     // Persist the user message immediately so it shows in the transcript
-    // even if Claude errors out. attachments column stores metadata only.
+    // even if Claude errors out. attachments column stores metadata only;
+    // attachmentContext stores the verbatim text transcription.
     const [userMsg] = await db.insert(aiMessages).values({
       conversationId: conv.id,
       role: "user",
       content: text || "[receipt attached]",  // placeholder for transcript when text is empty
       attachments: attachmentsMeta.length > 0 ? JSON.stringify(attachmentsMeta) : null,
+      attachmentContext: attachmentContext,
       createdAt: now,
     }).returning();
 
@@ -3141,24 +3176,17 @@ setInterval(loadAll,30000);
     const priorMsgs = await db.select().from(aiMessages)
       .where(eq(aiMessages.conversationId, conv.id))
       .orderBy(aiMessages.createdAt);
-    // Exclude the just-inserted user message (it'll be passed as newUserMessage)
+    // Exclude the just-inserted user message (passed as newUserMessage below).
+    // Include attachmentContext on each entry so any past receipts get inlined
+    // back into Claude's history view — keeps the conversation self-contained.
     const history = priorMsgs
       .filter((m) => m.id !== userMsg.id)
       .map((m) => ({
         role: m.role as "user" | "assistant",
         content: m.content || "",
         proposalJson: m.proposal,
+        attachmentContext: m.attachmentContext,
       }));
-
-    // Build the in-memory attachments payload for Claude. Buffers stay in
-    // scope only for the duration of this request — once `result` resolves,
-    // they're GC'd. We never write them to disk or to the DB.
-    const aiAttachments: ai.AiAttachment[] = files.map((f) => ({
-      base64: f.buffer.toString("base64"),
-      mimeType: f.mimetype,
-      filename: f.originalname,
-      sizeBytes: f.size,
-    }));
 
     try {
       const aiCtx = await buildAiContextForUser(guard.user);
@@ -3166,7 +3194,7 @@ setInterval(loadAll,30000);
         ctx: aiCtx,
         history,
         newUserMessage: text,
-        attachments: aiAttachments.length > 0 ? aiAttachments : undefined,
+        newAttachmentContext: attachmentContext,
       });
 
       // Persist the assistant response

@@ -172,6 +172,12 @@ export const aiMessages = pgTable("ai_messages", {
   toolCalls: text("tool_calls"),       // JSON: claude's tool_use blocks
   proposal: text("proposal"),          // JSON: ExpenseProposal | MultiExpenseProposal | null
   attachments: text("attachments"),    // JSON: { receiptImageRef?, ... }
+  // attachmentContext: verbatim text transcription of any attached receipts
+  // on this turn. Written ONCE when the user uploads files (parse-and-discard
+  // policy means the bytes are gone; this text is the only durable trace).
+  // Replayed in every future Claude turn so the AI always has the receipt
+  // content available even though the file itself is long gone.
+  attachmentContext: text("attachment_context"),
   // Tracks whether this message's proposal was confirmed by the user. Once
   // confirmed, we don't allow re-confirming (idempotent — same pattern as
   // the ai_scan_audit countedAgainstFree flag).
