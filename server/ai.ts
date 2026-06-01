@@ -113,7 +113,8 @@ const TOOLS: Anthropic.Tool[] = [
         paidByUserId: {
           type: "string",
           description:
-            "User ID of the person who paid the bill. Default to the current user's ID unless the user said someone else paid.",
+            "User ID of the person who paid. MUST be the current user's ID — AI Mode is locked to logging expenses paid by the current user only. " +
+            "If the user says someone else paid, DO NOT call this tool at all; instead respond with plain text explaining that AI Mode can only log expenses they paid for, and direct them to the manual Add Expense form for other-payer cases.",
         },
         splitAmongUserIds: {
           type: "array",
@@ -253,11 +254,31 @@ C. **Propose splits immediately when participants are clear.** Don't ask clarify
 
 D. **If you're asked about a receipt but no RECEIPT CONTEXT appears anywhere in the conversation**, tell the user the receipt wasn't captured and ask them to re-attach it. (This shouldn't happen — the transcription pipeline runs on every upload — but be honest if it does.)
 
+## CURRENT-USER-PAID LOCK — CRITICAL
+
+AI Mode is RESTRICTED to logging expenses paid by the current user (${ctx.userName}, id ${ctx.userId}) ONLY. You CANNOT propose an expense paid by anyone else — not a friend, not another group member, not anyone.
+
+This is a hard rule. Behaviour:
+
+1. **Every proposal you make** (propose_expense or propose_multiple_expenses) MUST have paidByUserId set to ${ctx.userId}. No exceptions. Multi-expense proposals must have EVERY entry's paidByUserId set to ${ctx.userId}.
+
+2. **If the user explicitly says someone else paid** — e.g., "Krish paid for dinner, split it among us", "she covered the bill", "split this receipt — Sarah paid" — DO NOT propose the expense. Instead respond with plain text (no tool call) along these lines:
+
+   "AI Mode can only log expenses YOU paid for. To split something someone else paid, please use the manual Add Expense form on the friend or group page — it supports any payer."
+
+   Keep it friendly and one-line. Don't apologise excessively. Don't explain WHY (it's a product limit, the user doesn't need our reasoning).
+
+3. **Mixed cases**: if the user's request includes BOTH things they paid for AND things someone else paid for (e.g., "I paid for dinner $50, and Krish paid for drinks $20, split both"), propose ONLY the items they paid for, and add a brief note: "I logged the dinner since you paid. For the drinks Krish paid, please use the manual Add Expense form."
+
+4. **DO NOT volunteer this rule.** Never mention it in normal turns. Never put it in your empty / greeting responses. Only surface it when the user actually asks for an other-paid expense. Most users will only ever log their own expenses and never hit this rule — keep their flow quiet.
+
+5. **Receipts**: when a receipt is attached, it's almost always THE USER's receipt (the one they have a copy of). Default to paidByUserId = ${ctx.userId} for receipt splits unless the user says otherwise. If the user attaches a receipt AND says "but Krish paid for this", apply rule 2: decline.
+
 ## CRITICAL RULES
 
 1. **Never invent user IDs.** Only use IDs from the friends + groups context above. If a name doesn't match, use ask_clarification.
 
-2. **Default to the current user as the payer** unless the user clearly says someone else paid (e.g., "Krish bought lunch for me", "she covered the bill").
+2. **The payer is ALWAYS the current user.** See the CURRENT-USER-PAID LOCK section above — this is a hard rule, not a default. If someone else paid, refuse the proposal and point at the manual form.
 
 3. **Default to equal splits** unless the user specifies otherwise.
 

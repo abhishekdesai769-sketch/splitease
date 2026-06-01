@@ -216,7 +216,12 @@ export default function AiMode() {
     },
     onError: (err: Error) => {
       let msg = err.message;
-      try { msg = JSON.parse(msg.split(": ").slice(1).join(": ")).error || msg; } catch { /* */ }
+      try {
+        const body = JSON.parse(err.message.split(": ").slice(1).join(": "));
+        // Prefer the human-readable .message (e.g. AI Mode payer lock) over
+        // the .error code. Falls back to the raw error string if neither is set.
+        msg = body.message || body.error || msg;
+      } catch { /* leave msg as-is */ }
       toast({ title: "Couldn't create expense", description: msg, variant: "destructive" });
     },
   });

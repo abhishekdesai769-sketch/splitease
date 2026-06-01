@@ -3265,6 +3265,23 @@ setInterval(loadAll,30000);
       ? parsed.multi
       : [parsed];
 
+    // CURRENT-USER-PAID LOCK (server backstop).
+    //
+    // AI Mode is restricted to logging expenses paid by the current user only.
+    // The system prompt + tool descriptions enforce this at the model level,
+    // but we double-check on the server too — defense-in-depth against
+    // prompt injection or rare model misbehaviour. If we let an "X paid for
+    // Y" expense through here, a single Premium user in a group could log
+    // expenses on everyone else's behalf and kill our per-user monetization.
+    const badPayer = proposals.find((p) => p.paidByUserId !== guard.user.id);
+    if (badPayer) {
+      return res.status(400).json({
+        error: "ai_mode_payer_locked",
+        message:
+          "AI Mode can only log expenses you paid for. To split an expense someone else paid, please use the manual Add Expense form — it supports any payer.",
+      });
+    }
+
     // Create each via storage.createExpense — same path the manual form uses
     const created: any[] = [];
     const failed: any[] = [];
