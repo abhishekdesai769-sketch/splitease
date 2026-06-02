@@ -22,6 +22,7 @@ import * as ai from "./ai";
 import { buildAttachmentContext } from "./receiptTranscription";
 import * as aiQuota from "./aiQuota";
 import * as campaigns from "./campaigns";
+import * as authThrottle from "./auth-throttle";
 import multer from "multer";
 import { stripe, STRIPE_PRICE_MONTHLY, STRIPE_PRICE_YEARLY, STRIPE_ENABLED } from "./stripe";
 import {
@@ -757,12 +758,26 @@ setInterval(loadAll,30000);
   // ========== Auth (rate limited) ==========
   const authLimiter = rateLimit(15 * 60 * 1000, 20); // 20 attempts per 15 min
 
-  // Step 1: Send OTP to verify email before creating account
+  // Step 1: Send OTP to verify email before creating account.
+  // Per-IP rate limited via authLimiter, AND per-email rate limited via
+  // authThrottle.isAuthBlocked() — the latter catches IP-rotation attacks.
   app.post("/api/auth/send-otp", authLimiter, async (req, res) => {
     const { email, name } = req.body;
     if (!email || !name) return res.status(400).json({ error: "Email and name are required" });
 
     const cleanEmail = email.toLowerCase().trim();
+
+    // Per-email throttle: max 5 OTP sends per email per hour. Prevents an
+    // attacker from spamming an email's inbox via IP rotation.
+    const otpBlock = await authThrottle.isAuthBlocked(cleanEmail, "otp_sent");
+    if (otpBlock.blocked) {
+      res.setHeader("Retry-After", String(otpBlock.retryAfterSec ?? 3600));
+      return res.status(429).json({
+        error: "too_many_otp_requests",
+        message: `Too many verification code requests for this email. ${authThrottle.retryAfterMessage(otpBlock.retryAfterSec ?? 3600)}`,
+      });
+    }
+
     const existing = await storage.getUserByEmail(cleanEmail);
     if (existing && !existing.isGhost) {
       return res.status(409).json({ error: "An account with this email already exists" });
@@ -774,6 +789,9 @@ setInterval(loadAll,30000);
 
     await storage.createOtp({ email: cleanEmail, code, expiresAt });
     sendOtpEmail(cleanEmail, sanitize(name, 100), code);
+
+    // Record AFTER sending — counts toward the next-hour quota.
+    await authThrottle.recordAuthAttempt(cleanEmail, "otp_sent", req.ip || null);
 
     res.json({ message: "OTP sent" });
   });
@@ -928,10 +946,27 @@ setInterval(loadAll,30000);
 
       const { email, password } = parsed.data;
       const cleanEmail = email.toLowerCase().trim();
+
+      // Per-email throttle: max 10 failed logins per email per hour.
+      // Defends against IP-rotation credential stuffing — even if attackers
+      // cycle IPs to bypass the per-IP limiter, this brake is on the email.
+      const loginBlock = await authThrottle.isAuthBlocked(cleanEmail, "login_failed");
+      if (loginBlock.blocked) {
+        res.setHeader("Retry-After", String(loginBlock.retryAfterSec ?? 3600));
+        return res.status(429).json({
+          error: "too_many_failed_logins",
+          message: `Too many failed attempts for this account. ${authThrottle.retryAfterMessage(loginBlock.retryAfterSec ?? 3600)}`,
+        });
+      }
+
       const user = await storage.getUserByEmail(cleanEmail);
 
       if (!user) {
         console.log(`[login] no user found for ${cleanEmail}`);
+        // Record the attempt against the typed email even though no account
+        // exists — prevents using login as a "does this email have an
+        // account?" probing oracle at scale.
+        await authThrottle.recordAuthAttempt(cleanEmail, "login_failed", req.ip || null);
         return res.status(401).json({ error: "Invalid email or password" });
       }
 
@@ -942,6 +977,7 @@ setInterval(loadAll,30000);
 
       if (!verifyPassword(password, user.password)) {
         console.log(`[login] password mismatch for ${cleanEmail} (hash starts: ${user.password.substring(0, 10)}...)`);
+        await authThrottle.recordAuthAttempt(cleanEmail, "login_failed", req.ip || null);
         return res.status(401).json({ error: "Invalid email or password" });
       }
 

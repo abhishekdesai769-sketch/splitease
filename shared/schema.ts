@@ -235,6 +235,29 @@ export const campaignSends = pgTable("campaign_sends", {
 
 export type CampaignSend = typeof campaignSends.$inferSelect;
 
+// Per-email auth attempt log — defends against IP-rotation brute force
+// on login + OTP. The existing rateLimit() middleware is per-IP; this
+// table tracks per-EMAIL so an attacker with Tor / residential proxies
+// can't bypass by changing IP every 20 requests.
+//
+// Two attempt kinds:
+//   "login_failed" — recorded on every failed login (>= 10 in 1hr blocks)
+//   "otp_sent"     — recorded on every OTP we send (>= 5 in 1hr blocks)
+//
+// Successful login DOES NOT clear failed attempts; they expire from
+// the 1hr window naturally. Old rows can be purged by a nightly cron.
+export const authAttempts = pgTable("auth_attempts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  normalizedEmail: text("normalized_email").notNull(),
+  kind: text("kind").notNull(),                  // "login_failed" | "otp_sent"
+  ip: text("ip"),                                 // recorded for forensics, not blocking
+  createdAt: text("created_at").notNull(),
+}, (table) => [
+  index("auth_attempts_email_kind_created_idx").on(table.normalizedEmail, table.kind, table.createdAt),
+]);
+
+export type AuthAttempt = typeof authAttempts.$inferSelect;
+
 // Tracks which days we've already fired the "global spend threshold crossed"
 // alert email. Prevents flooding the admin inbox — at most one alert per
 // day per threshold. Cleared automatically when the date rolls over.

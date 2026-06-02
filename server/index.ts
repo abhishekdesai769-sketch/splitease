@@ -280,6 +280,24 @@ async function runMigrations() {
       )
     `);
 
+    // ── Per-email auth attempt log (June 2026 — brute-force defense) ───
+    // Tracks failed logins + OTP sends per email so IP-rotation attacks
+    // can't bypass our per-IP rate limit. Helper in server/auth-throttle.ts.
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS auth_attempts (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        normalized_email text NOT NULL,
+        kind text NOT NULL,
+        ip text,
+        created_at text NOT NULL
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS auth_attempts_email_kind_created_idx ON auth_attempts(normalized_email, kind, created_at)`);
+
+    // Opportunistic cleanup — drop auth attempt rows older than 24h on every
+    // startup. Keeps the table tiny without needing a separate cron job.
+    await pool.query(`DELETE FROM auth_attempts WHERE created_at < (now() - interval '24 hours')::text`);
+
     // ── Campaign sends (June 2026 — one-off thank-you / milestone blasts) ──
     // One row per (user, campaign, channel). UNIQUE constraint makes the
     // runner idempotent — re-running a campaign skips users already sent.
