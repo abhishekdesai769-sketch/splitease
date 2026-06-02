@@ -413,9 +413,15 @@ export async function registerRoutes(
 </html>`);
   });
 
-  // Session setup — PostgreSQL-backed so sessions survive deploys
+  // Session setup — PostgreSQL-backed so sessions survive deploys.
+  // Pool capped at 5 connections (see server/db.ts for full rationale).
   const PgStore = pgSession(session);
-  const sessionPool = new Pool({ connectionString: process.env.DATABASE_URL });
+  const sessionPool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    max: 5,
+    idleTimeoutMillis: 30_000,
+    connectionTimeoutMillis: 5_000,
+  });
   const sessionSecret = process.env.SESSION_SECRET || (() => {
     if (process.env.NODE_ENV === "production") {
       console.error("[SECURITY] SESSION_SECRET env var is not set! All sessions will be invalidated on every server restart. Set SESSION_SECRET on Render immediately.");

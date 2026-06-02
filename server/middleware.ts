@@ -104,4 +104,10 @@ export const AVATAR_COLORS = [
   "#d97706", "#059669", "#4f46e5", "#be185d", "#2563eb",
 ];
 
-export const ADMIN_EMAIL = "abhishekdesai769@gmail.com";
+// ADMIN_EMAIL identifies the super-admin user. Source-of-truth is the
+// ADMIN_EMAIL env var on Render; the hardcoded fallback below is for
+// dev/legacy continuity and matches the value that's been in production.
+// Moving to env-var-first reduces blast radius from public-repo scanning
+// (this file is on GitHub) so attackers can't trivially see who to
+// phish for admin takeover. Existing prod behaviour unchanged.
+export const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "abhishekdesai769@gmail.com";
