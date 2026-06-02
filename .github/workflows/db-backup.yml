@@ -1,0 +1,132 @@
+name: Daily Neon DB backup
+
+# Runs daily at 06:00 UTC. Dumps the entire Spliiit Postgres database from
+# Neon, gzips it, encrypts with GPG (symmetric, AES-256), then attaches the
+# encrypted file to a dated GitHub Release on this repo. The releases are
+# the off-Neon copy — if Neon is gone, your data is still in GitHub.
+#
+# REQUIRED secrets (set in repo Settings → Secrets and variables → Actions):
+#   - NEON_DATABASE_URL  : the FULL Neon connection string (with credentials)
+#                          Use the read-only role if you can; otherwise the
+#                          standard URL is fine — pg_dump only reads.
+#   - BACKUP_GPG_PASSPHRASE
+#                        : a strong random passphrase to encrypt each dump.
+#                          Store this in 1Password — without it the backups
+#                          are useless. Generate with: openssl rand -hex 32
+#
+# RESTORE process (full instructions in docs/dr-runbook.md):
+#   gh release download backup-YYYY-MM-DD --pattern '*.gpg'
+#   gpg --decrypt backup.sql.gz.gpg > backup.sql.gz
+#   gunzip backup.sql.gz
+#   psql NEW_NEON_DATABASE_URL < backup.sql
+
+on:
+  schedule:
+    - cron: "0 6 * * *"    # 06:00 UTC daily
+  workflow_dispatch:       # manual trigger from Actions tab
+
+# We need write permission to create releases on this repo.
+permissions:
+  contents: write
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Install postgres-client and gpg
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client gpg gzip
+
+      - name: Generate backup filename
+        id: meta
+        run: |
+          DATE=$(date -u +%Y-%m-%d)
+          STAMP=$(date -u +%Y-%m-%dT%H%M%SZ)
+          echo "date=$DATE" >> "$GITHUB_OUTPUT"
+          echo "stamp=$STAMP" >> "$GITHUB_OUTPUT"
+          echo "filename=spliiit-backup-${STAMP}.sql.gz" >> "$GITHUB_OUTPUT"
+
+      - name: Dump database (plain SQL → gzip)
+        env:
+          DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::NEON_DATABASE_URL secret is not set."
+            exit 1
+          fi
+          # --no-owner and --no-acl make the dump portable across Neon projects.
+          # --clean ensures DROPs are issued before re-creates on restore.
+          # --if-exists pairs with --clean to avoid errors on fresh targets.
+          pg_dump "$DATABASE_URL" \
+            --no-owner \
+            --no-acl \
+            --clean \
+            --if-exists \
+            --quote-all-identifiers \
+            | gzip --best \
+            > "${{ steps.meta.outputs.filename }}"
+
+          # Quick sanity check — empty dumps mean something went wrong.
+          SIZE=$(stat -c%s "${{ steps.meta.outputs.filename }}")
+          if [ "$SIZE" -lt 1000 ]; then
+            echo "::error::Backup file is suspiciously small ($SIZE bytes). Aborting."
+            exit 1
+          fi
+          echo "Backup created: $SIZE bytes"
+
+      - name: Encrypt with GPG (symmetric AES-256)
+        env:
+          GPG_PASSPHRASE: ${{ secrets.BACKUP_GPG_PASSPHRASE }}
+        run: |
+          if [ -z "$GPG_PASSPHRASE" ]; then
+            echo "::error::BACKUP_GPG_PASSPHRASE secret is not set."
+            exit 1
+          fi
+          echo "$GPG_PASSPHRASE" | gpg \
+            --batch --yes \
+            --passphrase-fd 0 \
+            --symmetric \
+            --cipher-algo AES256 \
+            "${{ steps.meta.outputs.filename }}"
+          # Verify the encrypted file exists and remove the plaintext.
+          ls -la "${{ steps.meta.outputs.filename }}.gpg"
+          rm "${{ steps.meta.outputs.filename }}"
+
+      - name: Upload encrypted dump as a GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          DATE=${{ steps.meta.outputs.date }}
+          STAMP=${{ steps.meta.outputs.stamp }}
+          FILE="${{ steps.meta.outputs.filename }}.gpg"
+
+          # Use a date-stamped tag so each day gets its own immutable release.
+          # If the same date runs twice (manual re-trigger), the second run
+          # will overwrite — that's fine, takes the newer dump.
+          gh release create "backup-${DATE}" "$FILE" \
+            --repo "${{ github.repository }}" \
+            --title "Spliiit DB backup — ${DATE}" \
+            --notes "Encrypted Neon dump. Decrypt with the BACKUP_GPG_PASSPHRASE stored in 1Password. See docs/dr-runbook.md for restore steps." \
+            --target "${{ github.sha }}" \
+            || gh release upload "backup-${DATE}" "$FILE" --clobber
+
+      - name: Prune backups older than 90 days
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Keep ~3 months of daily backups. Older ones are deleted to keep
+          # the releases page tidy. Adjust the +90 threshold as you scale.
+          THRESHOLD=$(date -u -d "90 days ago" +%Y-%m-%d)
+          echo "Pruning backups before $THRESHOLD"
+          gh release list --repo "${{ github.repository }}" --limit 1000 \
+            | awk '$0 ~ /^backup-/ {print $1}' \
+            | while read TAG; do
+                # Tag format: backup-YYYY-MM-DD
+                D=$(echo "$TAG" | sed 's/^backup-//')
+                if [[ "$D" < "$THRESHOLD" ]]; then
+                  echo "Deleting old backup: $TAG"
+                  gh release delete "$TAG" --yes --cleanup-tag --repo "${{ github.repository }}" || true
+                fi
+              done
