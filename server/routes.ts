@@ -422,11 +422,25 @@ export async function registerRoutes(
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 5_000,
   });
-  const sessionSecret = process.env.SESSION_SECRET || (() => {
+  // SESSION_SECRET is REQUIRED in production. Without it, sessions are
+  // signed with a runtime-generated key that doesn't survive restarts —
+  // every deploy logs out every user AND the secret leaks into the random
+  // pool of process memory. We hard-crash on missing-in-production so
+  // misconfiguration fails loudly at boot instead of silently weakening
+  // security. In dev we still fall back to a stable random secret.
+  const sessionSecret = (() => {
+    const fromEnv = process.env.SESSION_SECRET;
+    if (fromEnv && fromEnv.length >= 16) return fromEnv;
     if (process.env.NODE_ENV === "production") {
-      console.error("[SECURITY] SESSION_SECRET env var is not set! All sessions will be invalidated on every server restart. Set SESSION_SECRET on Render immediately.");
+      console.error(
+        "[SECURITY] SESSION_SECRET env var is missing or too short (<16 chars). " +
+        "Refusing to start. Set SESSION_SECRET on Render to a long random value " +
+        "(e.g. `openssl rand -hex 32`) and redeploy.",
+      );
+      process.exit(1);
     }
-    return "spliiit-secret-" + randomBytes(16).toString("hex");
+    console.warn("[dev] SESSION_SECRET not set — using a one-time random secret. Sessions will reset on restart.");
+    return "spliiit-dev-secret-" + randomBytes(16).toString("hex");
   })();
 
   // Create session table if it doesn't exist (inline SQL — avoids missing table.sql file in prod build)
@@ -4453,8 +4467,20 @@ setInterval(loadAll,30000);
       const rawBody = (req as any).rawBody as Buffer;
       if (webhookSecret && rawBody) {
         event = stripe.webhooks.constructEvent(rawBody, sig, webhookSecret);
+      } else if (process.env.NODE_ENV !== "production") {
+        // Dev fallback — only allowed when not in production. In prod we
+        // refuse unsigned events outright (see below) to prevent anyone
+        // POSTing a fake "checkout.session.completed" and grabbing free
+        // Premium. This is the most important security check in the file.
+        event = req.body;
       } else {
-        event = req.body; // dev fallback (no signature check)
+        // Production + missing webhook secret OR missing raw body = refuse.
+        // Logs as critical; admin should set STRIPE_WEBHOOK_SECRET on Render.
+        console.error(
+          "[SECURITY] Stripe webhook received but STRIPE_WEBHOOK_SECRET is " +
+          "not configured. Refusing to process unsigned webhook event.",
+        );
+        return res.status(503).json({ error: "Webhook signing not configured" });
       }
     } catch (err: any) {
       console.error("[stripe] webhook signature error:", err.message);
