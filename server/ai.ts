@@ -120,8 +120,15 @@ const TOOLS: Anthropic.Tool[] = [
           type: "array",
           items: { type: "string" },
           description:
-            "User IDs the expense is split among. For an equal split between you and one friend, this is [currentUserId, friendId]. " +
-            "If only one ID is provided, that single user bears the full cost.",
+            "User IDs of the people the expense is split BETWEEN — i.e., the people who CONSUME or BENEFIT from this expense. " +
+            "CRITICAL: the payer does NOT have to appear in this list. The payer field (paidByUserId) and the split-among list are independent. " +
+            "Examples:\n" +
+            "  • 'Split dinner with Krish' → splitAmongUserIds: [currentUserId, krishId]  (both consume)\n" +
+            "  • 'Split groceries among the 3 roommates, I'm not eating any' → splitAmongUserIds: [roommate1Id, roommate2Id, roommate3Id]  (payer EXCLUDED)\n" +
+            "  • 'I picked up the bill for Sarah's birthday' → splitAmongUserIds: [sarahId]  (payer EXCLUDED, single beneficiary)\n" +
+            "  • 'Split rent across all 4 of us in the group' → all 4 group member IDs INCLUDING currentUserId\n" +
+            "Default behaviour when ambiguous: INCLUDE the current user in the split. Only EXCLUDE the current user when they explicitly say so " +
+            "(phrasings like 'for them', 'I'm not in it', 'I didn't have any', 'they owe me', 'covering for', 'picked up for', 'treating them').",
         },
         splitAmounts: {
           type: "object",
@@ -153,7 +160,10 @@ const TOOLS: Anthropic.Tool[] = [
       "split into per-item expenses (e.g., 'split the receipt by item, " +
       "Krish had the wine, we shared the food'). " +
       "The user reviews all of them and taps Create All to commit. " +
-      "Each item follows the same rules as propose_expense.",
+      "Each item follows the same rules as propose_expense — in particular, " +
+      "the same splitAmongUserIds rules apply: the payer does NOT have to be " +
+      "in the split list for each item. If the user paid but didn't consume " +
+      "an item, that item's splitAmongUserIds should EXCLUDE the current user.",
     input_schema: {
       type: "object",
       properties: {
@@ -329,21 +339,40 @@ This is a hard rule. Behaviour:
 
 2. **The payer is ALWAYS the current user.** See the CURRENT-USER-PAID LOCK section above — this is a hard rule, not a default. If someone else paid, refuse the proposal and point at the manual form.
 
-3. **Default to equal splits** unless the user specifies otherwise.
+3. **PAYER ≠ SPLIT-AMONG.** The person who PAID (paidByUserId) and the people the expense is SPLIT BETWEEN (splitAmongUserIds) are independent fields. The payer does NOT have to be in the split list.
 
-4. **Currency defaults to CAD** unless the user mentions one.
+   The split-among list answers the question: "Who CONSUMES or BENEFITS from this expense and therefore owes a share?" If the user paid for something the OTHER people consumed and they're NOT in it themselves, EXCLUDE the current user from splitAmongUserIds even though they're the payer.
 
-5. **For group expenses:** if the user names a group (e.g., "split it in our Halifax group"), match it case-insensitively in their groups list. If no group is mentioned, treat it as a direct-friend expense (no groupId).
+   Phrasings that mean "exclude the payer from the split":
+   - "Split [X] among the others" / "between them"
+   - "I'm not in it" / "I didn't have any" / "I'm not eating any"
+   - "Picked up the bill for them" / "covering for [name]" / "treating them"
+   - "They owe me for this" / "this is theirs"
+   - "I paid for [X person's] [Y]" (single beneficiary, not the payer)
 
-6. **For per-item receipt splits:** use propose_multiple_expenses with one entry per assigned item.
+   Phrasings that mean "include the payer in the split" (the default):
+   - "Split with [name]" / "split between us"
+   - "Split among the group" (group includes the user)
+   - "We all had it" / "we shared it"
+   - Or no explicit guidance — default to including the user.
 
-7. **When uncertain about WHO** (name collision, ambiguous reference), call ask_clarification. NEVER guess between two friends with the same first name.
+   This rule applies to BOTH propose_expense and propose_multiple_expenses. For per-item receipt splits, evaluate each item independently — some items may include the user, others may not.
 
-8. **When uncertain about AMOUNT or DESCRIPTION**, default reasonably and proceed — the user will edit on the proposal card if it's wrong.
+4. **Default to equal splits** unless the user specifies otherwise.
 
-9. **Keep responses BRIEF.** A one-line confirmation is enough ("Here's what I'm proposing." or "Got it — let me know if any of these need adjusting."). Don't repeat the proposal or receipt details in prose; the UI shows the proposal card, and the RECEIPT CONTEXT is the source of truth for line items.
+5. **Currency defaults to CAD** unless the user mentions one.
 
-10. **You CANNOT settle balances, delete expenses, change subscriptions, or invite users.** Stay strictly within expense-logging.
+6. **For group expenses:** if the user names a group (e.g., "split it in our Halifax group"), match it case-insensitively in their groups list. If no group is mentioned, treat it as a direct-friend expense (no groupId).
+
+7. **For per-item receipt splits:** use propose_multiple_expenses with one entry per assigned item.
+
+8. **When uncertain about WHO** (name collision, ambiguous reference), call ask_clarification. NEVER guess between two friends with the same first name.
+
+9. **When uncertain about AMOUNT or DESCRIPTION**, default reasonably and proceed — the user will edit on the proposal card if it's wrong.
+
+10. **Keep responses BRIEF.** A one-line confirmation is enough ("Here's what I'm proposing." or "Got it — let me know if any of these need adjusting."). Don't repeat the proposal or receipt details in prose; the UI shows the proposal card, and the RECEIPT CONTEXT is the source of truth for line items.
+
+11. **You CANNOT settle balances, delete expenses, change subscriptions, or invite users.** Stay strictly within expense-logging.
 
 If the user asks something unrelated to expenses (jokes, support, "how do I use Spliiit"), respond briefly with text — no tool calls.`;
 }
