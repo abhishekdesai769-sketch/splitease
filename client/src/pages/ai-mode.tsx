@@ -83,9 +83,44 @@ export default function AiMode() {
   const [nameLookup, setNameLookup] = useState<Record<string, string>>({});
   const [groupNameLookup, setGroupNameLookup] = useState<Record<string, string>>({});
 
-  // Premium gate. We render the page regardless so the gate UI is visible,
-  // but anything that calls the backend is short-circuited.
-  const isPremium = !!user?.isPremium;
+  // ── Access state ────────────────────────────────────────────────────
+  //
+  // Fetched once on mount via /api/ai/access. Drives which version of the
+  // page renders:
+  //   - "premium"     → full chat experience (unlimited subject to daily quota)
+  //   - "ios_trial"   → full chat + a "X of 3 left" indicator above the input
+  //   - "blocked"     → existing Premium-required teaser
+  //                     (subsets: non-iOS non-Premium, OR iOS user who's used
+  //                     their 3. The latter is allowed into the chat but
+  //                     attempts to send return the upgrade message inline.)
+  //
+  // While loading we render nothing visible — beats a flash of the wrong UI.
+  interface AccessState {
+    canUse: boolean;
+    reason: "premium" | "ios_trial" | "blocked";
+    hasIosToken: boolean;
+    freeTurnsRemaining?: number;
+    freeTurnsLimit?: number;
+    configured?: boolean;
+  }
+  const [access, setAccess] = useState<AccessState | null>(null);
+  useEffect(() => {
+    if (!user) return;
+    apiRequest("GET", "/api/ai/access")
+      .then((r) => r.json())
+      .then((data: AccessState) => setAccess(data))
+      .catch(() => {
+        // Default to blocked on error — safer than rendering chat for a
+        // user who shouldn't have it.
+        setAccess({ canUse: false, reason: "blocked", hasIosToken: false });
+      });
+  }, [user]);
+
+  // Lets non-Premium iOS users render the chat (they're allowed to attempt).
+  // True for both "ios_trial" and the "ios user past their trial" sub-case
+  // — the latter sees their send result come back as an upgrade message.
+  const canRenderChat = !!access && (access.reason === "premium" || access.reason === "ios_trial" || access.hasIosToken);
+  const isTrialUser = access?.reason === "ios_trial";
 
   // ── Boot: prepare name lookups once (used for rendering proposals) ────
   useEffect(() => {
@@ -108,7 +143,7 @@ export default function AiMode() {
 
   // ── Boot: if route has /:id, load that conversation
   useEffect(() => {
-    if (!conversationId || !isPremium) return;
+    if (!conversationId || !canRenderChat) return;
     apiRequest("GET", `/api/ai/conversations/${conversationId}`)
       .then((r) => r.json())
       .then((data) => {
@@ -127,7 +162,7 @@ export default function AiMode() {
         }
       })
       .catch(() => { /* let user start fresh */ });
-  }, [conversationId, isPremium]);
+  }, [conversationId, canRenderChat]);
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
@@ -159,6 +194,19 @@ export default function AiMode() {
       return r.json();
     },
     onSuccess: (data) => {
+      // Trial-user bookkeeping: every successful send (including the "free
+      // trial exhausted" pre-baked response) decrements/freezes the chip.
+      // After the 4th attempt, the server returned freeTrialExhausted=true
+      // and the user is now blocked from sending more.
+      if (data?.freeTrialExhausted) {
+        setAccess((a) => (a ? { ...a, reason: "blocked", freeTurnsRemaining: 0 } : a));
+      } else if (isTrialUser) {
+        setAccess((a) =>
+          a && typeof a.freeTurnsRemaining === "number"
+            ? { ...a, freeTurnsRemaining: Math.max(0, a.freeTurnsRemaining - 1) }
+            : a,
+        );
+      }
       // Replace the pending optimistic user-message + append assistant
       setMessages((prev) => {
         const next = prev.filter((m) => !m.pending);
@@ -347,8 +395,12 @@ export default function AiMode() {
   const renderName = (id: string) => nameLookup[id] || id.slice(0, 6);
   const renderGroupName = (id?: string | null) => (id ? groupNameLookup[id] || "Group" : null);
 
-  // ── Render: Premium gate ──────────────────────────────────────────────
-  if (!isPremium) {
+  // ── Render: loading + premium-gate (non-iOS non-Premium users) ────────
+  // While access is still being fetched, render nothing — avoids a flash of
+  // the wrong UI for trial users. Once access resolves, if they can't even
+  // attempt to use AI Mode (non-Premium non-iOS), show the existing teaser.
+  if (!access) return null;
+  if (!canRenderChat) {
     return (
       <div className="space-y-5">
         <PageHeader onBack={() => setLocation("/")} />
@@ -431,6 +483,17 @@ export default function AiMode() {
         style={{ bottom: "calc(4rem + env(safe-area-inset-bottom))" }}
       >
         <div className="max-w-3xl mx-auto">
+          {/* Free-trial indicator — only shown to non-Premium iOS users on
+              their first 3 uses. Disappears once they upgrade (or run out). */}
+          {isTrialUser && typeof access?.freeTurnsRemaining === "number" && (
+            <div className="flex items-center justify-center gap-1.5 mb-2">
+              <span className="inline-flex items-center gap-1 text-[10px] font-medium text-muted-foreground bg-muted/60 border border-border px-2 py-1 rounded-full">
+                <Sparkles className="w-2.5 h-2.5 text-primary" />
+                {access.freeTurnsRemaining} of {access.freeTurnsLimit} free uses left
+              </span>
+            </div>
+          )}
+
           {/* Hidden file input — triggered by the paperclip button below */}
           <input
             ref={fileInputRef}

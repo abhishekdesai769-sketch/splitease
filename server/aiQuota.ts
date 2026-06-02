@@ -12,7 +12,7 @@
 // for admin observability and proactive alert emails.
 
 import { db } from "./db";
-import { aiUsageDaily, aiAlertsSent, aiMessages } from "@shared/schema";
+import { aiUsageDaily, aiAlertsSent, aiMessages, aiConversations, deviceTokens } from "@shared/schema";
 import { eq, and, sql, gte, desc } from "drizzle-orm";
 import { sendSupportEmail } from "./email";
 import { ADMIN_EMAIL } from "./middleware";
@@ -453,6 +453,126 @@ export async function getRecentUsageWindow(days: number = 7): Promise<Array<{
     totalCents: r.total,
     uniqueUsers: r.users,
   }));
+}
+
+// ─── Free trial for non-Premium iOS users ────────────────────────────────
+//
+// Business decision: non-Premium users with an iOS native app installation
+// get FREE_TRIAL_TURNS_LIMIT free AI Mode interactions (lifetime, not daily).
+// After that they see a friendly upgrade message in the chat itself instead
+// of a Premium-gate wall.
+//
+// We intentionally do NOT extend this trial to web or Android non-Premium
+// users — the iOS App Store funnel converts better and that's where we want
+// to invest the free Anthropic credits. Other platforms keep the existing
+// Premium-required gate.
+//
+// "Turn used" = a single user-sent message in any of their AI conversations.
+// Counted from ai_messages directly (no separate counter column needed). If a
+// user was previously Premium and used 100+ messages then lost Premium, they
+// will appear "out of free trial" and must upgrade again — that's intentional.
+
+export const FREE_TRIAL_TURNS_LIMIT = 3;
+
+export type AiAccessReason = "premium" | "ios_trial" | "blocked";
+
+export interface AiAccessState {
+  canUse: boolean;
+  reason: AiAccessReason;
+  hasIosToken: boolean;       // for client-side compliance (Google Play hides upgrade CTA)
+  freeTurnsUsed?: number;
+  freeTurnsRemaining?: number;
+  freeTurnsLimit?: number;
+}
+
+async function getLifetimeUserMessageCount(userId: string): Promise<number> {
+  // Counts all role='user' messages across this user's conversations.
+  // Conversations belong to users via ai_conversations.user_id; messages
+  // belong to conversations via ai_messages.conversation_id. We join the
+  // two and count.
+  const [row] = await db
+    .select({ count: sql<number>`COUNT(*)::int` })
+    .from(aiMessages)
+    .innerJoin(aiConversations, eq(aiMessages.conversationId, aiConversations.id))
+    .where(and(eq(aiConversations.userId, userId), eq(aiMessages.role, "user")));
+  return row?.count ?? 0;
+}
+
+async function userHasIosToken(userId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: deviceTokens.id })
+    .from(deviceTokens)
+    .where(and(eq(deviceTokens.userId, userId), eq(deviceTokens.platform, "ios")))
+    .limit(1);
+  return !!row;
+}
+
+/**
+ * Evaluate whether a user can use AI Mode right now, and if so, under what
+ * regime (full Premium vs. limited free-trial).
+ *
+ * Premium users → unlimited (subject to daily quota in checkDailyQuota).
+ * Non-Premium iOS users → FREE_TRIAL_TURNS_LIMIT lifetime free turns.
+ * Everyone else (non-Premium web / Android) → blocked. Client shows the
+ * existing Premium-required upgrade teaser.
+ */
+export async function checkAiAccess(user: {
+  id: string;
+  isPremium: boolean;
+}): Promise<AiAccessState> {
+  if (user.isPremium) {
+    return { canUse: true, reason: "premium", hasIosToken: true };
+  }
+
+  const hasIos = await userHasIosToken(user.id);
+  if (!hasIos) {
+    // Non-Premium AND not on iOS native. Existing Premium-required gate.
+    return { canUse: false, reason: "blocked", hasIosToken: false };
+  }
+
+  const used = await getLifetimeUserMessageCount(user.id);
+  const remaining = Math.max(0, FREE_TRIAL_TURNS_LIMIT - used);
+
+  if (remaining === 0) {
+    // iOS user who's blown through their trial. We DO let them through
+    // for one final message-endpoint call that returns the upgrade copy
+    // — but at the access layer we report "blocked" so the client's UI
+    // shows the limited state. The message endpoint handles the "is this
+    // the 4th turn?" case separately.
+    return {
+      canUse: false,
+      reason: "blocked",
+      hasIosToken: true,
+      freeTurnsUsed: used,
+      freeTurnsRemaining: 0,
+      freeTurnsLimit: FREE_TRIAL_TURNS_LIMIT,
+    };
+  }
+
+  return {
+    canUse: true,
+    reason: "ios_trial",
+    hasIosToken: true,
+    freeTurnsUsed: used,
+    freeTurnsRemaining: remaining,
+    freeTurnsLimit: FREE_TRIAL_TURNS_LIMIT,
+  };
+}
+
+/**
+ * The pre-baked upgrade message returned as the "assistant response" when a
+ * non-Premium iOS user tries their 4th+ turn. Written in markdown so the
+ * client's AssistantMarkdown renderer formats the link as a real link.
+ *
+ * Tone: warm, no apology, no shame. Acknowledges the free try, names what
+ * Premium unlocks, points at the upgrade page. Plain text fallback for
+ * platforms that don't support markdown links.
+ */
+export function getFreeTrialExhaustedMessage(): string {
+  return (
+    "Hey — those 3 were on me, a free try-it-out. **AI Mode is a Premium feature** from here on. " +
+    "[Upgrade to Premium](#/upgrade) to keep parsing receipts and splitting by voice, or stick with the manual Add Expense form (always free)."
+  );
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────

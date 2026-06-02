@@ -3119,7 +3119,16 @@ setInterval(loadAll,30000);
   });
 
   // Guard: feature flag + Premium gate + Anthropic key present
-  async function aiGuard(req: any, res: any): Promise<{ user: any } | null> {
+  // aiGuard: auth + AI-config check + access-tier resolution.
+  //
+  // Previously this hard-blocked all non-Premium users. Now:
+  //   - Premium users: pass through unchanged
+  //   - Non-Premium iOS users (has APNs token): pass through into the
+  //     free-trial regime; the message endpoint enforces the 3-turn limit
+  //   - Non-Premium non-iOS users: still blocked here (premium_required)
+  // The decision is wrapped into the returned `access` object so callers
+  // (message endpoint) can branch on the regime.
+  async function aiGuard(req: any, res: any): Promise<{ user: any; access: aiQuota.AiAccessState } | null> {
     if (!ai.AI_MODE_ENABLED) {
       res.status(503).json({ error: "ai_not_configured", message: "AI Mode isn't live yet." });
       return null;
@@ -3127,11 +3136,17 @@ setInterval(loadAll,30000);
     const userId = (req.session as any).userId;
     const user = await storage.getUser(userId);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return null; }
-    if (!user.isPremium) {
+
+    const access = await aiQuota.checkAiAccess({ id: user.id, isPremium: !!user.isPremium });
+    // Web / Android non-Premium: block entry the same way it always did.
+    // Note: iOS users whose free trial is exhausted (access.canUse=false,
+    // hasIosToken=true) DO pass this guard — the message endpoint handles
+    // the 4th-turn case by returning the upgrade message in-band.
+    if (!access.canUse && !access.hasIosToken) {
       res.status(403).json({ error: "premium_required", message: "AI Mode is a Premium feature." });
       return null;
     }
-    return { user };
+    return { user, access };
   }
 
   // Helper: build the AI context (friends + groups + name lookup) for a user
@@ -3184,6 +3199,23 @@ setInterval(loadAll,30000);
     res.json({ conversations: list });
   });
 
+  // 2.5. Per-user access state — used by the client to render the right
+  // version of the /ai page (full chat for Premium / iOS trial, upgrade
+  // teaser for non-Premium non-iOS users). Returns:
+  //   canUse, reason ("premium" | "ios_trial" | "blocked"),
+  //   hasIosToken (controls upgrade-CTA visibility on TWA),
+  //   freeTurnsUsed / Remaining / Limit (when reason === "ios_trial")
+  app.get("/api/ai/access", requireAuth, async (req: any, res) => {
+    if (!ai.AI_MODE_ENABLED) {
+      return res.json({ canUse: false, reason: "blocked", hasIosToken: false, configured: false });
+    }
+    const userId = (req.session as any).userId;
+    const user = await storage.getUser(userId);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const access = await aiQuota.checkAiAccess({ id: user.id, isPremium: !!user.isPremium });
+    res.json({ ...access, configured: true });
+  });
+
   // 3. Get a conversation + all its messages
   app.get("/api/ai/conversations/:id", requireAuth, async (req: any, res) => {
     const guard = await aiGuard(req, res); if (!guard) return;
@@ -3208,6 +3240,43 @@ setInterval(loadAll,30000);
 
     const [conv] = await db.select().from(aiConversations).where(eq(aiConversations.id, req.params.id));
     if (!conv || conv.userId !== guard.user.id) return res.status(404).json({ error: "not_found" });
+
+    // ── FREE-TRIAL GATE (iOS non-Premium users) ───────────────────────────
+    //
+    // Non-Premium iOS users get 3 free turns. On their 4th attempt, we don't
+    // call Claude — instead we persist their user message and a pre-baked
+    // "you're out of free uses" assistant message, so the chat transcript
+    // shows the upgrade nudge as a normal AI bubble. No API cost, no daily
+    // quota burn. Premium users skip this entirely.
+    if (guard.access.reason === "blocked" && guard.access.hasIosToken) {
+      // iOS user whose trial is exhausted (canUse=false, hasIos=true). Insert
+      // their question + the pre-baked upgrade message into the transcript.
+      const now = new Date().toISOString();
+      const [userMsg] = await db.insert(aiMessages).values({
+        conversationId: conv.id,
+        role: "user",
+        content: text || "[receipt attached]",
+        createdAt: now,
+      }).returning();
+      const upgradeText = aiQuota.getFreeTrialExhaustedMessage();
+      const [assistantMsg] = await db.insert(aiMessages).values({
+        conversationId: conv.id,
+        role: "assistant",
+        content: upgradeText,
+        createdAt: new Date().toISOString(),
+      }).returning();
+      await db.update(aiConversations)
+        .set({ updatedAt: new Date().toISOString() })
+        .where(eq(aiConversations.id, conv.id));
+      return res.json({
+        userMessage: userMsg,
+        assistantMessage: assistantMsg,
+        kind: "text",
+        proposal: null,
+        multiProposal: null,
+        freeTrialExhausted: true,    // client uses this to show an upgrade banner
+      });
+    }
 
     // ── ABUSE PREVENTION GAUNTLET ────────────────────────────────────────
     //
