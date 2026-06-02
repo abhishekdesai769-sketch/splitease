@@ -12,6 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { calculateGroupBalances } from "@/lib/simplify";
+import { displayBalance } from "@/lib/balance-display";
 import { track } from "@/lib/analytics";
 import { triggerReview } from "@/lib/reviewPrompt";
 
@@ -54,7 +55,10 @@ export default function Groups() {
     if (groupExpenses.length === 0) return 0;
     const balances = calculateGroupBalances(groupExpenses);
     const myBalance = balances.find((b) => b.personId === user.id);
-    return myBalance ? Math.round(myBalance.amount * 100) / 100 : 0;
+    const raw = myBalance ? Math.round(myBalance.amount * 100) / 100 : 0;
+    // Snap sub-$0.05 rounding residuals to 0 so the groups list shows
+    // "settled" for fully-paid-up groups instead of phantom $0.01 chips.
+    return displayBalance(raw);
   };
 
   return (

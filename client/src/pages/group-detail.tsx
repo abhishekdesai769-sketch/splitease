@@ -21,6 +21,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { calculateGroupBalances, simplifyDebts, calculatePairwiseBalances } from "@/lib/simplify";
+import { isEffectivelySettled, displayBalance } from "@/lib/balance-display";
 import { recordExpenseAndCheck, triggerReview } from "@/lib/reviewPrompt";
 import { track } from "@/lib/analytics";
 
@@ -1688,11 +1689,12 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
       {/* Your Balances + Settle Up */}
       {expenses.length > 0 && (
         <div>
-          {/* Net total heading */}
+          {/* Net total heading — sub-5¢ residuals are hidden as "settled".
+              See lib/balance-display.ts for the rationale. */}
           {(() => {
             const myBal = balances.find(b => b.personId === user?.id);
             const net = myBal ? Math.round(myBal.amount * 100) / 100 : 0;
-            if (net === 0) return (
+            if (isEffectivelySettled(net)) return (
               <p className="text-base font-semibold text-muted-foreground text-center py-2">You're all settled up!</p>
             );
             return (
@@ -1704,9 +1706,12 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
             );
           })()}
 
-          {/* Personal balance view */}
+          {/* Personal balance view — phantom-cent settlements (< $0.05) are
+              filtered out so the user doesn't see "You owe Krish $0.01"
+              rows after settling. */}
           {(() => {
-            const mySettlements = group.simplifyDebts ? mySimplified : myPairwise;
+            const mySettlements = (group.simplifyDebts ? mySimplified : myPairwise)
+              .filter((s) => !isEffectivelySettled(s.amount));
             if (mySettlements.length === 0) return null;
             return (
               <div className="space-y-2 mb-3">
@@ -1789,19 +1794,23 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
           </Button>
           {memberBalancesOpen && (
             <div className="space-y-1.5 pt-1 animate-in fade-in slide-in-from-top-2 duration-200">
-              {balances.filter(b => b.personId !== user?.id).map((b) => (
-                <div key={b.personId} className="flex items-center justify-between gap-2 px-1 py-0.5">
-                  <span className="text-base">{getPersonName(b.personId)}</span>
-                  <span
-                    className={`text-base font-semibold ${
-                      b.amount > 0 ? "text-primary" : b.amount < 0 ? "text-destructive" : "text-muted-foreground"
-                    }`}
-                  >
-                    {b.amount > 0 ? "gets back" : b.amount < 0 ? "pays" : "settled"}{" "}
-                    {b.amount !== 0 && `$${Math.abs(b.amount).toFixed(2)}`}
-                  </span>
-                </div>
-              ))}
+              {balances.filter(b => b.personId !== user?.id).map((b) => {
+                // Snap sub-cent residuals to 0 for display ("settled" state)
+                const displayAmt = displayBalance(b.amount);
+                return (
+                  <div key={b.personId} className="flex items-center justify-between gap-2 px-1 py-0.5">
+                    <span className="text-base">{getPersonName(b.personId)}</span>
+                    <span
+                      className={`text-base font-semibold ${
+                        displayAmt > 0 ? "text-primary" : displayAmt < 0 ? "text-destructive" : "text-muted-foreground"
+                      }`}
+                    >
+                      {displayAmt > 0 ? "gets back" : displayAmt < 0 ? "pays" : "settled"}{" "}
+                      {displayAmt !== 0 && `$${Math.abs(displayAmt).toFixed(2)}`}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

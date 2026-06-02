@@ -19,6 +19,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { calculateGroupBalances } from "@/lib/simplify";
+import { displayBalance } from "@/lib/balance-display";
 import { recordExpenseAndCheck, triggerReview } from "@/lib/reviewPrompt";
 
 export default function FriendDetail({ friendId }: { friendId: string }) {
@@ -110,9 +111,13 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
     (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
   );
 
-  // Calculate balance between just this user and this friend
+  // Calculate balance between just this user and this friend.
+  // displayBalance() snaps sub-$0.05 rounding residuals to 0 so the friend
+  // detail page shows "All settled up" when fully paid (instead of phantom
+  // cents from non-evenly-divisible split math).
   const friendBalances = calculateGroupBalances(friendExpenses);
-  const myBalance = friendBalances.find((b) => b.personId === user?.id)?.amount || 0;
+  const rawMyBalance = friendBalances.find((b) => b.personId === user?.id)?.amount || 0;
+  const myBalance = displayBalance(rawMyBalance);
 
   const addExpenseMutation = useMutation({
     mutationFn: async () => {

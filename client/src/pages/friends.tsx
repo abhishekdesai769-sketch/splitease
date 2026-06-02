@@ -19,6 +19,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { calculateGroupBalances, calculatePairwiseBalances } from "@/lib/simplify";
+import { displayBalance, isEffectivelySettled } from "@/lib/balance-display";
 
 export default function Friends() {
   const { user } = useAuth();
@@ -206,7 +207,8 @@ export default function Friends() {
   // Calculate balances across all direct (non-group) expenses
   const settlements = calculatePairwiseBalances(directExpenses);
 
-  // Per-friend balance
+  // Per-friend balance. displayBalance() snaps sub-$0.05 rounding residuals
+  // to 0 so the friends list shows "settled" instead of phantom-cent values.
   const getFriendBalance = (friendId: string) => {
     const relevantExpenses = directExpenses.filter(
       (e) =>
@@ -215,7 +217,7 @@ export default function Friends() {
     );
     const friendBalances = calculateGroupBalances(relevantExpenses);
     const myBalance = friendBalances.find((b) => b.personId === user?.id);
-    return myBalance?.amount || 0;
+    return displayBalance(myBalance?.amount || 0);
   };
 
   const getPersonName = (id: string) => {

@@ -7,6 +7,7 @@ import { UsersRound, Users2, TrendingDown, TrendingUp, MailPlus, Check, X, Repea
 import { Link } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { calculateGroupBalances, calculatePairwiseBalances, simplifyDebts } from "@/lib/simplify";
+import { displayBalance, isEffectivelySettled } from "@/lib/balance-display";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { CelebrationBanner } from "@/components/CelebrationBanner";
@@ -102,11 +103,14 @@ export default function Dashboard() {
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     .slice(0, 5);
 
-  // Calculate what the current user owes / is owed (net balance is always the same regardless of simplify)
+  // Calculate what the current user owes / is owed (net balance is always the same regardless of simplify).
+  // displayBalance() snaps sub-$0.05 rounding residuals to 0 so the stat cards
+  // don't show "You're Owed $0.01" after the user has settled everything.
   const balances = calculateGroupBalances(expenses);
   const myBalance = balances.find((b) => b.personId === user?.id);
-  const youOwe = myBalance && myBalance.amount < 0 ? Math.abs(myBalance.amount) : 0;
-  const youAreOwed = myBalance && myBalance.amount > 0 ? myBalance.amount : 0;
+  const rawAmount = myBalance ? myBalance.amount : 0;
+  const youOwe = rawAmount < 0 ? Math.abs(displayBalance(rawAmount)) : 0;
+  const youAreOwed = rawAmount > 0 ? displayBalance(rawAmount) : 0;
 
   // Per-group settlements: use simplified or pairwise based on each group's setting
   const mySettlements = (() => {
@@ -141,7 +145,9 @@ export default function Dashboard() {
     }
     const merged: { from: string; to: string; amount: number }[] = [];
     for (const [otherId, net] of netMap) {
-      if (Math.abs(net) < 0.01) continue;
+      // Skip phantom-cent residuals from rounding so the dashboard's
+      // "Your Balances" doesn't list "You owe X $0.01" rows.
+      if (isEffectivelySettled(net)) continue;
       if (net > 0) merged.push({ from: otherId, to: user!.id, amount: Math.round(net * 100) / 100 });
       else merged.push({ from: user!.id, to: otherId, amount: Math.round(Math.abs(net) * 100) / 100 });
     }
