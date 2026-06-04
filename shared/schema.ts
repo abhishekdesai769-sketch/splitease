@@ -258,6 +258,39 @@ export const authAttempts = pgTable("auth_attempts", {
 
 export type AuthAttempt = typeof authAttempts.$inferSelect;
 
+// Client error log — every 4xx/5xx response or uncaught JS error in the
+// frontend posts a row here so the admin can see what's failing for users
+// without them having to message us. PRIVACY: never log request bodies
+// (financial data), only metadata. All string columns are length-capped
+// at the route layer.
+//
+// Filled by:
+//   - apiRequest() wrapper in queryClient.ts on non-2xx responses
+//   - window.onerror + unhandledrejection in main.tsx on uncaught exceptions
+//
+// Reviewed by admin via /admin → Recent Errors panel.
+export const clientErrors = pgTable("client_errors", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id"),                    // null if not logged in
+  userEmail: text("user_email"),                 // null if not logged in
+  occurredAt: text("occurred_at").notNull(),
+  endpoint: text("endpoint"),                    // e.g. "/api/groups/X/import-mapped"
+  statusCode: integer("status_code"),            // HTTP status; null for JS exceptions
+  errorCode: text("error_code"),                 // machine-readable, e.g. "ai_rate_limited"
+  errorMessage: text("error_message"),           // human-readable, what the user saw
+  contextJson: text("context_json"),             // optional extra JSON debug context
+  url: text("url"),                              // hash route / page URL when error fired
+  userAgent: text("user_agent"),
+  reviewedAt: text("reviewed_at"),               // ISO timestamp or null
+  reviewedBy: varchar("reviewed_by"),            // admin userId
+}, (table) => [
+  index("client_errors_occurred_at_idx").on(table.occurredAt),
+  index("client_errors_reviewed_at_idx").on(table.reviewedAt),
+  index("client_errors_user_id_idx").on(table.userId),
+]);
+
+export type ClientError = typeof clientErrors.$inferSelect;
+
 // Tracks which days we've already fired the "global spend threshold crossed"
 // alert email. Prevents flooding the admin inbox — at most one alert per
 // day per threshold. Cleared automatically when the date rolls over.

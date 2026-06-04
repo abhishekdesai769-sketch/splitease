@@ -2,8 +2,44 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./index.css";
 import { initAnalytics } from "./lib/analytics";
+import { logClientError } from "./lib/queryClient";
 
 initAnalytics();
+
+// ─── Global uncaught-exception logging ─────────────────────────────────────
+// Catches JS errors that escape React boundaries (or fire outside React
+// entirely — service worker, capacitor plugin callbacks, etc) so they show
+// up in /admin → Recent Errors. Fire-and-forget, never affects UX.
+
+window.addEventListener("error", (event) => {
+  const msg = event.message || (event.error && event.error.message) || "Unknown error";
+  // Skip known noise from third-party scripts / extensions
+  if (msg.includes("ResizeObserver loop") || msg.includes("Script error.")) return;
+  logClientError({
+    errorCode: "js_uncaught_error",
+    errorMessage: msg,
+    contextJson: JSON.stringify({
+      filename: event.filename,
+      lineno: event.lineno,
+      colno: event.colno,
+      stack: event.error?.stack?.slice(0, 2000),
+    }),
+  });
+});
+
+window.addEventListener("unhandledrejection", (event) => {
+  const reason: any = event.reason;
+  const msg = typeof reason === "string"
+    ? reason
+    : reason?.message || JSON.stringify(reason).slice(0, 500);
+  logClientError({
+    errorCode: "js_unhandled_rejection",
+    errorMessage: msg,
+    contextJson: JSON.stringify({
+      stack: reason?.stack?.slice(0, 2000),
+    }),
+  });
+});
 
 if (!window.location.hash) {
   window.location.hash = "#/";

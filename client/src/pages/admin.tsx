@@ -340,6 +340,9 @@ export default function Admin() {
       {/* AI Mode usage observability — quota / spend / top spenders */}
       <AiUsagePanel />
 
+      {/* Customer-facing errors — what users are actually hitting */}
+      <ClientErrorsPanel />
+
       {/* Campaign runner — milestone / promo blasts (dry-run first) */}
       <CampaignPanel />
 
@@ -1093,6 +1096,167 @@ function CampaignPanel() {
       <p className="text-[10px] text-muted-foreground italic">
         Required to fire: set <code className="px-1 bg-muted/60 rounded font-mono">CAMPAIGN_1K_ENABLED=true</code> on Render + redeploy.
       </p>
+    </Card>
+  );
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// ClientErrorsPanel — last 100 customer-facing errors so you can see what
+// users are hitting without them having to message you.
+// Errors get logged automatically by the queryClient wrapper on any non-2xx
+// response, plus window.onerror / unhandledrejection handlers in main.tsx.
+// ───────────────────────────────────────────────────────────────────────────
+
+interface ClientErrorRow {
+  id: string;
+  userId: string | null;
+  userEmail: string | null;
+  occurredAt: string;
+  endpoint: string | null;
+  statusCode: number | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+  contextJson: string | null;
+  url: string | null;
+  userAgent: string | null;
+  reviewedAt: string | null;
+}
+
+interface ClientErrorsResponse {
+  errors: ClientErrorRow[];
+  topToday: Array<{ message: string | null; endpoint: string | null; count: number }>;
+}
+
+function ClientErrorsPanel() {
+  const { toast } = useToast();
+  const [showAll, setShowAll] = useState(false);
+  const { data, isLoading, refetch } = useQuery<ClientErrorsResponse>({
+    queryKey: [`/api/admin/client-errors?all=${showAll ? "1" : "0"}`],
+    queryFn: async () => {
+      const r = await apiRequest("GET", `/api/admin/client-errors?all=${showAll ? "1" : "0"}`);
+      return r.json();
+    },
+    refetchInterval: 30_000,
+  });
+
+  const reviewOne = async (id: string) => {
+    try {
+      await apiRequest("POST", `/api/admin/client-errors/${id}/review`);
+      refetch();
+    } catch (err: any) {
+      toast({ title: "Mark-reviewed failed", description: err?.message, variant: "destructive" });
+    }
+  };
+
+  const reviewAll = async () => {
+    try {
+      const r = await apiRequest("POST", "/api/admin/client-errors/review-all");
+      const json = await r.json();
+      toast({ title: `Marked ${json.count ?? 0} errors as reviewed` });
+      refetch();
+    } catch (err: any) {
+      toast({ title: "Failed to mark-all-reviewed", description: err?.message, variant: "destructive" });
+    }
+  };
+
+  const fmtAgo = (iso: string): string => {
+    const ms = Date.now() - new Date(iso).getTime();
+    if (ms < 60_000) return `${Math.floor(ms / 1000)}s ago`;
+    if (ms < 3_600_000) return `${Math.floor(ms / 60_000)}m ago`;
+    if (ms < 86_400_000) return `${Math.floor(ms / 3_600_000)}h ago`;
+    return `${Math.floor(ms / 86_400_000)}d ago`;
+  };
+
+  if (isLoading) {
+    return (
+      <Card className="p-4">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <AlertTriangle className="w-4 h-4" />
+          Loading customer errors…
+        </div>
+      </Card>
+    );
+  }
+
+  if (!data) return null;
+
+  const total = data.errors.length;
+
+  return (
+    <Card className="p-4 space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 text-amber-500" />
+          <h2 className="text-sm font-semibold">
+            Customer-facing errors {showAll ? "(all)" : "(unreviewed)"}
+            {total > 0 && <span className="text-muted-foreground font-normal ml-1">— {total}</span>}
+          </h2>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="ghost" onClick={() => setShowAll((s) => !s)}>
+            {showAll ? "Show unreviewed" : "Show all"}
+          </Button>
+          {!showAll && total > 0 && (
+            <Button size="sm" variant="outline" onClick={reviewAll}>
+              Mark all reviewed
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {data.topToday.length > 0 && (
+        <div className="rounded-lg border border-border bg-muted/30 p-2.5 space-y-1">
+          <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-mono">
+            Most common today
+          </p>
+          {data.topToday.slice(0, 5).map((t, i) => (
+            <div key={i} className="flex items-center justify-between gap-2 text-xs">
+              <span className="truncate flex-1 min-w-0">
+                <span className="text-muted-foreground">{t.endpoint || "(no endpoint)"} ·</span>{" "}
+                <span>{t.message || "(no message)"}</span>
+              </span>
+              <span className="shrink-0 font-mono text-muted-foreground">×{t.count}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {total === 0 ? (
+        <p className="text-xs text-muted-foreground italic py-2 text-center">
+          {showAll ? "No errors logged yet." : "Nothing to review — clean slate."}
+        </p>
+      ) : (
+        <div className="space-y-1.5 max-h-[480px] overflow-y-auto">
+          {data.errors.map((e) => (
+            <div
+              key={e.id}
+              className={`rounded-lg border p-2.5 space-y-1 text-xs ${
+                e.reviewedAt ? "border-border bg-muted/20 opacity-60" : "border-amber-500/30 bg-amber-500/5"
+              }`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-mono text-[10px] text-muted-foreground">
+                  {fmtAgo(e.occurredAt)}
+                  {e.statusCode != null && <span className="ml-1">· HTTP {e.statusCode}</span>}
+                  {e.userEmail && <span className="ml-1">· {e.userEmail}</span>}
+                </span>
+                {!e.reviewedAt && (
+                  <Button size="sm" variant="ghost" className="h-6 px-2 text-[10px]" onClick={() => reviewOne(e.id)}>
+                    Mark reviewed
+                  </Button>
+                )}
+              </div>
+              {e.endpoint && (
+                <p className="font-mono text-[11px] text-muted-foreground truncate">{e.endpoint}</p>
+              )}
+              <p className="font-medium">{e.errorMessage || "(no message)"}</p>
+              {e.url && (
+                <p className="text-[10px] text-muted-foreground truncate">on {e.url}</p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </Card>
   );
 }

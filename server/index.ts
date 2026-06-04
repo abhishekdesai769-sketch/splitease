@@ -298,6 +298,34 @@ async function runMigrations() {
     // startup. Keeps the table tiny without needing a separate cron job.
     await pool.query(`DELETE FROM auth_attempts WHERE created_at < (now() - interval '24 hours')::text`);
 
+    // ── Client error log (June 2026 — customer-visible error observability) ─
+    // Populated by frontend on 4xx/5xx responses + uncaught JS exceptions.
+    // Reviewed by admin via /admin → Recent Errors panel.
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS client_errors (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id varchar,
+        user_email text,
+        occurred_at text NOT NULL,
+        endpoint text,
+        status_code integer,
+        error_code text,
+        error_message text,
+        context_json text,
+        url text,
+        user_agent text,
+        reviewed_at text,
+        reviewed_by varchar
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS client_errors_occurred_at_idx ON client_errors(occurred_at)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS client_errors_reviewed_at_idx ON client_errors(reviewed_at)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS client_errors_user_id_idx ON client_errors(user_id)`);
+    // Opportunistic cleanup — drop reviewed errors older than 30 days, and
+    // any error (reviewed or not) older than 90 days. Keeps the table small.
+    await pool.query(`DELETE FROM client_errors WHERE reviewed_at IS NOT NULL AND occurred_at < (now() - interval '30 days')::text`);
+    await pool.query(`DELETE FROM client_errors WHERE occurred_at < (now() - interval '90 days')::text`);
+
     // ── Campaign sends (June 2026 — one-off thank-you / milestone blasts) ──
     // One row per (user, campaign, channel). UNIQUE constraint makes the
     // runner idempotent — re-running a campaign skips users already sent.

@@ -9,7 +9,7 @@ import appleSignin from "apple-signin-auth";
 import { storage } from "./storage";
 import { db } from "./db";
 import { referralClicks, deviceTokens } from "@shared/schema";
-import { eq, and, gt, desc, sql } from "drizzle-orm";
+import { eq, and, gt, desc, sql, isNull } from "drizzle-orm";
 import { signupSchema, loginSchema, forgotPasswordSchema, resetPasswordSchema } from "@shared/schema";
 import { notifyExpenseCreated, sendOtpEmail, sendResetPasswordEmail, sendExportEmail, sendSupportEmail, sendInviteToInviteeEmail, sendInviteToAdminEmail, sendPremiumWelcomeEmail } from "./email";
 import { pushExpenseCreated, pushGroupMemberJoined, pushAddedToGroup, deleteDeviceToken as deleteDeviceTokenRow } from "./push";
@@ -23,6 +23,7 @@ import { buildAttachmentContext } from "./receiptTranscription";
 import * as aiQuota from "./aiQuota";
 import * as campaigns from "./campaigns";
 import * as authThrottle from "./auth-throttle";
+import { clientErrors as clientErrorsTable } from "@shared/schema";
 import multer from "multer";
 import { stripe, STRIPE_PRICE_MONTHLY, STRIPE_PRICE_YEARLY, STRIPE_ENABLED } from "./stripe";
 import {
@@ -1419,6 +1420,127 @@ setInterval(loadAll,30000);
       console.error("[admin] ai-usage failed:", err);
       res.status(500).json({ error: "ai_usage_failed", message: err?.message });
     }
+  });
+
+  // ─── Client error logging ─────────────────────────────────────────────
+  //
+  // Frontend POSTs here on:
+  //   - Any 4xx/5xx response from apiRequest()
+  //   - Uncaught JS exceptions (window.onerror / unhandledrejection)
+  //
+  // Fire-and-forget from the frontend's perspective — we just record it.
+  // Rate-limited by IP to prevent abuse (someone scripting POSTs to fill
+  // the table). Auth NOT required (errors can fire before login), but
+  // we capture session.userId when present.
+  //
+  // PRIVACY: never log request bodies. Only metadata. Length-cap every
+  // field at insert time as defence-in-depth against accidental leakage.
+
+  const clientErrorLimiter = rateLimit(60 * 1000, 30); // 30/min/IP
+  app.post("/api/client-errors", clientErrorLimiter, async (req: any, res) => {
+    try {
+      const cap = (v: any, n: number): string | null => {
+        if (typeof v !== "string") return null;
+        const t = v.trim();
+        if (t.length === 0) return null;
+        return t.length > n ? t.slice(0, n) : t;
+      };
+      const endpoint = cap(req.body?.endpoint, 500);
+      const errorCode = cap(req.body?.errorCode, 200);
+      const errorMessage = cap(req.body?.errorMessage, 1000);
+      const contextJson = cap(req.body?.contextJson, 4000);
+      const url = cap(req.body?.url, 500);
+      const userAgent = cap(req.headers["user-agent"], 500);
+      const statusCodeRaw = req.body?.statusCode;
+      const statusCode =
+        typeof statusCodeRaw === "number" && statusCodeRaw >= 0 && statusCodeRaw < 1000
+          ? statusCodeRaw
+          : null;
+
+      // Reject obviously-empty submissions (somebody pinging the endpoint)
+      if (!errorMessage && !errorCode && !endpoint) {
+        return res.status(204).end();
+      }
+
+      const userId = (req.session as any)?.userId || null;
+      let userEmail: string | null = null;
+      if (userId) {
+        try {
+          const u = await storage.getUser(userId);
+          userEmail = u?.email || null;
+        } catch { /* ignore */ }
+      }
+
+      await db.insert(clientErrorsTable).values({
+        userId,
+        userEmail,
+        occurredAt: new Date().toISOString(),
+        endpoint,
+        statusCode,
+        errorCode,
+        errorMessage,
+        contextJson,
+        url,
+        userAgent,
+      });
+      // Always 204 — don't give attackers feedback on what we accepted.
+      res.status(204).end();
+    } catch (err) {
+      console.error("[client-errors] insert failed:", err);
+      // Even on failure, return 204 — the client should never retry on this
+      // endpoint or it'll spiral if the DB is down.
+      res.status(204).end();
+    }
+  });
+
+  // Admin: list client errors. Default to unreviewed only; ?all=1 for all.
+  app.get("/api/admin/client-errors", requireAuth, requireAdmin, async (req, res) => {
+    const showAll = req.query.all === "1" || req.query.all === "true";
+    const limit = Math.min(200, parseInt(String(req.query.limit || "100"), 10) || 100);
+    const rows = await db
+      .select()
+      .from(clientErrorsTable)
+      .where(showAll ? sql`1=1` : isNull(clientErrorsTable.reviewedAt))
+      .orderBy(desc(clientErrorsTable.occurredAt))
+      .limit(limit);
+
+    // Top error messages today (for "what's recurring" view)
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+    const todayIso = today.toISOString();
+    const grouped = await db
+      .select({
+        message: clientErrorsTable.errorMessage,
+        endpoint: clientErrorsTable.endpoint,
+        count: sql<number>`COUNT(*)::int`,
+      })
+      .from(clientErrorsTable)
+      .where(gt(clientErrorsTable.occurredAt, todayIso))
+      .groupBy(clientErrorsTable.errorMessage, clientErrorsTable.endpoint)
+      .orderBy(desc(sql<number>`COUNT(*)`))
+      .limit(10);
+
+    res.json({ errors: rows, topToday: grouped });
+  });
+
+  // Admin: mark an error as reviewed (one-way; reviewed errors auto-purge after 30d).
+  app.post("/api/admin/client-errors/:id/review", requireAuth, requireAdmin, async (req: any, res) => {
+    const userId = (req.session as any).userId;
+    await db
+      .update(clientErrorsTable)
+      .set({ reviewedAt: new Date().toISOString(), reviewedBy: userId })
+      .where(eq(clientErrorsTable.id, req.params.id));
+    res.json({ ok: true });
+  });
+
+  // Admin: bulk mark-as-reviewed (clears the unreviewed list with one click).
+  app.post("/api/admin/client-errors/review-all", requireAuth, requireAdmin, async (req: any, res) => {
+    const userId = (req.session as any).userId;
+    const result = await db
+      .update(clientErrorsTable)
+      .set({ reviewedAt: new Date().toISOString(), reviewedBy: userId })
+      .where(isNull(clientErrorsTable.reviewedAt));
+    res.json({ ok: true, count: (result as any).rowCount ?? 0 });
   });
 
   // ─── Campaigns (admin: dry-run + live trigger; user: active banner) ──
