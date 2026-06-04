@@ -3890,25 +3890,88 @@ setInterval(loadAll,30000);
       if (!file) return res.status(400).json({ error: "No file uploaded" });
       const mapping = JSON.parse(req.body.mapping || "{}");
 
-      const csvText = file.buffer.toString("utf-8");
-      const allLines = csvText.split("\n").filter((l: string) => l.trim());
-      if (allLines.length < 2) return res.status(400).json({ error: "CSV file is empty" });
-
-      // Handle Splitwise CSVs that start with a "Note:" line — find real header by locating "Currency"
-      const headerLineIdx = allLines.findIndex(l => importParseCSVLine(l).some(h => h.toLowerCase() === "currency"));
-      if (headerLineIdx === -1) return res.status(400).json({ error: "Invalid Splitwise CSV — missing Currency column" });
-      const lines = allLines.slice(headerLineIdx);
-
-      const headers = importParseCSVLine(lines[0]);
-      const dateIdx = headers.findIndex(h => h.toLowerCase() === "date");
-      const descIdx = headers.findIndex(h => h.toLowerCase() === "description");
-      const costIdx = headers.findIndex(h => h.toLowerCase() === "cost");
-      const currIdx = headers.findIndex(h => h.toLowerCase() === "currency");
-      if (dateIdx === -1 || descIdx === -1 || costIdx === -1 || currIdx === -1) {
-        return res.status(400).json({ error: "Invalid Splitwise CSV" });
+      // ── Decode the file ─────────────────────────────────────────────
+      // Detect UTF-16 BOM (FF FE = LE, FE FF = BE) — Excel sometimes saves
+      // CSVs as UTF-16 instead of UTF-8 and the default "utf-8" decode
+      // produces garbage. Detect once and pick the right decoder.
+      let csvText: string;
+      const buf = file.buffer as Buffer;
+      if (buf.length >= 2 && buf[0] === 0xff && buf[1] === 0xfe) {
+        csvText = buf.toString("utf16le");
+      } else if (buf.length >= 2 && buf[0] === 0xfe && buf[1] === 0xff) {
+        // UTF-16 BE — swap bytes then decode as LE
+        const swapped = Buffer.from(buf);
+        swapped.swap16();
+        csvText = swapped.toString("utf16le");
+      } else {
+        csvText = buf.toString("utf-8");
       }
 
-      const personNames = headers.slice(currIdx + 1).map(n => n.trim()).filter(n => n);
+      // Strip UTF-8 BOM if present (Excel adds this when re-saving CSVs).
+      // Without this, the first header becomes "﻿Date" and breaks
+      // the column match — the #1 cause of "missing Currency column" errors.
+      if (csvText.charCodeAt(0) === 0xfeff) {
+        csvText = csvText.slice(1);
+      }
+
+      // Normalize line endings (Windows uses \r\n).
+      const allLines = csvText.split(/\r?\n/).filter((l: string) => l.trim());
+      if (allLines.length < 2) return res.status(400).json({ error: "CSV file is empty" });
+
+      // ── Find the header line ────────────────────────────────────────
+      // Splitwise CSVs sometimes have a "Note:" line at the top. The header
+      // row is the one that contains BOTH "Date" and "Cost" (the two columns
+      // every Splitwise export has). Currency used to be the boundary marker
+      // but older exports + user-edited CSVs may lack it.
+      const matchesHeader = (h: string) => {
+        const norm = h.toLowerCase().trim();
+        return norm === "date" || norm === "description" || norm === "cost";
+      };
+      const headerLineIdx = allLines.findIndex(l => {
+        const cells = importParseCSVLine(l).map(c => c.toLowerCase().trim());
+        return cells.includes("date") && cells.includes("cost");
+      });
+      if (headerLineIdx === -1) {
+        return res.status(400).json({
+          error: "Couldn't find the Splitwise header row. The CSV should have columns called Date, Description, and Cost. Try re-exporting from Splitwise (Group → Export → Download CSV).",
+        });
+      }
+      const lines = allLines.slice(headerLineIdx);
+
+      // ── Identify columns (loose matching) ───────────────────────────
+      const headers = importParseCSVLine(lines[0]);
+      const findHeader = (...names: string[]) => headers.findIndex(h => {
+        const norm = h.toLowerCase().trim();
+        return names.some(n => norm === n);
+      });
+      const dateIdx = findHeader("date");
+      const descIdx = findHeader("description");
+      const costIdx = findHeader("cost", "amount", "total");
+      const currIdx = findHeader("currency", "curr", "currency code", "ccy");
+
+      // Critical columns (Date / Description / Cost). If any are missing,
+      // give the user a useful error showing what we DID find — beats
+      // a generic "Invalid Splitwise CSV" message that doesn't help.
+      const missingCols: string[] = [];
+      if (dateIdx === -1) missingCols.push("Date");
+      if (descIdx === -1) missingCols.push("Description");
+      if (costIdx === -1) missingCols.push("Cost");
+      if (missingCols.length > 0) {
+        const foundLabel = headers.length > 0 ? headers.map(h => `"${h.trim()}"`).join(", ") : "(none)";
+        return res.status(400).json({
+          error: `Couldn't find required column${missingCols.length > 1 ? "s" : ""}: ${missingCols.join(", ")}. ` +
+            `Headers I found in your file: ${foundLabel}. ` +
+            `Try re-exporting from Splitwise (Group → Export → Download CSV).`,
+        });
+      }
+
+      // Currency column is OPTIONAL — many Splitwise exports lack it,
+      // and a user editing the CSV in Excel may have dropped it. If
+      // absent, person columns start right after Cost and we fall back
+      // to the importing user's default currency for each expense.
+      const personColStart = currIdx !== -1 ? currIdx + 1 : costIdx + 1;
+      const fallbackCurrency = (currentUser.defaultCurrency || "CAD").toUpperCase();
+      const personNames = headers.slice(personColStart).map(n => n.trim()).filter(n => n);
       const colToUserId = new Map<number, string>();
       const ghostMembers: { id: string; name: string }[] = [];
 
@@ -3975,12 +4038,14 @@ setInterval(loadAll,30000);
 
           const isSettlement = desc.toLowerCase().includes("payment") || desc.toLowerCase().includes("settle up") || desc.toLowerCase().includes("settled") || desc.toLowerCase().includes("settle all");
 
-          // Find payer: person with highest positive value (skip unmapped people)
+          // Find payer: person with highest positive value (skip unmapped people).
+          // Person columns start at personColStart (= currIdx+1 if Currency
+          // present, else costIdx+1 — see header parsing above).
           let payer = { idx: 0, amount: 0, userId: userId };
           for (let p = 0; p < personNames.length; p++) {
             const uid = colToUserId.get(p);
             if (!uid) continue; // skipped person
-            const val = parseFloat(cols[currIdx + 1 + p]?.trim() || "0");
+            const val = parseFloat(cols[personColStart + p]?.trim() || "0");
             if (val > payer.amount) {
               payer = { idx: p, amount: val, userId: uid };
             }
@@ -3994,7 +4059,7 @@ setInterval(loadAll,30000);
           // We store: how much each person's share is (what they owe for this expense)
           const personValues: { userId: string; value: number }[] = [];
           for (let p = 0; p < personNames.length; p++) {
-            const val = parseFloat(cols[currIdx + 1 + p]?.trim() || "0");
+            const val = parseFloat(cols[personColStart + p]?.trim() || "0");
             const uid = colToUserId.get(p);
             if (!uid) continue; // skipped person — their share excluded
             if (val !== 0) personValues.push({ userId: uid, value: val });
