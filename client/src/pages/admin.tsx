@@ -336,6 +336,9 @@ export default function Admin() {
   // queries/mutations/dialogs continue to work identically — they're just
   // visible only when the "users" section is active.
   const [activeSection, setActiveSection] = useState<AdminSection>(getActiveSection());
+  // Sub-tab within the Users section: "active" (the user list) vs
+  // "recycle" (deleted groups + expenses). Defaults to active.
+  const [usersTab, setUsersTab] = useState<"active" | "recycle">("active");
   useEffect(() => {
     const onHashChange = () => setActiveSection(getActiveSection());
     window.addEventListener("hashchange", onHashChange);
@@ -406,7 +409,36 @@ export default function Admin() {
             </p>
           </div>
 
+      {/* Tabs: Active vs Recycle bin */}
+      <div className="flex gap-1 border-b border-border">
+        <button
+          type="button"
+          onClick={() => setUsersTab("active")}
+          className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            usersTab === "active"
+              ? "border-primary text-foreground"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+          data-testid="users-tab-active"
+        >
+          Active ({allUsers.length})
+        </button>
+        <button
+          type="button"
+          onClick={() => setUsersTab("recycle")}
+          className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            usersTab === "recycle"
+              ? "border-primary text-foreground"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+          data-testid="users-tab-recycle"
+        >
+          Recycle bin{totalDeleted > 0 && ` (${totalDeleted})`}
+        </button>
+      </div>
+
       {/* Approved Users */}
+      {usersTab === "active" && (<>
       <div>
         <h2 className="text-sm font-medium text-muted-foreground mb-2">
           Active Users ({allUsers.length})
@@ -456,14 +488,13 @@ export default function Admin() {
           ))}
         </div>
       )}
+      </>)}
 
-      {/* Deleted Items — Recycle Bin */}
+      {/* Deleted Items — Recycle Bin (sub-tab of Users) */}
+      {usersTab === "recycle" && (<>
       <div>
-        <h2 className="text-sm font-medium text-muted-foreground mb-2">
-          Recycle Bin
-        </h2>
         <p className="text-xs text-muted-foreground mb-3">
-          Deleted items are kept for 30 days, then permanently removed.
+          Deleted groups and expenses. Restorable for 30 days, then permanently removed.
         </p>
 
         {!hasDeletedItems ? (
@@ -604,6 +635,7 @@ export default function Admin() {
           </div>
         )}
       </div>
+      </>)}
 
       {/* User Management Dialog */}
       <Dialog open={!!selectedUser} onOpenChange={(open) => { if (!open) setSelectedUser(null); }}>
