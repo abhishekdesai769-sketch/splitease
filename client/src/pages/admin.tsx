@@ -1442,9 +1442,7 @@ function AdminHomePanel({ allUsers }: { allUsers: SafeUser[] }) {
               {errorsResp.errors.slice(0, 5).map((e) => (
                 <div key={e.id} className="text-xs border-b border-border last:border-0 pb-1.5 last:pb-0">
                   <p className="font-medium truncate">{e.errorMessage || "(no message)"}</p>
-                  <p className="text-[10px] text-muted-foreground truncate">
-                    <span className="font-mono">{fmtRelativeAgo(e.occurredAt)}</span>
-                    <span> · </span>
+                  <p className="text-[10px] text-muted-foreground font-mono truncate">
                     <CopyableTime iso={e.occurredAt} />
                     {e.statusCode && <span> · HTTP {e.statusCode}</span>}
                     <span> · </span>
@@ -1534,7 +1532,10 @@ function fmtRelativeAgo(iso: string): string {
 function fmtExactLocal(iso: string): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return "—";
+  // Includes year so timestamps remain unambiguous across days/months/years.
+  // Browser-local timezone (matches what PostHog displays to the same viewer).
   return d.toLocaleString(undefined, {
+    year: "numeric",
     month: "short",
     day: "numeric",
     hour: "2-digit",
@@ -1704,8 +1705,6 @@ function ClientErrorsPanel() {
             >
               <div className="flex items-center justify-between gap-2">
                 <span className="font-mono text-[10px] text-muted-foreground flex flex-wrap items-center gap-x-1">
-                  <span>{fmtRelativeAgo(e.occurredAt)}</span>
-                  <span>·</span>
                   <CopyableTime iso={e.occurredAt} />
                   {e.statusCode != null && <><span>·</span><span>HTTP {e.statusCode}</span></>}
                   {e.userEmail && <><span>·</span><span>{e.userEmail}</span></>}
