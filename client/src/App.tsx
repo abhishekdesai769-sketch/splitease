@@ -221,9 +221,9 @@ function AppRouter() {
           {() => (isInTWA ? <Redirect to="/" /> : <Money />)}
         </Route>
         {user.isAdmin ? (
-          <Route path="/admin" component={Admin} />
+          <Route path="/admin/:rest*" component={Admin} />
         ) : (
-          <Route path="/admin">{() => <Redirect to="/" />}</Route>
+          <Route path="/admin/:rest*">{() => <Redirect to="/" />}</Route>
         )}
         <Route component={NotFound} />
       </Switch>

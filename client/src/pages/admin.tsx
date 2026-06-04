@@ -16,6 +16,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
+import { AdminLayout, getActiveSection, type AdminSection } from "@/components/AdminLayout";
 
 interface EnrichedGroup {
   id: string;
@@ -328,23 +329,101 @@ export default function Admin() {
   const totalDeleted =
     (deletedData?.groups?.length ?? 0) + (deletedData?.expenses?.length ?? 0);
 
+  // ── Section dispatch ────────────────────────────────────────────────
+  // We keep all the user-mgmt hooks/state in this parent component (no
+  // re-architecture). Just gate which UI block renders per active section.
+  // This is what makes the refactor SAFE: all the existing user-mgmt
+  // queries/mutations/dialogs continue to work identically — they're just
+  // visible only when the "users" section is active.
+  const [activeSection, setActiveSection] = useState<AdminSection>(getActiveSection());
+  useEffect(() => {
+    const onHashChange = () => setActiveSection(getActiveSection());
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
+  const sectionTitle = {
+    home: "Home",
+    users: "Users",
+    "ai-mode": "AI Mode",
+    errors: "Errors",
+    campaigns: "Campaigns",
+  }[activeSection];
+
   return (
-    <div className="space-y-5">
-      <div>
-        <h1 className="text-xl font-semibold tracking-tight">Admin Panel</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          Manage users and access control
-        </p>
-      </div>
+    <AdminLayout pageTitle={sectionTitle}>
+      {/* Home — placeholder for now, gets the full action-first layout in a follow-up phase */}
+      {activeSection === "home" && (
+        <div className="space-y-3">
+          <div>
+            <h1 className="text-xl font-semibold tracking-tight">Admin Home</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              Quick access to your daily flows. Search a user, watch AI spend, peek at today's signups + errors.
+            </p>
+          </div>
+          <Card className="p-6 text-center text-sm text-muted-foreground">
+            <p>Home dashboard arrives in the next build phase. For now, use the sidebar to jump straight to a section:</p>
+            <div className="flex flex-wrap items-center justify-center gap-2 mt-3">
+              <a href="#/admin/users" className="text-primary underline">Users</a>
+              <span className="text-muted-foreground">·</span>
+              <a href="#/admin/ai-mode" className="text-primary underline">AI Mode</a>
+              <span className="text-muted-foreground">·</span>
+              <a href="#/admin/errors" className="text-primary underline">Errors</a>
+              <span className="text-muted-foreground">·</span>
+              <a href="#/admin/campaigns" className="text-primary underline">Campaigns</a>
+            </div>
+          </Card>
+        </div>
+      )}
 
-      {/* AI Mode usage observability — quota / spend / top spenders */}
-      <AiUsagePanel />
+      {/* AI Mode — dedicated section, same panel as before */}
+      {activeSection === "ai-mode" && (
+        <div className="space-y-3">
+          <div>
+            <h1 className="text-xl font-semibold tracking-tight">AI Mode</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              Daily spend, top spenders, 7-day trend, and the kill switch.
+            </p>
+          </div>
+          <AiUsagePanel />
+        </div>
+      )}
 
-      {/* Customer-facing errors — what users are actually hitting */}
-      <ClientErrorsPanel />
+      {/* Errors — dedicated section */}
+      {activeSection === "errors" && (
+        <div className="space-y-3">
+          <div>
+            <h1 className="text-xl font-semibold tracking-tight">Customer-facing errors</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              Auto-logged from the frontend. Mark reviewed as you triage.
+            </p>
+          </div>
+          <ClientErrorsPanel />
+        </div>
+      )}
 
-      {/* Campaign runner — milestone / promo blasts (dry-run first) */}
-      <CampaignPanel />
+      {/* Campaigns — dedicated section */}
+      {activeSection === "campaigns" && (
+        <div className="space-y-3">
+          <div>
+            <h1 className="text-xl font-semibold tracking-tight">Campaigns</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              Dry-run first, then send for real. Idempotent — re-sends skip already-sent users.
+            </p>
+          </div>
+          <CampaignPanel />
+        </div>
+      )}
+
+      {/* Users — the big one. Existing user-mgmt UI lives here unchanged. */}
+      {activeSection === "users" && (
+        <div className="space-y-5">
+          <div>
+            <h1 className="text-xl font-semibold tracking-tight">Users</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              Search, grant Premium, reset passwords, view stats, manage the recycle bin.
+            </p>
+          </div>
 
       {/* Approved Users */}
       <div>
@@ -775,7 +854,9 @@ export default function Admin() {
           </div>
         </DialogContent>
       </Dialog>
-    </div>
+        </div>
+      )}
+    </AdminLayout>
   );
 }
 
