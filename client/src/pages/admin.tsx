@@ -352,28 +352,9 @@ export default function Admin() {
 
   return (
     <AdminLayout pageTitle={sectionTitle}>
-      {/* Home — placeholder for now, gets the full action-first layout in a follow-up phase */}
+      {/* Home — action-first dashboard. Search-first, spend gauge prominent. */}
       {activeSection === "home" && (
-        <div className="space-y-3">
-          <div>
-            <h1 className="text-xl font-semibold tracking-tight">Admin Home</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              Quick access to your daily flows. Search a user, watch AI spend, peek at today's signups + errors.
-            </p>
-          </div>
-          <Card className="p-6 text-center text-sm text-muted-foreground">
-            <p>Home dashboard arrives in the next build phase. For now, use the sidebar to jump straight to a section:</p>
-            <div className="flex flex-wrap items-center justify-center gap-2 mt-3">
-              <a href="#/admin/users" className="text-primary underline">Users</a>
-              <span className="text-muted-foreground">·</span>
-              <a href="#/admin/ai-mode" className="text-primary underline">AI Mode</a>
-              <span className="text-muted-foreground">·</span>
-              <a href="#/admin/errors" className="text-primary underline">Errors</a>
-              <span className="text-muted-foreground">·</span>
-              <a href="#/admin/campaigns" className="text-primary underline">Campaigns</a>
-            </div>
-          </Card>
-        </div>
+        <AdminHomePanel allUsers={allUsers} />
       )}
 
       {/* AI Mode — dedicated section, same panel as before */}
@@ -1178,6 +1159,291 @@ function CampaignPanel() {
         Required to fire: set <code className="px-1 bg-muted/60 rounded font-mono">CAMPAIGN_1K_ENABLED=true</code> on Render + redeploy.
       </p>
     </Card>
+  );
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// AdminHomePanel — the action-first landing for /admin/home.
+//
+// Layout (per design call): user search bar first, AI spend gauge prominent,
+// quick stats strip, then recent errors + today's new signups side by side.
+// Goal: 80% of admin daily work is one tap away from this page.
+// ───────────────────────────────────────────────────────────────────────────
+
+function AdminHomePanel({ allUsers }: { allUsers: SafeUser[] }) {
+  const [search, setSearch] = useState("");
+
+  // Reuse existing endpoints — no new backend work needed.
+  const { data: aiUsage } = useQuery<AiUsageResponse>({
+    queryKey: ["/api/admin/ai-usage"],
+    queryFn: async () => {
+      const r = await apiRequest("GET", "/api/admin/ai-usage");
+      return r.json();
+    },
+    refetchInterval: 60_000,
+  });
+  const { data: errorsResp } = useQuery<ClientErrorsResponse>({
+    queryKey: ["/api/admin/client-errors?all=0"],
+    queryFn: async () => {
+      const r = await apiRequest("GET", "/api/admin/client-errors?all=0");
+      return r.json();
+    },
+    refetchInterval: 60_000,
+  });
+
+  // ── Search results ─────────────────────────────────────────────────────
+  // Filter the existing user list client-side. Already loaded by the parent
+  // so no extra fetch. Limit to top 6 matches in the dropdown.
+  const searchResults = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (q.length < 2) return [];
+    return allUsers
+      .filter((u) =>
+        u.name?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q),
+      )
+      .slice(0, 6);
+  }, [search, allUsers]);
+
+  // ── KPI numbers ────────────────────────────────────────────────────────
+  const totalUsers = allUsers.length;
+  const premiumUsers = allUsers.filter((u) => u.isPremium).length;
+  const premiumPct = totalUsers > 0 ? Math.round((premiumUsers / totalUsers) * 100) : 0;
+  const todayDollars = aiUsage ? (aiUsage.today.totalEstimatedCents / 100).toFixed(2) : "0.00";
+  const errorsTodayCount = (errorsResp?.errors || []).filter((e) => {
+    const occurred = new Date(e.occurredAt).getTime();
+    const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
+    return occurred > dayAgo;
+  }).length;
+
+  // ── New signups today ──────────────────────────────────────────────────
+  const startOfDayUtc = (() => {
+    const d = new Date();
+    d.setUTCHours(0, 0, 0, 0);
+    return d.toISOString();
+  })();
+  const newSignupsToday = useMemo(() => {
+    return allUsers
+      .filter((u) => (u as any).createdAt && (u as any).createdAt > startOfDayUtc)
+      .sort((a, b) => ((b as any).createdAt > (a as any).createdAt ? 1 : -1));
+  }, [allUsers, startOfDayUtc]);
+
+  // ── AI spend gauge values ──────────────────────────────────────────────
+  const pctOfKill = aiUsage
+    ? Math.min(100, (aiUsage.today.totalEstimatedCents / aiUsage.thresholds.killCents) * 100)
+    : 0;
+  const pctOfWarning = aiUsage
+    ? Math.min(100, (aiUsage.today.totalEstimatedCents / aiUsage.thresholds.warningCents) * 100)
+    : 0;
+
+  return (
+    <div className="space-y-4">
+      {/* ── Search + spend gauge: the two daily flows, side by side on wide ── */}
+      <div className="grid gap-3 lg:grid-cols-[1fr_360px]">
+        {/* User search — biggest, focused on mount */}
+        <Card className="p-4">
+          <label className="text-[11px] uppercase tracking-wider font-mono text-muted-foreground">
+            Find a user
+          </label>
+          <div className="relative mt-1.5">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              autoFocus
+              type="search"
+              placeholder="Search by name or email…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9 h-11"
+              data-testid="admin-home-user-search"
+            />
+          </div>
+          {searchResults.length > 0 && (
+            <div className="mt-2 border border-border rounded-lg overflow-hidden">
+              {searchResults.map((u) => (
+                <button
+                  key={u.id}
+                  type="button"
+                  onClick={() => {
+                    // Navigate to Users section + pre-fill search there.
+                    // (Full per-user detail page arrives in Phase 4.)
+                    window.location.hash = `#/admin/users?q=${encodeURIComponent(u.email)}`;
+                  }}
+                  className="w-full flex items-center gap-3 px-3 py-2 hover:bg-muted/40 border-b border-border last:border-0 text-left"
+                >
+                  <div
+                    className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-semibold shrink-0"
+                    style={{ backgroundColor: AVATAR_COLORS[u.id.charCodeAt(0) % AVATAR_COLORS.length] }}
+                  >
+                    {u.name?.[0]?.toUpperCase() || "?"}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium truncate">{u.name}</p>
+                    <p className="text-[11px] text-muted-foreground truncate">{u.email}</p>
+                  </div>
+                  {u.isPremium && (
+                    <Crown className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+          {search.trim().length >= 2 && searchResults.length === 0 && (
+            <p className="text-xs text-muted-foreground italic mt-2">No matches.</p>
+          )}
+          <p className="text-[10px] text-muted-foreground mt-2">
+            Type 2+ chars. Click a result to jump into Users.
+          </p>
+        </Card>
+
+        {/* AI spend gauge — compact, with link into the AI Mode section */}
+        <Card className="p-4 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <label className="text-[11px] uppercase tracking-wider font-mono text-muted-foreground">
+              AI Mode spend today
+            </label>
+            {aiUsage?.degraded && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-red-500/15 text-red-600 border border-red-500/30">
+                <AlertTriangle className="w-3 h-3" />
+                DEGRADED
+              </span>
+            )}
+          </div>
+          <p className="text-2xl font-semibold font-mono">${todayDollars}</p>
+          {aiUsage && (
+            <>
+              <div className="relative h-2 rounded-full bg-muted overflow-hidden">
+                <div
+                  className={`h-full ${pctOfKill > 75 ? "bg-red-500" : pctOfWarning > 75 ? "bg-amber-500" : "bg-primary"}`}
+                  style={{ width: `${pctOfKill}%` }}
+                />
+                <div
+                  className="absolute top-0 bottom-0 w-px bg-amber-500/60"
+                  style={{ left: `${(aiUsage.thresholds.warningCents / aiUsage.thresholds.killCents) * 100}%` }}
+                />
+              </div>
+              <p className="text-[10px] text-muted-foreground">
+                Warning at ${(aiUsage.thresholds.warningCents / 100).toFixed(2)} ·
+                Kill at ${(aiUsage.thresholds.killCents / 100).toFixed(2)}
+              </p>
+            </>
+          )}
+          <a
+            href="#/admin/ai-mode"
+            className="text-xs text-primary font-medium hover:underline inline-flex items-center gap-1"
+          >
+            Full AI Mode view →
+          </a>
+        </Card>
+      </div>
+
+      {/* ── KPI strip ───────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+        <KpiCell label="Total users" value={String(totalUsers)} />
+        <KpiCell label="Premium" value={`${premiumPct}%`} sub={`${premiumUsers} users`} />
+        <KpiCell label="Today's AI spend" value={`$${todayDollars}`} />
+        <KpiCell
+          label="Errors today"
+          value={String(errorsTodayCount)}
+          tone={errorsTodayCount > 0 ? "warn" : "ok"}
+        />
+      </div>
+
+      {/* ── Recent errors + today's signups, side by side ───────────────── */}
+      <div className="grid gap-3 md:grid-cols-2">
+        <Card className="p-4 space-y-2">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold flex items-center gap-1.5">
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+              Recent errors
+            </h3>
+            <a
+              href="#/admin/errors"
+              className="text-[11px] text-primary font-medium hover:underline"
+            >
+              See all →
+            </a>
+          </div>
+          {!errorsResp ? (
+            <p className="text-xs text-muted-foreground italic py-2">Loading…</p>
+          ) : errorsResp.errors.length === 0 ? (
+            <p className="text-xs text-muted-foreground italic py-2 text-center">
+              All clear — nothing to review.
+            </p>
+          ) : (
+            <div className="space-y-1.5">
+              {errorsResp.errors.slice(0, 5).map((e) => (
+                <div key={e.id} className="text-xs border-b border-border last:border-0 pb-1.5 last:pb-0">
+                  <p className="font-medium truncate">{e.errorMessage || "(no message)"}</p>
+                  <p className="text-[10px] text-muted-foreground truncate">
+                    {e.statusCode && <span>HTTP {e.statusCode} · </span>}
+                    {e.userEmail || "(anon)"}
+                    {e.endpoint && <span> · {e.endpoint}</span>}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+
+        <Card className="p-4 space-y-2">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold flex items-center gap-1.5">
+              <Users className="w-3.5 h-3.5 text-primary" />
+              New today
+            </h3>
+            <span className="text-[10px] text-muted-foreground font-mono">
+              {newSignupsToday.length} signup{newSignupsToday.length === 1 ? "" : "s"}
+            </span>
+          </div>
+          {newSignupsToday.length === 0 ? (
+            <p className="text-xs text-muted-foreground italic py-2 text-center">
+              No new signups yet today.
+            </p>
+          ) : (
+            <div className="space-y-1.5">
+              {newSignupsToday.slice(0, 5).map((u) => (
+                <div
+                  key={u.id}
+                  className="flex items-center gap-2 text-xs border-b border-border last:border-0 pb-1.5 last:pb-0"
+                >
+                  <div
+                    className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-semibold shrink-0"
+                    style={{ backgroundColor: AVATAR_COLORS[u.id.charCodeAt(0) % AVATAR_COLORS.length] }}
+                  >
+                    {u.name?.[0]?.toUpperCase() || "?"}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium truncate">{u.name}</p>
+                    <p className="text-[10px] text-muted-foreground truncate">{u.email}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+function KpiCell({
+  label,
+  value,
+  sub,
+  tone = "neutral",
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  tone?: "neutral" | "ok" | "warn";
+}) {
+  const toneClass =
+    tone === "warn" ? "text-amber-600" : tone === "ok" ? "text-primary" : "text-foreground";
+  return (
+    <div className="rounded-lg bg-muted/40 p-2.5">
+      <p className="text-[10px] text-muted-foreground uppercase tracking-wider">{label}</p>
+      <p className={`text-base font-semibold font-mono ${toneClass}`}>{value}</p>
+      {sub && <p className="text-[10px] text-muted-foreground">{sub}</p>}
+    </div>
   );
 }
 
