@@ -1443,9 +1443,12 @@ function AdminHomePanel({ allUsers }: { allUsers: SafeUser[] }) {
                 <div key={e.id} className="text-xs border-b border-border last:border-0 pb-1.5 last:pb-0">
                   <p className="font-medium truncate">{e.errorMessage || "(no message)"}</p>
                   <p className="text-[10px] text-muted-foreground truncate">
-                    {e.statusCode && <span>HTTP {e.statusCode} · </span>}
-                    {e.userEmail || "(anon)"}
-                    {e.endpoint && <span> · {e.endpoint}</span>}
+                    <span className="font-mono">{fmtRelativeAgo(e.occurredAt)}</span>
+                    <span> · </span>
+                    <CopyableTime iso={e.occurredAt} />
+                    {e.statusCode && <span> · HTTP {e.statusCode}</span>}
+                    <span> · </span>
+                    <span>{e.userEmail || "(anon)"}</span>
                   </p>
                 </div>
               ))}
@@ -1516,6 +1519,60 @@ function KpiCell({
   );
 }
 
+// ── Time formatting helpers (shared between Home + Errors panels) ─────────
+// fmtRelativeAgo: "3m ago" — at-a-glance recency
+// fmtExactLocal:  "Jun 4, 14:32:18" — browser-local, for matching with PostHog
+//                  session recordings (which display in viewer's local TZ)
+function fmtRelativeAgo(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  if (ms < 60_000) return `${Math.floor(ms / 1000)}s ago`;
+  if (ms < 3_600_000) return `${Math.floor(ms / 60_000)}m ago`;
+  if (ms < 86_400_000) return `${Math.floor(ms / 3_600_000)}h ago`;
+  return `${Math.floor(ms / 86_400_000)}d ago`;
+}
+
+function fmtExactLocal(iso: string): string {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "—";
+  return d.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+}
+
+// Clickable timestamp — click to copy the ISO string to clipboard. Lets the
+// admin paste the exact timestamp into PostHog's time-range picker without
+// having to retype seconds-level precision.
+function CopyableTime({ iso }: { iso: string }) {
+  const { toast } = useToast();
+  const copy = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (!navigator.clipboard) {
+      toast({ title: "Clipboard unavailable", description: "Use a modern browser", variant: "destructive" });
+      return;
+    }
+    navigator.clipboard.writeText(iso).then(
+      () => toast({ title: "Timestamp copied", description: iso }),
+      () => toast({ title: "Copy failed", variant: "destructive" }),
+    );
+  };
+  return (
+    <button
+      type="button"
+      onClick={copy}
+      className="underline-offset-2 hover:underline hover:text-foreground transition-colors"
+      title={`Click to copy ISO timestamp: ${iso}`}
+    >
+      {fmtExactLocal(iso)}
+    </button>
+  );
+}
+
 // ───────────────────────────────────────────────────────────────────────────
 // ClientErrorsPanel — last 100 customer-facing errors so you can see what
 // users are hitting without them having to message you.
@@ -1575,13 +1632,8 @@ function ClientErrorsPanel() {
     }
   };
 
-  const fmtAgo = (iso: string): string => {
-    const ms = Date.now() - new Date(iso).getTime();
-    if (ms < 60_000) return `${Math.floor(ms / 1000)}s ago`;
-    if (ms < 3_600_000) return `${Math.floor(ms / 60_000)}m ago`;
-    if (ms < 86_400_000) return `${Math.floor(ms / 3_600_000)}h ago`;
-    return `${Math.floor(ms / 86_400_000)}d ago`;
-  };
+  // Time formatting moved to module level (fmtRelativeAgo / fmtExactLocal /
+  // CopyableTime) so the Home panel can reuse the same UX.
 
   if (isLoading) {
     return (
@@ -1651,10 +1703,12 @@ function ClientErrorsPanel() {
               }`}
             >
               <div className="flex items-center justify-between gap-2">
-                <span className="font-mono text-[10px] text-muted-foreground">
-                  {fmtAgo(e.occurredAt)}
-                  {e.statusCode != null && <span className="ml-1">· HTTP {e.statusCode}</span>}
-                  {e.userEmail && <span className="ml-1">· {e.userEmail}</span>}
+                <span className="font-mono text-[10px] text-muted-foreground flex flex-wrap items-center gap-x-1">
+                  <span>{fmtRelativeAgo(e.occurredAt)}</span>
+                  <span>·</span>
+                  <CopyableTime iso={e.occurredAt} />
+                  {e.statusCode != null && <><span>·</span><span>HTTP {e.statusCode}</span></>}
+                  {e.userEmail && <><span>·</span><span>{e.userEmail}</span></>}
                 </span>
                 {!e.reviewedAt && (
                   <Button size="sm" variant="ghost" className="h-6 px-2 text-[10px]" onClick={() => reviewOne(e.id)}>
