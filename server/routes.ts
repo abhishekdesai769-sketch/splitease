@@ -66,6 +66,38 @@ export async function registerRoutes(
   const globalApiLimiter = rateLimit(60 * 1000, 200);
   app.use("/api", globalApiLimiter);
 
+  // ─── Email link redirect (/r/:dest → /#/<dest>) ────────────────────────
+  //
+  // Why this exists: emails sent via Resend get rewritten by mail clients
+  // (Gmail in particular) that wrap links through their own tracking
+  // redirector. That tracker STRIPS the URL fragment (#/...) on the way
+  // through, so a direct link like "https://spliiit.klarityit.ca/#/friends"
+  // arrives at the browser as "https://spliiit.klarityit.ca/" — no
+  // fragment, user lands on dashboard instead of /friends.
+  //
+  // Fix: email links use "https://spliiit.klarityit.ca/r/friends" instead.
+  // The tracker preserves the path (just not the fragment). We then 302
+  // redirect /r/friends → /#/friends server-side. The browser receives
+  // the Location header with the fragment intact and navigates correctly.
+  //
+  // ALLOWED list keeps this from being a generic open-redirect helper
+  // (which would be abused for phishing — "Spliiit-hosted" link that
+  // actually goes anywhere).
+  app.get("/r/:dest", (req, res) => {
+    const allowed = new Set([
+      "friends", "groups", "expenses", "money", "upgrade", "ai",
+      "dashboard", "admin", "settings", "import", "premium",
+    ]);
+    const dest = req.params.dest;
+    if (!allowed.has(dest)) {
+      return res.redirect(302, "/");
+    }
+    // Note: Express's res.redirect serializes the Location header. Browsers
+    // honor fragments in Location, so the final URL the SPA sees has the
+    // fragment intact.
+    res.redirect(302, `/#/${dest}`);
+  });
+
   // ========== App version check (force-update gate) ==========
   // Returns the minimum iOS version required to use the app.
   // Set IOS_MINIMUM_VERSION on Render to force old clients to update.

@@ -553,7 +553,7 @@ export async function sendReminderEmail(opts: {
         <table cellpadding="0" cellspacing="0" role="presentation">
           <tr>
             <td style="border-radius:8px;background-color:#0d9488;">
-              <a href="${appUrl}/#/friends" style="display:inline-block;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;">
+              <a href="${appUrl}/r/friends" style="display:inline-block;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;">
                 Settle up on Spliiit
               </a>
             </td>
@@ -646,7 +646,7 @@ export async function sendAutoReminderEmail(opts: {
         <table cellpadding="0" cellspacing="0" role="presentation">
           <tr>
             <td style="border-radius:8px;background-color:#0d9488;">
-              <a href="${appUrl}/#/friends" style="display:inline-block;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;">
+              <a href="${appUrl}/r/friends" style="display:inline-block;padding:12px 24px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;">
                 Settle up on Spliiit
               </a>
             </td>
@@ -667,7 +667,7 @@ export async function sendAutoReminderEmail(opts: {
               Want Spliiit to do the same for you? Set it up once and let the app handle the
               uncomfortable part — your friends get reminded, you stay chill.
             </p>
-            <a href="${appUrl}/#/upgrade" style="font-size:12px;font-weight:600;color:#0d9488;text-decoration:none;">
+            <a href="${appUrl}/r/upgrade" style="font-size:12px;font-weight:600;color:#0d9488;text-decoration:none;">
               Get Spliiit Premium →
             </a>
           </td></tr>
@@ -680,7 +680,7 @@ export async function sendAutoReminderEmail(opts: {
   </td></tr>
 </table>`;
 
-  const text = `${bodyText}\n\nSettle up on Spliiit: ${appUrl}\n\n---\nWhy did you get this?\n${owedToName} is a Spliiit Premium member. Spliiit sent this automatically on their behalf — they didn't personally nudge you.\n\nWant Spliiit to do the same for you? Get Premium: ${appUrl}/#/upgrade\n\nThis is an automated message — please do not reply to this email.\n— Spliiit`;
+  const text = `${bodyText}\n\nSettle up on Spliiit: ${appUrl}\n\n---\nWhy did you get this?\n${owedToName} is a Spliiit Premium member. Spliiit sent this automatically on their behalf — they didn't personally nudge you.\n\nWant Spliiit to do the same for you? Get Premium: ${appUrl}/r/upgrade\n\nThis is an automated message — please do not reply to this email.\n— Spliiit`;
 
   sendEmail(to, subject, html, text);
 }

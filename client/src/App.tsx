@@ -221,9 +221,17 @@ function AppRouter() {
           {() => (isInTWA ? <Redirect to="/" /> : <Money />)}
         </Route>
         {user.isAdmin ? (
-          <Route path="/admin/:rest*" component={Admin} />
+          <>
+            <Route path="/admin" component={Admin} />
+            <Route path="/admin/:section" component={Admin} />
+            <Route path="/admin/:section/:resourceId" component={Admin} />
+          </>
         ) : (
-          <Route path="/admin/:rest*">{() => <Redirect to="/" />}</Route>
+          <>
+            <Route path="/admin">{() => <Redirect to="/" />}</Route>
+            <Route path="/admin/:section">{() => <Redirect to="/" />}</Route>
+            <Route path="/admin/:section/:resourceId">{() => <Redirect to="/" />}</Route>
+          </>
         )}
         <Route component={NotFound} />
       </Switch>
