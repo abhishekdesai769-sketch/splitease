@@ -141,7 +141,21 @@ export default function Admin() {
   const [premiumOnly, setPremiumOnly] = useState(false);
   // useDeferredValue: input stays instant; list filtering waits until browser is idle
   const deferredSearch = useDeferredValue(userSearchQuery);
-  const [selectedUser, setSelectedUser] = useState<SafeUser | null>(null);
+  const [selectedUser, setSelectedUserRaw] = useState<SafeUser | null>(null);
+
+  // Setter wrapper that ALSO syncs the URL so user-detail views are
+  // deep-linkable. When a user opens, push #/admin/users/<id>; when the
+  // modal closes, pop back to #/admin/users. Browser back/forward works
+  // naturally because the hashchange listener (below) flows updates the
+  // other direction too.
+  const setSelectedUser = useCallback((u: SafeUser | null) => {
+    setSelectedUserRaw(u);
+    const hash = u ? `#/admin/users/${u.id}` : "#/admin/users";
+    if (window.location.hash !== hash) {
+      // Avoid recursive hashchange firing when WE'RE the one setting it.
+      window.history.replaceState(null, "", hash);
+    }
+  }, []);
   const [premiumMonths, setPremiumMonths] = useState("3");
   const [newPassword, setNewPassword] = useState("");
   const [adminNotes, setAdminNotes] = useState("");
@@ -339,6 +353,29 @@ export default function Admin() {
   // Sub-tab within the Users section: "active" (the user list) vs
   // "recycle" (deleted groups + expenses). Defaults to active.
   const [usersTab, setUsersTab] = useState<"active" | "recycle">("active");
+
+  // Deep-link to a specific user via #/admin/users/<id>. On hash change OR
+  // when the user list finishes loading, if the URL points at a user, open
+  // that user's dialog. Lets you bookmark a user page and share URLs with
+  // any future co-admin.
+  useEffect(() => {
+    const syncFromHash = () => {
+      const hash = window.location.hash || "";
+      const m = hash.match(/^#\/admin\/users\/([^/?#]+)/);
+      const targetId = m?.[1];
+      if (!targetId) {
+        // URL doesn't point at a user; clear selection if one is open via URL nav.
+        return;
+      }
+      if (selectedUser?.id === targetId) return; // already showing this user
+      const found = allUsers.find((u) => u.id === targetId);
+      if (found) setSelectedUserRaw(found);
+    };
+    syncFromHash();
+    window.addEventListener("hashchange", syncFromHash);
+    return () => window.removeEventListener("hashchange", syncFromHash);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allUsers]);
   useEffect(() => {
     const onHashChange = () => setActiveSection(getActiveSection());
     window.addEventListener("hashchange", onHashChange);
