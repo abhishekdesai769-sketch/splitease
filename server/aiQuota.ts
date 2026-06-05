@@ -516,15 +516,30 @@ async function userHasIosToken(userId: string): Promise<boolean> {
  * Everyone else (non-Premium web / Android) → blocked. Client shows the
  * existing Premium-required upgrade teaser.
  */
-export async function checkAiAccess(user: {
-  id: string;
-  isPremium: boolean;
-}): Promise<AiAccessState> {
+export async function checkAiAccess(
+  user: {
+    id: string;
+    isPremium: boolean;
+  },
+  opts?: { clientClaimsIosNative?: boolean },
+): Promise<AiAccessState> {
   if (user.isPremium) {
     return { canUse: true, reason: "premium", hasIosToken: true };
   }
 
-  const hasIos = await userHasIosToken(user.id);
+  // iOS detection: we treat a user as "on iOS native" if EITHER
+  //   (a) they have a registered APNs push token (server-verified), OR
+  //   (b) the client tells us it's running in the iOS native binary.
+  //
+  // Why both: many iOS users never grant push-notification permission, so
+  // they never get a device token — relying on (a) alone wrongly blocked
+  // real iOS users from their free trial and showed them the Premium wall
+  // immediately. The client's Capacitor `isIosNative` flag (b) is the
+  // reliable signal; the server can't otherwise know. Trusting it costs at
+  // most 3 cheap Haiku calls if a web user spoofs the flag — an acceptable
+  // trade vs. blocking genuine App Store users from a feature we promised.
+  const hasToken = await userHasIosToken(user.id);
+  const hasIos = hasToken || !!opts?.clientClaimsIosNative;
   if (!hasIos) {
     // Non-Premium AND not on iOS native. Existing Premium-required gate.
     return { canUse: false, reason: "blocked", hasIosToken: false };

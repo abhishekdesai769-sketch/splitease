@@ -3347,7 +3347,14 @@ setInterval(loadAll,30000);
     const user = await storage.getUser(userId);
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return null; }
 
-    const access = await aiQuota.checkAiAccess({ id: user.id, isPremium: !!user.isPremium });
+    // The client appends ?platform=ios when running in the iOS native app.
+    // We use it as a fallback iOS signal (see checkAiAccess) so push-permission-
+    // declined iOS users still get their free trial.
+    const clientClaimsIosNative = req.query?.platform === "ios";
+    const access = await aiQuota.checkAiAccess(
+      { id: user.id, isPremium: !!user.isPremium },
+      { clientClaimsIosNative },
+    );
     // Web / Android non-Premium: block entry the same way it always did.
     // Note: iOS users whose free trial is exhausted (access.canUse=false,
     // hasIosToken=true) DO pass this guard — the message endpoint handles
@@ -3422,7 +3429,11 @@ setInterval(loadAll,30000);
     const userId = (req.session as any).userId;
     const user = await storage.getUser(userId);
     if (!user) return res.status(401).json({ error: "Unauthorized" });
-    const access = await aiQuota.checkAiAccess({ id: user.id, isPremium: !!user.isPremium });
+    const clientClaimsIosNative = req.query?.platform === "ios";
+    const access = await aiQuota.checkAiAccess(
+      { id: user.id, isPremium: !!user.isPremium },
+      { clientClaimsIosNative },
+    );
     res.json({ ...access, configured: true });
   });
 

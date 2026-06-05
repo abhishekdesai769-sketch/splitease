@@ -28,7 +28,14 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Sparkles, ArrowLeft, Send, Loader2, Crown, Check, X, Paperclip, FileText, Image as ImageIcon, Mic, Keyboard, MicOff } from "lucide-react";
 import { useVoiceMode } from "@/hooks/useVoiceMode";
+import { isIosNative } from "@/lib/iap";
 import ReactMarkdown from "react-markdown";
+
+// When running in the iOS native app, append ?platform=ios so the server
+// can grant the non-Premium free trial even if the user never registered
+// a push token. Without this, push-permission-declined iOS users wrongly
+// saw the Premium wall instead of their 3 free uses.
+const IOS_QS = isIosNative ? "?platform=ios" : "";
 import remarkGfm from "remark-gfm";
 
 const MAX_ATTACHMENTS = 5;
@@ -106,7 +113,7 @@ export default function AiMode() {
   const [access, setAccess] = useState<AccessState | null>(null);
   useEffect(() => {
     if (!user) return;
-    apiRequest("GET", "/api/ai/access")
+    apiRequest("GET", `/api/ai/access${IOS_QS}`)
       .then((r) => r.json())
       .then((data: AccessState) => setAccess(data))
       .catch(() => {
@@ -187,10 +194,10 @@ export default function AiMode() {
         const fd = new FormData();
         if (text) fd.append("text", text);
         for (const f of files) fd.append("attachments", f);
-        const r = await apiFormRequest("POST", `/api/ai/conversations/${convId}/message`, fd);
+        const r = await apiFormRequest("POST", `/api/ai/conversations/${convId}/message${IOS_QS}`, fd);
         return r.json();
       }
-      const r = await apiRequest("POST", `/api/ai/conversations/${convId}/message`, { text });
+      const r = await apiRequest("POST", `/api/ai/conversations/${convId}/message${IOS_QS}`, { text });
       return r.json();
     },
     onSuccess: (data) => {
