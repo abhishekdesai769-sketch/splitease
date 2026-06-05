@@ -99,7 +99,19 @@ export default function Dashboard() {
   });
 
   // Get recent expenses (last 5)
+  // Recent Expenses on the dashboard should only include expenses the user
+  // is actually INVOLVED in — either they paid, or they're in the split.
+  // Without this filter, group expenses + settlements between OTHER members
+  // (e.g. "Krishna paid Srushti $10") clutter the user's dashboard with
+  // activity that's not relevant to their balances. Those still belong in
+  // the group's own expense list, just not here.
   const recentExpenses = [...expenses]
+    .filter((e) => {
+      if (!user?.id) return false;
+      if (e.paidById === user.id) return true;                  // I paid
+      if (Array.isArray(e.splitAmongIds) && e.splitAmongIds.includes(user.id)) return true;  // I'm in the split
+      return false;
+    })
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     .slice(0, 5);
 
