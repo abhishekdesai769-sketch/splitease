@@ -23,7 +23,7 @@ import { buildAttachmentContext } from "./receiptTranscription";
 import * as aiQuota from "./aiQuota";
 import * as campaigns from "./campaigns";
 import * as authThrottle from "./auth-throttle";
-import { clientErrors as clientErrorsTable } from "@shared/schema";
+import { clientErrors as clientErrorsTable, expenses as expensesTable } from "@shared/schema";
 import multer from "multer";
 import { stripe, STRIPE_PRICE_MONTHLY, STRIPE_PRICE_YEARLY, STRIPE_ENABLED } from "./stripe";
 import {
@@ -1332,6 +1332,33 @@ setInterval(loadAll,30000);
   app.get("/api/admin/users", requireAuth, requireAdmin, async (_req, res) => {
     const allUsers = await storage.getAllUsers();
     res.json(allUsers);
+  });
+
+  // Per-user expense-creation activity. Powers the admin "Activated" tab —
+  // distinguishes real users (created ≥1 expense) from signed-up-and-forgot.
+  // Counts only NON-settlement, NON-deleted expenses by addedById (the
+  // person who actually created the entry). Returns a compact map so the
+  // client can filter/sort + show "N expenses · last <date>" per user.
+  app.get("/api/admin/user-activity", requireAuth, requireAdmin, async (_req, res) => {
+    try {
+      const rows = await db
+        .select({
+          userId: expensesTable.addedById,
+          count: sql<number>`COUNT(*)::int`,
+          lastAt: sql<string>`MAX(${expensesTable.date})`,
+        })
+        .from(expensesTable)
+        .where(and(isNull(expensesTable.deletedAt), eq(expensesTable.isSettlement, false)))
+        .groupBy(expensesTable.addedById);
+      const map: Record<string, { count: number; lastAt: string | null }> = {};
+      for (const r of rows) {
+        if (r.userId) map[r.userId] = { count: r.count, lastAt: r.lastAt ?? null };
+      }
+      res.json(map);
+    } catch (err: any) {
+      console.error("[admin] user-activity failed:", err);
+      res.status(500).json({ error: "user_activity_failed", message: err?.message });
+    }
   });
 
   app.patch("/api/admin/users/:id/approve", requireAuth, requireAdmin, async (req, res) => {

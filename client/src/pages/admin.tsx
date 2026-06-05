@@ -81,11 +81,12 @@ function DaysRemainingBadge({ deletedAt }: { deletedAt: string | null }) {
 // Memoized user card — only re-renders when this specific user's data changes,
 // not when any other state in the Admin component changes (e.g. search input).
 const UserCard = memo(function UserCard({
-  u, isCurrent, onManage,
+  u, isCurrent, onManage, badge,
 }: {
   u: SafeUser;
   isCurrent: boolean;
   onManage: (u: SafeUser) => void;
+  badge?: string;   // optional sub-line, e.g. "12 expenses · last Jun 2" (Activated tab)
 }) {
   const hasPremium = u.isPremium && u.premiumUntil
     ? new Date(u.premiumUntil) > new Date()
@@ -118,6 +119,9 @@ const UserCard = memo(function UserCard({
         <p className="text-xs text-muted-foreground truncate">{u.email}</p>
         {hasPremium && premiumUntilDate && (
           <p className="text-[10px] text-yellow-500/70">Until {premiumUntilDate}</p>
+        )}
+        {badge && (
+          <p className="text-[10px] text-primary/80 font-medium truncate">{badge}</p>
         )}
       </div>
       {/* Manage button shown for ALL users including the current admin.
@@ -206,6 +210,16 @@ export default function Admin() {
     expenses: EnrichedExpense[];
   }>({
     queryKey: ["/api/admin/deleted"],
+    staleTime: 2 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+
+  // Per-user expense-creation activity — { userId: { count, lastAt } }.
+  // Powers the "Activated" tab: users who've actually created a real
+  // (non-settlement, non-deleted) expense, vs. those who just signed up.
+  const { data: userActivity = {} } = useQuery<Record<string, { count: number; lastAt: string | null }>>({
+    queryKey: ["/api/admin/user-activity"],
+    queryFn: async () => (await apiRequest("GET", "/api/admin/user-activity")).json(),
     staleTime: 2 * 60 * 1000,
     refetchOnWindowFocus: false,
   });
@@ -307,6 +321,28 @@ export default function Admin() {
     });
   }, [allUsers, deferredSearch, premiumOnly]);
 
+  // "Activated" = created ≥1 real expense. Same search/premium filter as the
+  // All tab, then restricted to activated users, sorted most-active first.
+  const activatedUsers = useMemo(() => {
+    return filteredUsers
+      .filter((u) => (userActivity[u.id]?.count ?? 0) > 0)
+      .sort((a, b) => (userActivity[b.id]?.count ?? 0) - (userActivity[a.id]?.count ?? 0));
+  }, [filteredUsers, userActivity]);
+
+  // Total activated count (ignores search) — for the tab badge.
+  const activatedCount = useMemo(
+    () => allUsers.filter((u) => (userActivity[u.id]?.count ?? 0) > 0).length,
+    [allUsers, userActivity],
+  );
+
+  // Build the "12 expenses · last Jun 2" sub-line for a user card.
+  const activityBadge = (uid: string): string | undefined => {
+    const a = userActivity[uid];
+    if (!a || a.count === 0) return undefined;
+    const last = a.lastAt ? new Date(a.lastAt).toLocaleDateString() : null;
+    return `${a.count} expense${a.count === 1 ? "" : "s"}${last ? ` · last ${last}` : ""}`;
+  };
+
   // Filter deleted items by search query
   const q = searchQuery.toLowerCase().trim();
 
@@ -350,9 +386,12 @@ export default function Admin() {
   // queries/mutations/dialogs continue to work identically — they're just
   // visible only when the "users" section is active.
   const [activeSection, setActiveSection] = useState<AdminSection>(getActiveSection());
-  // Sub-tab within the Users section: "active" (the user list) vs
-  // "recycle" (deleted groups + expenses). Defaults to active.
-  const [usersTab, setUsersTab] = useState<"active" | "recycle">("active");
+  // Sub-tab within the Users section:
+  //   "all"       — every signup (the full list)
+  //   "activated" — only users who've created ≥1 real expense (the people
+  //                 who actually USE the app, not just signed up + forgot)
+  //   "recycle"   — deleted groups + expenses
+  const [usersTab, setUsersTab] = useState<"all" | "activated" | "recycle">("all");
 
   // Deep-link to a specific user via #/admin/users/<id>. On hash change OR
   // when the user list finishes loading, if the URL points at a user, open
@@ -446,19 +485,32 @@ export default function Admin() {
             </p>
           </div>
 
-      {/* Tabs: Active vs Recycle bin */}
+      {/* Tabs: All · Activated · Recycle bin */}
       <div className="flex gap-1 border-b border-border">
         <button
           type="button"
-          onClick={() => setUsersTab("active")}
+          onClick={() => setUsersTab("all")}
           className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-            usersTab === "active"
+            usersTab === "all"
               ? "border-primary text-foreground"
               : "border-transparent text-muted-foreground hover:text-foreground"
           }`}
-          data-testid="users-tab-active"
+          data-testid="users-tab-all"
         >
-          Active ({allUsers.length})
+          All ({allUsers.length})
+        </button>
+        <button
+          type="button"
+          onClick={() => setUsersTab("activated")}
+          className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            usersTab === "activated"
+              ? "border-primary text-foreground"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+          data-testid="users-tab-activated"
+          title="Users who've created at least one real expense"
+        >
+          Activated ({activatedCount})
         </button>
         <button
           type="button"
@@ -474,12 +526,19 @@ export default function Admin() {
         </button>
       </div>
 
-      {/* Approved Users */}
-      {usersTab === "active" && (<>
+      {/* User list — shared by the All + Activated tabs */}
+      {(usersTab === "all" || usersTab === "activated") && (<>
       <div>
         <h2 className="text-sm font-medium text-muted-foreground mb-2">
-          Active Users ({allUsers.length})
+          {usersTab === "activated"
+            ? `Activated — created ≥1 expense (${activatedCount})`
+            : `All Users (${allUsers.length})`}
         </h2>
+        {usersTab === "activated" && (
+          <p className="text-xs text-muted-foreground mb-2 -mt-1">
+            Only people who've actually logged an expense. Signed-up-and-forgot users are hidden here — see the All tab for everyone.
+          </p>
+        )}
 
         {/* User search + premium filter */}
         <div className="flex gap-2 mb-3">
@@ -504,15 +563,23 @@ export default function Admin() {
         </div>
 
         <div className="space-y-2">
-          {filteredUsers.map((u) => (
+          {(usersTab === "activated" ? activatedUsers : filteredUsers).map((u) => (
             <UserCard
               key={u.id}
               u={u}
               isCurrent={u.id === user?.id}
               onManage={handleManageUser}
+              badge={usersTab === "activated" ? activityBadge(u.id) : undefined}
             />
           ))}
-          {filteredUsers.length === 0 && deferredSearch && (
+          {usersTab === "activated" && activatedUsers.length === 0 && (
+            <p className="text-sm text-muted-foreground text-center py-4">
+              {deferredSearch
+                ? `No activated users match "${deferredSearch}"`
+                : "No users have created an expense yet."}
+            </p>
+          )}
+          {usersTab === "all" && filteredUsers.length === 0 && deferredSearch && (
             <p className="text-sm text-muted-foreground text-center py-4">No users found for "{deferredSearch}"</p>
           )}
         </div>
