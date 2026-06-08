@@ -698,6 +698,34 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
   };
   const getPersonColor = (id: string) => members.find((m) => m.id === id)?.avatarColor || "#666";
 
+  // DISPLAY-ONLY: pick a color class for an expense row's amount based on the
+  // current user's direction on it. Does NOT touch any balance/expense
+  // calculation — it only reads paidById / splitAmongIds that are already on
+  // the row and returns a CSS class. The dollar value shown is unchanged.
+  //   - regular expense you paid     → green (you'll be reimbursed)
+  //   - regular expense you owe into → red   (it costs you)
+  //   - settlement you paid out      → red
+  //   - settlement you received      → green
+  //   - not involved / personal      → neutral (default text)
+  const expenseAmountColor = (expense: any): string => {
+    const uid = user?.id;
+    if (!uid) return "text-foreground";
+    const inSplit = Array.isArray(expense.splitAmongIds) && expense.splitAmongIds.includes(uid);
+    const iPaid = expense.paidById === uid;
+    if (expense.isSettlement) {
+      if (iPaid) return AMOUNT_OUT_CLASS;   // you handed money over
+      if (inSplit) return AMOUNT_IN_CLASS;  // you received money
+      return "text-foreground";
+    }
+    if (iPaid) {
+      // Personal expense (only you in the split) = no money moves → neutral.
+      if (inSplit && expense.splitAmongIds.length === 1) return "text-foreground";
+      return AMOUNT_IN_CLASS;               // others owe you
+    }
+    if (inSplit) return AMOUNT_OUT_CLASS;    // you owe your share
+    return "text-foreground";               // not involved
+  };
+
   // Role helpers
   const adminIds = group?.adminIds || [];
   const isMeOwner = group?.createdById === user?.id;
@@ -1981,12 +2009,12 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                   <span className="text-right shrink-0 font-mono">
                     {expense.currency && expense.currency !== "CAD" && expense.originalAmount ? (
                       <>
-                        <span className="text-base font-semibold text-foreground block">
+                        <span className={`text-base font-semibold block ${expenseAmountColor(expense)}`}>
                           {formatExpenseAmount(expense.amount, expense.currency, expense.originalAmount)}
                         </span>
                       </>
                     ) : (
-                      <span className="text-base font-semibold text-foreground">
+                      <span className={`text-base font-semibold ${expenseAmountColor(expense)}`}>
                         ${expense.amount.toFixed(2)}
                       </span>
                     )}
