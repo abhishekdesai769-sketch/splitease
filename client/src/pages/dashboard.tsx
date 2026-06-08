@@ -7,7 +7,7 @@ import { UsersRound, Users2, TrendingDown, TrendingUp, MailPlus, Check, X, Repea
 import { Link } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { calculateGroupBalances, calculatePairwiseBalances, simplifyDebts } from "@/lib/simplify";
-import { displayBalance, isEffectivelySettled } from "@/lib/balance-display";
+import { displayBalance, isEffectivelySettled, AMOUNT_IN_CLASS, AMOUNT_OUT_CLASS } from "@/lib/balance-display";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { CelebrationBanner } from "@/components/CelebrationBanner";
@@ -272,8 +272,8 @@ export default function Dashboard() {
       <div className="grid grid-cols-2 gap-3">
         <StatCard icon={Users2} label="Friends" value={String(friendsList.length)} href="/friends" />
         <StatCard icon={UsersRound} label="Groups" value={String(groups.length)} href="/groups" />
-        <StatCard icon={TrendingDown} label="You Owe" value={`$${youOwe.toFixed(2)}`} color="text-destructive" />
-        <StatCard icon={TrendingUp} label="You're Owed" value={`$${youAreOwed.toFixed(2)}`} color="text-primary" />
+        <StatCard icon={TrendingDown} label="You Owe" value={`$${youOwe.toFixed(2)}`} color={AMOUNT_OUT_CLASS} />
+        <StatCard icon={TrendingUp} label="You're Owed" value={`$${youAreOwed.toFixed(2)}`} color={AMOUNT_IN_CLASS} />
       </div>
 
       {/* AI Mode tile — full-width, gradient, dashboard-prominent. Visible
@@ -330,7 +330,7 @@ export default function Dashboard() {
                       </>
                     )}
                     {" "}
-                    <span className="font-semibold">${s.amount.toFixed(2)}</span>
+                    <span className={`font-semibold ${theyOweMe ? AMOUNT_IN_CLASS : AMOUNT_OUT_CLASS}`}>${s.amount.toFixed(2)}</span>
                   </p>
                 </Card>
               );

@@ -19,7 +19,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { calculateGroupBalances } from "@/lib/simplify";
-import { displayBalance } from "@/lib/balance-display";
+import { displayBalance, AMOUNT_IN_CLASS, AMOUNT_OUT_CLASS } from "@/lib/balance-display";
 import { recordExpenseAndCheck, triggerReview } from "@/lib/reviewPrompt";
 
 export default function FriendDetail({ friendId }: { friendId: string }) {
@@ -927,11 +927,11 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
             {myBalance === 0 ? (
               <p className="text-lg font-semibold text-muted-foreground">All settled up</p>
             ) : myBalance > 0 ? (
-              <p className="text-lg font-semibold text-primary font-mono">
+              <p className={`text-lg font-semibold font-mono ${AMOUNT_IN_CLASS}`}>
                 {friend.name} pays you ${myBalance.toFixed(2)}
               </p>
             ) : (
-              <p className="text-lg font-semibold text-destructive font-mono">
+              <p className={`text-lg font-semibold font-mono ${AMOUNT_OUT_CLASS}`}>
                 You pay {friend.name} ${Math.abs(myBalance).toFixed(2)}
               </p>
             )}

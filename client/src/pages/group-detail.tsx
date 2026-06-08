@@ -21,7 +21,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { calculateGroupBalances, simplifyDebts, calculatePairwiseBalances } from "@/lib/simplify";
-import { isEffectivelySettled, displayBalance } from "@/lib/balance-display";
+import { isEffectivelySettled, displayBalance, AMOUNT_IN_CLASS, AMOUNT_OUT_CLASS } from "@/lib/balance-display";
 import { recordExpenseAndCheck, triggerReview } from "@/lib/reviewPrompt";
 import { track } from "@/lib/analytics";
 
@@ -1700,7 +1700,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
             return (
               <p className="text-base font-semibold mb-3">
                 {net > 0 ? "You are owed " : "You owe "}
-                <span className={net > 0 ? "text-primary" : "text-destructive"}>${Math.abs(net).toFixed(2)}</span>
+                <span className={net > 0 ? AMOUNT_IN_CLASS : AMOUNT_OUT_CLASS}>${Math.abs(net).toFixed(2)}</span>
                 {" in total"}
               </p>
             );
@@ -1739,12 +1739,12 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                           ) : (
                             <>
                               <span className="font-medium">{getPersonName(otherPerson)}</span>
-                              {" "}<span className="text-primary font-medium">owes you</span>
+                              {" "}<span className={`${AMOUNT_IN_CLASS} font-medium`}>owes you</span>
                             </>
                           )}
                         </p>
                       </div>
-                      <span className={`text-base font-semibold shrink-0 font-mono ${youOwe ? "text-destructive" : "text-primary"}`}>
+                      <span className={`text-base font-semibold shrink-0 font-mono ${youOwe ? AMOUNT_OUT_CLASS : AMOUNT_IN_CLASS}`}>
                         ${s.amount.toFixed(2)}
                       </span>
                     </Card>
@@ -1802,7 +1802,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                     <span className="text-base">{getPersonName(b.personId)}</span>
                     <span
                       className={`text-base font-semibold ${
-                        displayAmt > 0 ? "text-primary" : displayAmt < 0 ? "text-destructive" : "text-muted-foreground"
+                        displayAmt > 0 ? AMOUNT_IN_CLASS : displayAmt < 0 ? AMOUNT_OUT_CLASS : "text-muted-foreground"
                       }`}
                     >
                       {displayAmt > 0 ? "gets back" : displayAmt < 0 ? "pays" : "settled"}{" "}

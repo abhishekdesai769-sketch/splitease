@@ -22,6 +22,25 @@
 
 export const SETTLED_THRESHOLD = 0.05;
 
+// ── Directional amount colors ──────────────────────────────────────────────
+// Green = money coming TO you (you're owed / will receive).
+// Red   = money going OUT (you owe / will pay).
+// Used everywhere balances are shown so the direction is unmistakable —
+// users were confused when "you're owed" amounts rendered in default
+// (near-black) text. Tuned for contrast on both the cream light theme and
+// the dark theme.
+export const AMOUNT_IN_CLASS = "text-green-600 dark:text-green-400";   // owed to you
+export const AMOUNT_OUT_CLASS = "text-destructive";                    // you owe
+
+/** Returns the right color class for a signed balance amount.
+ *  amount > 0 → green (incoming), amount < 0 → red (outgoing),
+ *  amount === 0 → muted. */
+export function amountColorClass(amount: number): string {
+  if (amount > 0) return AMOUNT_IN_CLASS;
+  if (amount < 0) return AMOUNT_OUT_CLASS;
+  return "text-muted-foreground";
+}
+
 /**
  * Returns true if the amount is below the display threshold and should be
  * shown to the user as "settled" rather than as a literal cents value.

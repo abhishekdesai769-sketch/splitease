@@ -19,7 +19,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { calculateGroupBalances, calculatePairwiseBalances } from "@/lib/simplify";
-import { displayBalance, isEffectivelySettled } from "@/lib/balance-display";
+import { displayBalance, isEffectivelySettled, AMOUNT_IN_CLASS, AMOUNT_OUT_CLASS } from "@/lib/balance-display";
 
 export default function Friends() {
   const { user } = useAuth();
@@ -721,7 +721,7 @@ export default function Friends() {
                   {balance !== 0 && (
                     <span
                       className={`text-sm font-semibold shrink-0 font-mono ${
-                        balance > 0 ? "text-primary" : "text-destructive"
+                        balance > 0 ? AMOUNT_IN_CLASS : AMOUNT_OUT_CLASS
                       }`}
                     >
                       {balance > 0 ? `+$${balance.toFixed(2)}` : `-$${Math.abs(balance).toFixed(2)}`}

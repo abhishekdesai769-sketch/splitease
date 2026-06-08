@@ -12,7 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { calculateGroupBalances } from "@/lib/simplify";
-import { displayBalance } from "@/lib/balance-display";
+import { displayBalance, AMOUNT_IN_CLASS, AMOUNT_OUT_CLASS } from "@/lib/balance-display";
 import { track } from "@/lib/analytics";
 import { triggerReview } from "@/lib/reviewPrompt";
 
@@ -140,7 +140,7 @@ export default function Groups() {
                     </p>
                   </div>
                   {netBalance !== 0 && (
-                    <span className={`text-base font-semibold shrink-0 font-mono ${netBalance > 0 ? "text-primary" : "text-destructive"}`}>
+                    <span className={`text-base font-semibold shrink-0 font-mono ${netBalance > 0 ? AMOUNT_IN_CLASS : AMOUNT_OUT_CLASS}`}>
                       {netBalance > 0 ? "+" : "-"}${Math.abs(netBalance).toFixed(2)}
                     </span>
                   )}
