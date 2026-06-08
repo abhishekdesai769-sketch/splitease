@@ -318,15 +318,15 @@ export default function Dashboard() {
                   <p className="text-sm">
                     {s.from === user?.id ? (
                       <>
-                        <span className="text-destructive font-medium">You</span>
+                        <span className="font-medium">You</span>
                         {" pay "}
-                        <span className="text-primary font-medium">{getPersonName(s.to)}</span>
+                        <span className="font-medium">{getPersonName(s.to)}</span>
                       </>
                     ) : (
                       <>
-                        <span className="font-medium text-muted-foreground">{getPersonName(s.from)}</span>
+                        <span className="font-medium">{getPersonName(s.from)}</span>
                         {" pays "}
-                        <span className="text-primary font-medium">you</span>
+                        <span className="font-medium">you</span>
                       </>
                     )}
                     {" "}
