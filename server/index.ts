@@ -298,6 +298,18 @@ async function runMigrations() {
     // startup. Keeps the table tiny without needing a separate cron job.
     await pool.query(`DELETE FROM auth_attempts WHERE created_at < (now() - interval '24 hours')::text`);
 
+    // ── Email send counter (June 2026 — Resend daily-quota observability) ──
+    // One row per UTC day, incremented on every successful email send.
+    // Lets the admin see "emails today: X / 100" without the Resend dashboard.
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS email_sends_daily (
+        usage_date text PRIMARY KEY,
+        count integer NOT NULL DEFAULT 0
+      )
+    `);
+    // Prune rows older than 90 days on startup — keeps the table tiny.
+    await pool.query(`DELETE FROM email_sends_daily WHERE usage_date < (now() - interval '90 days')::text`);
+
     // ── Client error log (June 2026 — customer-visible error observability) ─
     // Populated by frontend on 4xx/5xx responses + uncaught JS exceptions.
     // Reviewed by admin via /admin → Recent Errors panel.

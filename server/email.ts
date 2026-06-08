@@ -1,4 +1,5 @@
 import { Resend } from "resend";
+import { recordEmailSent } from "./emailUsage";
 
 const resend = process.env.RESEND_API_KEY
   ? new Resend(process.env.RESEND_API_KEY)
@@ -44,6 +45,9 @@ async function sendEmail(
         ? { attachments: attachments.map((a) => ({ content: a.content, filename: a.filename })) }
         : {}),
     });
+    // Count this send toward today's Resend quota (admin observability).
+    // Fire-and-forget — never let telemetry affect delivery.
+    recordEmailSent().catch(() => {});
   } catch (err) {
     console.error("Failed to send email to", to, err);
   }

@@ -24,6 +24,7 @@ import * as aiQuota from "./aiQuota";
 import * as campaigns from "./campaigns";
 import * as authThrottle from "./auth-throttle";
 import { clientErrors as clientErrorsTable, expenses as expensesTable } from "@shared/schema";
+import { getEmailsSentToday, getEmailUsageWindow, RESEND_DAILY_LIMIT } from "./emailUsage";
 import multer from "multer";
 import { stripe, STRIPE_PRICE_MONTHLY, STRIPE_PRICE_YEARLY, STRIPE_ENABLED } from "./stripe";
 import {
@@ -1361,6 +1362,20 @@ setInterval(loadAll,30000);
     }
   });
 
+  // Email usage vs Resend's daily quota — for the admin Home KPI strip.
+  app.get("/api/admin/email-usage", requireAuth, requireAdmin, async (_req, res) => {
+    try {
+      const [sentToday, history] = await Promise.all([
+        getEmailsSentToday(),
+        getEmailUsageWindow(7),
+      ]);
+      res.json({ sentToday, limit: RESEND_DAILY_LIMIT, history });
+    } catch (err: any) {
+      console.error("[admin] email-usage failed:", err);
+      res.status(500).json({ error: "email_usage_failed", message: err?.message });
+    }
+  });
+
   app.patch("/api/admin/users/:id/approve", requireAuth, requireAdmin, async (req, res) => {
     const updated = await storage.updateUser(req.params.id, { isApproved: true });
     if (!updated) return res.status(404).json({ error: "User not found" });
@@ -1882,20 +1897,27 @@ setInterval(loadAll,30000);
       const splitUsers = await storage.getUsersSafe(splitAmongIds);
       const perPerson = parsedAmount / splitAmongIds.length;
       if (payer) {
-        notifyExpenseCreated({
-          description: sanitize(description, 200),
-          amount: parsedAmount,
-          paidByName: payer.name,
-          paidByEmail: payer.email,
-          splitAmong: splitUsers.map((u) => ({ name: u.name, email: u.email, share: perPerson })),
-          isSettlement: !!isSettlement,
-          receiptBuffer: receiptFile?.buffer,
-          receiptFilename: receiptFile?.originalname,
-          // Deep-link target: friend page of the payer (so the recipient lands
-          // on /friends/{payerId} when they tap the email link).
-          paidByUserId: paidById,
-        });
-        // iOS push notifications (fire-and-forget; never throws)
+        // EMAIL POLICY: only email for expenses that have a receipt attached
+        // (keeps us under Resend's 100/day quota). Settlements are exempt —
+        // "X paid you" is the highest-value notification and is rare, so it
+        // always emails. Push notifications are free + valuable → always sent,
+        // regardless of receipt.
+        if (receiptFile || !!isSettlement) {
+          notifyExpenseCreated({
+            description: sanitize(description, 200),
+            amount: parsedAmount,
+            paidByName: payer.name,
+            paidByEmail: payer.email,
+            splitAmong: splitUsers.map((u) => ({ name: u.name, email: u.email, share: perPerson })),
+            isSettlement: !!isSettlement,
+            receiptBuffer: receiptFile?.buffer,
+            receiptFilename: receiptFile?.originalname,
+            // Deep-link target: friend page of the payer (so the recipient lands
+            // on /friends/{payerId} when they tap the email link).
+            paidByUserId: paidById,
+          });
+        }
+        // iOS push notifications (fire-and-forget; never throws) — ALWAYS send
         pushExpenseCreated({
           description: sanitize(description, 200),
           amount: parsedAmount,
@@ -2926,21 +2948,25 @@ setInterval(loadAll,30000);
         groupName = group?.name;
       }
       if (payer) {
-        notifyExpenseCreated({
-          description: sanitize(description, 200),
-          amount: parsedAmount,
-          paidByName: payer.name,
-          paidByEmail: payer.email,
-          splitAmong: splitUsers.map((u) => ({ name: u.name, email: u.email, share: perPerson })),
-          groupName,
-          isSettlement: !!isSettlement,
-          receiptBuffer: receiptFile?.buffer,
-          receiptFilename: receiptFile?.originalname,
-          // Deep-link target: the group's detail page.
-          groupId,
-          paidByUserId: paidById,
-        });
-        // iOS push notifications (fire-and-forget; never throws)
+        // EMAIL POLICY (see friend endpoint above): email only when a receipt
+        // is attached; settlements exempt. Push always sent.
+        if (receiptFile || !!isSettlement) {
+          notifyExpenseCreated({
+            description: sanitize(description, 200),
+            amount: parsedAmount,
+            paidByName: payer.name,
+            paidByEmail: payer.email,
+            splitAmong: splitUsers.map((u) => ({ name: u.name, email: u.email, share: perPerson })),
+            groupName,
+            isSettlement: !!isSettlement,
+            receiptBuffer: receiptFile?.buffer,
+            receiptFilename: receiptFile?.originalname,
+            // Deep-link target: the group's detail page.
+            groupId,
+            paidByUserId: paidById,
+          });
+        }
+        // iOS push notifications (fire-and-forget; never throws) — ALWAYS send
         pushExpenseCreated({
           description: sanitize(description, 200),
           amount: parsedAmount,

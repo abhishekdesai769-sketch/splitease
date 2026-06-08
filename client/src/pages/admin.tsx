@@ -1327,6 +1327,13 @@ function AdminHomePanel({ allUsers }: { allUsers: SafeUser[] }) {
     refetchInterval: 60_000,
   });
 
+  // Email usage vs Resend's daily quota (100/day free tier).
+  const { data: emailUsage } = useQuery<{ sentToday: number; limit: number; history: Array<{ date: string; count: number }> }>({
+    queryKey: ["/api/admin/email-usage"],
+    queryFn: async () => (await apiRequest("GET", "/api/admin/email-usage")).json(),
+    refetchInterval: 60_000,
+  });
+
   // ── Search results ─────────────────────────────────────────────────────
   // Filter the existing user list client-side. Already loaded by the parent
   // so no extra fetch. Limit to top 6 matches in the dropdown.
@@ -1472,7 +1479,7 @@ function AdminHomePanel({ allUsers }: { allUsers: SafeUser[] }) {
       </div>
 
       {/* ── KPI strip ───────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5">
         <KpiCell label="Total users" value={String(totalUsers)} />
         <KpiCell label="Premium" value={`${premiumPct}%`} sub={`${premiumUsers} users`} />
         <KpiCell label="Today's AI spend" value={`$${todayDollars}`} />
@@ -1480,6 +1487,22 @@ function AdminHomePanel({ allUsers }: { allUsers: SafeUser[] }) {
           label="Errors today"
           value={String(errorsTodayCount)}
           tone={errorsTodayCount > 0 ? "warn" : "ok"}
+        />
+        <KpiCell
+          label="Emails today"
+          value={emailUsage ? `${emailUsage.sentToday} / ${emailUsage.limit}` : "—"}
+          tone={
+            emailUsage && emailUsage.sentToday >= emailUsage.limit
+              ? "warn"
+              : emailUsage && emailUsage.sentToday >= emailUsage.limit * 0.8
+              ? "warn"
+              : "neutral"
+          }
+          sub={
+            emailUsage && emailUsage.sentToday >= emailUsage.limit * 0.8
+              ? "near limit"
+              : undefined
+          }
         />
       </div>
 
