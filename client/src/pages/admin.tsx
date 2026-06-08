@@ -1478,8 +1478,57 @@ function AdminHomePanel({ allUsers }: { allUsers: SafeUser[] }) {
         </Card>
       </div>
 
+      {/* ── Email quota — prominent dedicated card ───────────────────────── */}
+      <Card className="p-4 space-y-2.5">
+        <div className="flex items-center justify-between">
+          <label className="text-[11px] uppercase tracking-wider font-mono text-muted-foreground">
+            Emails sent today (Resend quota)
+          </label>
+          {emailUsage && emailUsage.sentToday >= emailUsage.limit * 0.8 && (
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 border border-amber-500/30">
+              <AlertTriangle className="w-3 h-3" />
+              NEAR LIMIT
+            </span>
+          )}
+        </div>
+        <p className="text-2xl font-semibold font-mono">
+          {emailUsage ? `${emailUsage.sentToday} / ${emailUsage.limit}` : "—"}
+        </p>
+        {emailUsage && (() => {
+          const pct = Math.min(100, (emailUsage.sentToday / emailUsage.limit) * 100);
+          const barColor = pct >= 100 ? "bg-red-500" : pct >= 80 ? "bg-amber-500" : "bg-green-500";
+          return (
+            <>
+              <div className="relative h-2 rounded-full bg-muted overflow-hidden">
+                <div className={`h-full ${barColor}`} style={{ width: `${pct}%` }} />
+              </div>
+              <p className="text-[10px] text-muted-foreground">
+                {emailUsage.limit - emailUsage.sentToday} left today · resets at midnight UTC
+              </p>
+              {emailUsage.history && emailUsage.history.length > 0 && (
+                <div className="flex items-end gap-1 h-10 pt-1">
+                  {emailUsage.history.slice().reverse().map((h) => {
+                    const max = Math.max(...emailUsage.history.map((x) => x.count), 1);
+                    return (
+                      <div key={h.date} className="flex-1 flex flex-col items-center gap-0.5">
+                        <div
+                          className="w-full bg-primary/30 rounded-t-sm"
+                          style={{ height: `${(h.count / max) * 100}%`, minHeight: "2px" }}
+                          title={`${h.date}: ${h.count} emails`}
+                        />
+                        <span className="text-[9px] text-muted-foreground">{h.date.slice(5)}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          );
+        })()}
+      </Card>
+
       {/* ── KPI strip ───────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
         <KpiCell label="Total users" value={String(totalUsers)} />
         <KpiCell label="Premium" value={`${premiumPct}%`} sub={`${premiumUsers} users`} />
         <KpiCell label="Today's AI spend" value={`$${todayDollars}`} />
@@ -1487,22 +1536,6 @@ function AdminHomePanel({ allUsers }: { allUsers: SafeUser[] }) {
           label="Errors today"
           value={String(errorsTodayCount)}
           tone={errorsTodayCount > 0 ? "warn" : "ok"}
-        />
-        <KpiCell
-          label="Emails today"
-          value={emailUsage ? `${emailUsage.sentToday} / ${emailUsage.limit}` : "—"}
-          tone={
-            emailUsage && emailUsage.sentToday >= emailUsage.limit
-              ? "warn"
-              : emailUsage && emailUsage.sentToday >= emailUsage.limit * 0.8
-              ? "warn"
-              : "neutral"
-          }
-          sub={
-            emailUsage && emailUsage.sentToday >= emailUsage.limit * 0.8
-              ? "near limit"
-              : undefined
-          }
         />
       </div>
 
