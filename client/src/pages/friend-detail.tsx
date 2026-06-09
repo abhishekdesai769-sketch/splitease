@@ -951,6 +951,12 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
         </div>
       </Card>
 
+      {/* How this friend gets paid — always visible, so you can see it
+          anytime (not only inside the Settle Up dialog). */}
+      <Card className="p-4">
+        <PaymentMethodsView userId={friend.id} name={friend.name} />
+      </Card>
+
       {/* Settle Up Dialog */}
       <Dialog open={settleUpOpen} onOpenChange={setSettleUpOpen}>
         <DialogContent>

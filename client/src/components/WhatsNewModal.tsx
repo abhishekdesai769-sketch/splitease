@@ -16,7 +16,7 @@
 import { useState } from "react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Wallet, Check, ArrowRight, Copy } from "lucide-react";
+import { Wallet, Check, ArrowRight, Copy, Eye } from "lucide-react";
 
 // Bump this string to re-show a NEW announcement to everyone.
 export const WHATS_NEW_VERSION = "payments-2026-06";
@@ -60,6 +60,17 @@ const SLIDES: Slide[] = [
         When someone goes to pay you back, your details show up with a
         <span className="font-medium text-foreground"> one-tap copy button</span> — so the money lands in the
         right place, every time. Set yours up once and you're done.
+      </>
+    ),
+  },
+  {
+    icon: <Eye className="w-7 h-7 text-emerald-500" />,
+    title: "And you can see how others want to be paid",
+    body: (
+      <>
+        Need to pay a friend back? Open their page or
+        <span className="font-medium text-foreground"> tap them in a group</span> to see how they get paid —
+        anytime, before you even settle up. Copy their details and send it over.
       </>
     ),
   },
