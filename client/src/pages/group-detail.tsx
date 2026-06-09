@@ -95,6 +95,8 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
 
   // Member action dialog state
   const [memberActionMember, setMemberActionMember] = useState<SafeUser | null>(null);
+  // Tapping a member you can't admin-act on → show their payment info instead.
+  const [memberInfoMember, setMemberInfoMember] = useState<SafeUser | null>(null);
 
   // Ghost invite dialog state
   const [ghostInviteMember, setGhostInviteMember] = useState<SafeUser | null>(null);
@@ -1526,10 +1528,11 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
           return (
             <div
               key={m.id}
-              className={`flex flex-col items-center gap-1 shrink-0 relative ${isGhost ? "cursor-pointer" : canAct ? "cursor-pointer" : ""}`}
+              className={`flex flex-col items-center gap-1 shrink-0 relative ${isGhost || canAct || m.id !== user?.id ? "cursor-pointer" : ""}`}
               onClick={() => {
                 if (isGhost) { setGhostInviteMember(m); setGhostInviteEmail(""); }
                 else if (canAct) setMemberActionMember(m);
+                else if (m.id !== user?.id) setMemberInfoMember(m);  // non-admin tap → payment info
               }}
               data-testid={`member-avatar-${m.id}`}
             >
@@ -2218,6 +2221,12 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
           </DialogHeader>
           {memberActionMember && (
             <div className="space-y-2 pt-2">
+              {/* How this member wants to get paid */}
+              {memberActionMember.id !== user?.id && (
+                <div className="rounded-lg border border-border p-3 mb-1">
+                  <PaymentMethodsView userId={memberActionMember.id} name={memberActionMember.name} compact />
+                </div>
+              )}
               {/* Promote to Admin — owner only, for members */}
               {(isMeOwner || isMeGlobalAdmin) && getMemberRole(memberActionMember.id) === "member" && (
                 <Button
@@ -2324,6 +2333,20 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
               <p className="text-sm text-muted-foreground text-center py-4">No receipt data available.</p>
             )}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Member payment-info dialog — shown when a non-admin taps a member */}
+      <Dialog open={!!memberInfoMember} onOpenChange={(open) => { if (!open) setMemberInfoMember(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{memberInfoMember?.name}</DialogTitle>
+          </DialogHeader>
+          {memberInfoMember && (
+            <div className="pt-1">
+              <PaymentMethodsView userId={memberInfoMember.id} name={memberInfoMember.name} />
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 
