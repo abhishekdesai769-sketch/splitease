@@ -22,31 +22,17 @@ import { Wallet, Check, ArrowRight, Eye } from "lucide-react";
 export const WHATS_NEW_VERSION = "payments-2026-06";
 const SEEN_KEY = "spliiit_whatsnew_seen";
 
-/**
- * True if the current user hasn't seen this version's announcement yet.
- *
- * replayEachSession (admin testing): when true, we track "seen" in
- * sessionStorage instead of localStorage — so it re-shows on every fresh
- * app launch (relaunch to test the tour again), but still hides for the
- * rest of the current session once dismissed. Regular users get the normal
- * localStorage "once ever" behaviour.
- */
-export function shouldShowWhatsNew(replayEachSession = false): boolean {
-  // Admin testing override: always show, every dashboard mount, regardless
-  // of any stored flag. Removes all storage ambiguity while QA'ing the tour.
-  // Flip this behaviour off (remove replayEachSession) once testing is done.
-  if (replayEachSession) return true;
+/** True if the current user hasn't seen this version's announcement yet.
+ *  Shown once ever, per user, via localStorage. */
+export function shouldShowWhatsNew(): boolean {
   try {
     return localStorage.getItem(SEEN_KEY) !== WHATS_NEW_VERSION;
   } catch {
     return false; // storage off → don't nag
   }
 }
-function markSeen(replayEachSession = false) {
-  try {
-    const store = replayEachSession ? sessionStorage : localStorage;
-    store.setItem(SEEN_KEY, WHATS_NEW_VERSION);
-  } catch { /* ignore */ }
+function markSeen() {
+  try { localStorage.setItem(SEEN_KEY, WHATS_NEW_VERSION); } catch { /* ignore */ }
 }
 
 interface Slide {
@@ -80,18 +66,18 @@ const SLIDES: Slide[] = [
   },
 ];
 
-export function WhatsNewModal({ replayEachSession = false }: { replayEachSession?: boolean }) {
+export function WhatsNewModal() {
   // Decide once on mount whether to show — avoids flicker if storage changes.
-  const [open, setOpen] = useState(() => shouldShowWhatsNew(replayEachSession));
+  const [open, setOpen] = useState(() => shouldShowWhatsNew());
   const [step, setStep] = useState(0);
 
   const close = () => {
-    markSeen(replayEachSession);
+    markSeen();
     setOpen(false);
   };
 
   const finishAndOpen = () => {
-    markSeen(replayEachSession);
+    markSeen();
     setOpen(false);
     // Let SupportDrawer open itself straight to the payment editor.
     // Small delay so the modal's close animation doesn't fight the drawer open.
