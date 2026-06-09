@@ -45,6 +45,13 @@ export const users = pgTable("users", {
   // Email normalization for abuse detection (Gmail dots/+aliases stripped, lowercased).
   // Set on signup; used to detect "same person, different alias" account recycling.
   normalizedEmail: text("normalized_email"),
+  // Payment preferences — "how I want to get paid back."
+  //   paymentMethods: JSON array of { type, value } (type from PAYMENT_METHOD_TYPES,
+  //     value = email/phone/handle). Max 6. Visible only to friends + shared-group
+  //     members (enforced in the GET /api/users/:id/payment-info route).
+  //   paymentNote: free-text catch-all ("cash is fine too", etc.). Max 280 chars.
+  paymentMethods: text("payment_methods"),   // JSON string or null
+  paymentNote: text("payment_note"),         // free text or null
 }, (table) => [
   uniqueIndex("users_email_idx").on(table.email),
   uniqueIndex("users_referral_code_idx").on(table.referralCode),

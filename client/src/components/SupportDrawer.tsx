@@ -10,7 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { apiRequest } from "@/lib/queryClient";
-import { Headphones, Send, Loader2, CheckCircle2, UserPlus, Copy, Check, MessageCircle, Mail, Trash2, AlertTriangle, Upload, HelpCircle, ChevronDown, Bell, Crown, Lock, Monitor, Moon, Settings, Sun, Star } from "lucide-react";
+import { Headphones, Send, Loader2, CheckCircle2, UserPlus, Copy, Check, MessageCircle, Mail, Trash2, AlertTriangle, Upload, HelpCircle, ChevronDown, Bell, Crown, Lock, Monitor, Moon, Settings, Sun, Star, Wallet } from "lucide-react";
+import { PaymentMethodsEditor } from "@/components/PaymentMethods";
 import { getStorePlatform, getStoreLink } from "@/lib/reviewPrompt";
 import { useTheme, type ThemePref } from "@/lib/theme";
 import { CURRENCIES } from "@/components/CurrencySelector";
@@ -57,7 +58,7 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const [open, setOpen] = useState(false);
-  const [view, setView] = useState<"menu" | "support" | "invite" | "delete" | "sent" | "faq" | "reminders" | "preferences">("menu");
+  const [view, setView] = useState<"menu" | "support" | "invite" | "delete" | "sent" | "faq" | "reminders" | "preferences" | "payment">("menu");
   const { themePref, setThemePref } = useTheme();
   const [faqOpen, setFaqOpen] = useState<number | null>(null);
 
@@ -307,6 +308,21 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
               </div>
             </button>
             )}
+
+            {/* How I get paid */}
+            <button
+              onClick={() => setView("payment")}
+              className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-muted/50 transition-colors text-left group"
+              data-testid="menu-payment"
+            >
+              <div className="w-9 h-9 rounded-lg bg-emerald-500/10 flex items-center justify-center flex-shrink-0">
+                <Wallet className="w-4.5 h-4.5 text-emerald-500" />
+              </div>
+              <div>
+                <p className="text-sm font-medium">How I get paid</p>
+                <p className="text-xs text-muted-foreground">Interac, PayPal, etc. — friends see this when they settle up</p>
+              </div>
+            </button>
 
             {/* Preferences */}
             <button
@@ -856,6 +872,10 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
         })()}
 
         {/* ===== PREFERENCES VIEW ===== */}
+        {view === "payment" && (
+          <PaymentMethodsEditor onBack={() => setView("menu")} />
+        )}
+
         {view === "preferences" && (() => {
           const currencyInfo = CURRENCIES.find((c) => c.code === user?.defaultCurrency);
           const themeOptions: { pref: ThemePref; icon: React.ReactNode; label: string }[] = [

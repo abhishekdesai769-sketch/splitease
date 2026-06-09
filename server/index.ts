@@ -298,6 +298,12 @@ async function runMigrations() {
     // startup. Keeps the table tiny without needing a separate cron job.
     await pool.query(`DELETE FROM auth_attempts WHERE created_at < (now() - interval '24 hours')::text`);
 
+    // ── Payment preferences (June 2026 — "how I want to get paid") ────────
+    // paymentMethods = JSON array of { type, value }; paymentNote = free text.
+    // Visible only to friends + shared-group members (route-enforced).
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS payment_methods text`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS payment_note text`);
+
     // ── Email send counter (June 2026 — Resend daily-quota observability) ──
     // One row per UTC day, incremented on every successful email send.
     // Lets the admin see "emails today: X / 100" without the Resend dashboard.

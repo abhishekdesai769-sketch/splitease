@@ -25,6 +25,7 @@ import * as campaigns from "./campaigns";
 import * as authThrottle from "./auth-throttle";
 import { clientErrors as clientErrorsTable, expenses as expensesTable } from "@shared/schema";
 import { getEmailsSentToday, getEmailUsageWindow, RESEND_DAILY_LIMIT } from "./emailUsage";
+import { sanitizePaymentMethods, parsePaymentMethods, MAX_PAYMENT_NOTE_LEN } from "@shared/payment-methods";
 import multer from "multer";
 import { stripe, STRIPE_PRICE_MONTHLY, STRIPE_PRICE_YEARLY, STRIPE_ENABLED } from "./stripe";
 import {
@@ -5230,6 +5231,73 @@ setInterval(loadAll,30000);
 
     const { password: _, ...safeUser } = updated;
     res.json(safeUser);
+  });
+
+  // ── Payment preferences ("how I want to get paid back") ──────────────
+  //
+  // GET  /api/user/payment-methods       → my own (always allowed)
+  // PATCH /api/user/payment-methods      → set my own { methods[], note }
+  // GET  /api/users/:id/payment-info     → someone else's, ONLY if we're
+  //                                        friends or share a group (else 403)
+
+  // My own — convenience read (the /api/auth/me payload doesn't include it).
+  app.get("/api/user/payment-methods", requireAuth, async (req: any, res) => {
+    const userId = (req.session as any).userId;
+    const user = await storage.getUser(userId);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    res.json({
+      methods: parsePaymentMethods(user.paymentMethods),
+      note: user.paymentNote || "",
+    });
+  });
+
+  // Set my own. Validates + caps via the shared sanitizer.
+  app.patch("/api/user/payment-methods", requireAuth, async (req: any, res) => {
+    const userId = (req.session as any).userId;
+    const user = await storage.getUser(userId);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+    const methods = sanitizePaymentMethods(req.body?.methods);
+    let note = typeof req.body?.note === "string" ? req.body.note.trim() : "";
+    if (note.length > MAX_PAYMENT_NOTE_LEN) note = note.slice(0, MAX_PAYMENT_NOTE_LEN);
+    // Strip any HTML to be safe (sanitize() also trims).
+    note = sanitize(note, MAX_PAYMENT_NOTE_LEN);
+
+    await storage.updateUser(userId, {
+      paymentMethods: methods.length > 0 ? JSON.stringify(methods) : null,
+      paymentNote: note.length > 0 ? note : null,
+    });
+    res.json({ methods, note });
+  });
+
+  // Someone else's payment info — gated to friends + shared-group members.
+  app.get("/api/users/:id/payment-info", requireAuth, async (req: any, res) => {
+    const requesterId = (req.session as any).userId;
+    const targetId = req.params.id;
+    if (!requesterId) return res.status(401).json({ error: "Unauthorized" });
+
+    // Self is always allowed (harmless, simplifies client).
+    let allowed = requesterId === targetId;
+    if (!allowed) {
+      // Friend?
+      allowed = await storage.areFriends(requesterId, targetId);
+    }
+    if (!allowed) {
+      // Share a group? (requester's groups that include the target)
+      const myGroups = await storage.getGroupsForUser(requesterId);
+      allowed = myGroups.some((g) => g.memberIds.includes(targetId));
+    }
+    if (!allowed) {
+      return res.status(403).json({ error: "not_permitted", message: "You can only see payment info of friends or people in your groups." });
+    }
+
+    const target = await storage.getUser(targetId);
+    if (!target) return res.status(404).json({ error: "not_found" });
+    res.json({
+      name: target.name,
+      methods: parsePaymentMethods(target.paymentMethods),
+      note: target.paymentNote || "",
+    });
   });
 
   // POST /api/user/first-run — mark first-run wizard as completed (or skipped)
