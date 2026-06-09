@@ -92,6 +92,15 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
     setReminderTone(rs.reminderTone ?? "friendly");
   }, [reminderSettings]);
 
+  // Deep-link hook: the "What's New" carousel (and any other surface) can
+  // open this drawer straight to the payment editor by dispatching this
+  // custom event. Decoupled — no DOM targeting, no prop drilling.
+  useEffect(() => {
+    const openPayment = () => { setView("payment"); setOpen(true); };
+    window.addEventListener("spliiit:open-payment-prefs", openPayment);
+    return () => window.removeEventListener("spliiit:open-payment-prefs", openPayment);
+  }, []);
+
   const saveReminderMutation = useMutation({
     mutationFn: async (data: { reminderEnabled: boolean; reminderDays: number; reminderTone: string }) => {
       const res = await apiRequest("PATCH", "/api/reminder-settings", data);

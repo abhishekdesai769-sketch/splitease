@@ -11,6 +11,7 @@ import { displayBalance, isEffectivelySettled, AMOUNT_IN_CLASS, AMOUNT_OUT_CLASS
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { CelebrationBanner } from "@/components/CelebrationBanner";
+import { WhatsNewModal } from "@/components/WhatsNewModal";
 
 function StatCard({ icon: Icon, label, value, href, color }: { icon: any; label: string; value: string; href?: string; color?: string }) {
   const inner = (
@@ -203,6 +204,9 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
+      {/* One-time "what's new" feature carousel (versioned, shows once) */}
+      <WhatsNewModal />
+
       {/* Milestone / promo banner — only renders if user has an active campaign */}
       <CelebrationBanner />
 
