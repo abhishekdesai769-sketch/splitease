@@ -1895,13 +1895,6 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                 </SelectContent>
               </Select>
             </div>
-            {/* How the receiver wants to get paid — shown once selected (and
-                not when you're the one being paid). */}
-            {settleReceiverId && settleReceiverId !== user?.id && (
-              <div className="rounded-lg border border-border p-3">
-                <PaymentMethodsView userId={settleReceiverId} name={getPersonName(settleReceiverId)} compact />
-              </div>
-            )}
             <div className="space-y-2">
               <Label>Amount ($)</Label>
               <Input

@@ -976,12 +976,6 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
                 ${Math.abs(myBalance).toFixed(2)}
               </p>
             </div>
-            {/* When YOU owe the friend, show how they want to be paid. */}
-            {myBalance < 0 && (
-              <div className="rounded-lg border border-border p-3">
-                <PaymentMethodsView userId={friend.id} name={friend.name} compact />
-              </div>
-            )}
             <p className="text-xs text-muted-foreground text-center">
               This will record a payment that zeros out your balance with {friend.name}.
             </p>

@@ -20,7 +20,6 @@ import { Link } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { calculateGroupBalances, calculatePairwiseBalances } from "@/lib/simplify";
 import { displayBalance, isEffectivelySettled, AMOUNT_IN_CLASS, AMOUNT_OUT_CLASS } from "@/lib/balance-display";
-import { PaymentMethodsView } from "@/components/PaymentMethods";
 
 export default function Friends() {
   const { user } = useAuth();
@@ -675,12 +674,6 @@ export default function Friends() {
                   ${Math.abs(settleUpFriend.amount).toFixed(2)}
                 </p>
               </div>
-              {/* When YOU owe them, show how they want to be paid. */}
-              {settleUpFriend.amount < 0 && (
-                <div className="rounded-lg border border-border p-3">
-                  <PaymentMethodsView userId={settleUpFriend.id} name={settleUpFriend.name} compact />
-                </div>
-              )}
               <p className="text-xs text-muted-foreground text-center">
                 This will record a payment that zeros out your balance with {settleUpFriend.name}.
               </p>
