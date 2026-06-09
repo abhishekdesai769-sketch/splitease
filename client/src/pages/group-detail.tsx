@@ -22,6 +22,7 @@ import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { calculateGroupBalances, simplifyDebts, calculatePairwiseBalances } from "@/lib/simplify";
 import { isEffectivelySettled, displayBalance, AMOUNT_IN_CLASS, AMOUNT_OUT_CLASS } from "@/lib/balance-display";
+import { PaymentMethodsView } from "@/components/PaymentMethods";
 import { recordExpenseAndCheck, triggerReview } from "@/lib/reviewPrompt";
 import { track } from "@/lib/analytics";
 
@@ -1891,6 +1892,13 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                 </SelectContent>
               </Select>
             </div>
+            {/* How the receiver wants to get paid — shown once selected (and
+                not when you're the one being paid). */}
+            {settleReceiverId && settleReceiverId !== user?.id && (
+              <div className="rounded-lg border border-border p-3">
+                <PaymentMethodsView userId={settleReceiverId} name={getPersonName(settleReceiverId)} compact />
+              </div>
+            )}
             <div className="space-y-2">
               <Label>Amount ($)</Label>
               <Input
