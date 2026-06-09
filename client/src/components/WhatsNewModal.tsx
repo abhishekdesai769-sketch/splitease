@@ -32,9 +32,12 @@ const SEEN_KEY = "spliiit_whatsnew_seen";
  * localStorage "once ever" behaviour.
  */
 export function shouldShowWhatsNew(replayEachSession = false): boolean {
+  // Admin testing override: always show, every dashboard mount, regardless
+  // of any stored flag. Removes all storage ambiguity while QA'ing the tour.
+  // Flip this behaviour off (remove replayEachSession) once testing is done.
+  if (replayEachSession) return true;
   try {
-    const store = replayEachSession ? sessionStorage : localStorage;
-    return store.getItem(SEEN_KEY) !== WHATS_NEW_VERSION;
+    return localStorage.getItem(SEEN_KEY) !== WHATS_NEW_VERSION;
   } catch {
     return false; // storage off → don't nag
   }
