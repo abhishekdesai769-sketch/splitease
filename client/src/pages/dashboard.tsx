@@ -204,8 +204,10 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      {/* One-time "what's new" feature carousel (versioned, shows once) */}
-      <WhatsNewModal />
+      {/* One-time "what's new" feature carousel (versioned, shows once).
+          Admins get replayEachSession so they can re-test the tour by
+          relaunching the app — regular users still see it once ever. */}
+      <WhatsNewModal replayEachSession={!!user?.isAdmin} />
 
       {/* Milestone / promo banner — only renders if user has an active campaign */}
       <CelebrationBanner />

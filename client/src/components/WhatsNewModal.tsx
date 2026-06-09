@@ -22,16 +22,28 @@ import { Wallet, Check, ArrowRight, Copy, Eye } from "lucide-react";
 export const WHATS_NEW_VERSION = "payments-2026-06";
 const SEEN_KEY = "spliiit_whatsnew_seen";
 
-/** True if the current user hasn't seen this version's announcement yet. */
-export function shouldShowWhatsNew(): boolean {
+/**
+ * True if the current user hasn't seen this version's announcement yet.
+ *
+ * replayEachSession (admin testing): when true, we track "seen" in
+ * sessionStorage instead of localStorage — so it re-shows on every fresh
+ * app launch (relaunch to test the tour again), but still hides for the
+ * rest of the current session once dismissed. Regular users get the normal
+ * localStorage "once ever" behaviour.
+ */
+export function shouldShowWhatsNew(replayEachSession = false): boolean {
   try {
-    return localStorage.getItem(SEEN_KEY) !== WHATS_NEW_VERSION;
+    const store = replayEachSession ? sessionStorage : localStorage;
+    return store.getItem(SEEN_KEY) !== WHATS_NEW_VERSION;
   } catch {
     return false; // storage off → don't nag
   }
 }
-function markSeen() {
-  try { localStorage.setItem(SEEN_KEY, WHATS_NEW_VERSION); } catch { /* ignore */ }
+function markSeen(replayEachSession = false) {
+  try {
+    const store = replayEachSession ? sessionStorage : localStorage;
+    store.setItem(SEEN_KEY, WHATS_NEW_VERSION);
+  } catch { /* ignore */ }
 }
 
 interface Slide {
@@ -76,18 +88,18 @@ const SLIDES: Slide[] = [
   },
 ];
 
-export function WhatsNewModal() {
+export function WhatsNewModal({ replayEachSession = false }: { replayEachSession?: boolean }) {
   // Decide once on mount whether to show — avoids flicker if storage changes.
-  const [open, setOpen] = useState(() => shouldShowWhatsNew());
+  const [open, setOpen] = useState(() => shouldShowWhatsNew(replayEachSession));
   const [step, setStep] = useState(0);
 
   const close = () => {
-    markSeen();
+    markSeen(replayEachSession);
     setOpen(false);
   };
 
   const finishAndOpen = () => {
-    markSeen();
+    markSeen(replayEachSession);
     setOpen(false);
     // Let SupportDrawer open itself straight to the payment editor.
     // Small delay so the modal's close animation doesn't fight the drawer open.
