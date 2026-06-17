@@ -32,6 +32,7 @@ export interface IStorage {
   searchUsersByEmail(email: string, excludeId: string): Promise<SafeUser[]>;
   getAllUsers(): Promise<SafeUser[]>;
   updateUser(id: string, data: Partial<Pick<User, "isAdmin" | "isApproved" | "name">>): Promise<User | undefined>;
+  renameUserInActivityLog(userId: string, name: string): Promise<void>;
   updateUserPassword(id: string, hashedPassword: string): Promise<void>;
   updateUserSubscription(id: string, data: { isPremium: boolean; stripeCustomerId?: string; stripeSubscriptionId?: string | null; premiumUntil?: string | null }): Promise<User | undefined>;
   getUserByStripeCustomerId(stripeCustomerId: string): Promise<User | undefined>;
@@ -191,6 +192,12 @@ export class PgStorage implements IStorage {
   async updateUser(id: string, data: Partial<Omit<User, "id" | "password">>): Promise<User | undefined> {
     const [updated] = await db.update(users).set(data).where(eq(users.id, id)).returning();
     return updated;
+  }
+
+  // Keep the denormalized name copy in the activity feed in sync after a rename,
+  // so historical entries ("X added Grocery run") don't keep showing the old name.
+  async renameUserInActivityLog(userId: string, name: string): Promise<void> {
+    await db.update(activityLog).set({ userName: name }).where(eq(activityLog.userId, userId));
   }
 
   async getUserStats(userId: string): Promise<{

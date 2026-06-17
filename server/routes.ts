@@ -1457,6 +1457,21 @@ setInterval(loadAll,30000);
     res.json({ message: "Notes saved" });
   });
 
+  // Admin: rename a user's display name. Also syncs the denormalized copy in
+  // activity_log so old feed entries don't keep showing the previous name.
+  app.patch("/api/admin/users/:id/name", requireAuth, requireAdmin, async (req, res) => {
+    const { name } = req.body;
+    if (typeof name !== "string" || name.trim().length < 1) {
+      return res.status(400).json({ error: "name must be a non-empty string" });
+    }
+    const clean = name.trim().slice(0, 100);
+    const updated = await storage.updateUser(req.params.id, { name: clean });
+    if (!updated) return res.status(404).json({ error: "User not found" });
+    await storage.renameUserInActivityLog(req.params.id, clean);
+    const { password: _, ...safeUser } = updated;
+    res.json(safeUser);
+  });
+
   // AI Mode usage observability — for admin to spot abuse + monitor cost.
   // Returns today's totals + top spenders + last-7-days trend.
   app.get("/api/admin/ai-usage", requireAuth, requireAdmin, async (_req, res) => {

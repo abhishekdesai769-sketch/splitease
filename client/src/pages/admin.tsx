@@ -11,7 +11,7 @@ import {
 import {
   Shield, Trash2, RotateCcw, FolderX, ReceiptText,
   Search, Clock, AlertTriangle, KeyRound, Crown, Settings,
-  Users, BarChart2, StickyNote, Smartphone, Mail, Chrome,
+  Users, BarChart2, StickyNote, Smartphone, Mail, Chrome, Pencil,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
@@ -163,6 +163,7 @@ export default function Admin() {
   const [premiumMonths, setPremiumMonths] = useState("3");
   const [newPassword, setNewPassword] = useState("");
   const [adminNotes, setAdminNotes] = useState("");
+  const [editName, setEditName] = useState("");
 
   // Fetch stats only when a user dialog is open — never refetch on window focus
   const { data: userStats, isLoading: statsLoading } = useQuery<{
@@ -180,9 +181,10 @@ export default function Admin() {
     refetchOnWindowFocus: false,
   });
 
-  // Sync adminNotes when a new user is selected
+  // Sync editable fields when a new user is selected
   useEffect(() => {
     setAdminNotes(selectedUser?.adminNotes ?? "");
+    setEditName(selectedUser?.name ?? "");
   }, [selectedUser?.id]);
 
   const saveNotesMutation = useMutation({
@@ -193,6 +195,20 @@ export default function Admin() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
       toast({ title: "Notes saved" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const saveNameMutation = useMutation({
+    mutationFn: async ({ userId, name }: { userId: string; name: string }) => {
+      const res = await apiRequest("PATCH", `/api/admin/users/${userId}/name`, { name });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      toast({ title: "Name updated" });
     },
     onError: (err: Error) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -880,6 +896,37 @@ export default function Admin() {
                   }}
                 >
                   {parseInt(premiumMonths) === 0 ? "Revoke" : "Grant"}
+                </Button>
+              </div>
+            </div>
+
+            <div className="border-t border-border" />
+
+            {/* Display Name */}
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                <Pencil className="w-3.5 h-3.5" /> Display Name
+              </p>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Display name"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="h-9 text-sm"
+                  maxLength={100}
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="shrink-0"
+                  disabled={
+                    saveNameMutation.isPending ||
+                    editName.trim().length < 1 ||
+                    editName.trim() === (selectedUser?.name ?? "")
+                  }
+                  onClick={() => saveNameMutation.mutate({ userId: selectedUser!.id, name: editName.trim() })}
+                >
+                  Save
                 </Button>
               </div>
             </div>
