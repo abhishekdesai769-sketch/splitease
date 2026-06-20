@@ -2,9 +2,11 @@
  * Money tab — bank connections for Premium users via Plaid.
  *
  * Visibility rules (enforced both here AND in Layout's navItems):
- *   - Premium users on iOS or web: Plaid Connect + connected accounts
- *   - Non-Premium users on iOS or web: roadmap teaser + upgrade CTA
- *   - Android TWA users: tab hidden + page redirects (Google Play payment policy)
+ *   - Premium users, Plaid live:     real Plaid Connect + connected accounts
+ *   - Premium users, Plaid not live: "Connect" submits a request (no data collected),
+ *                                    honest "we'll email you" confirmation
+ *   - Non-Premium users:             "Connect" routes to the Premium upgrade wall
+ *   - Android TWA users:             tab hidden + page redirects (Google Play payment policy)
  */
 
 import { useEffect, useState } from "react";
@@ -12,19 +14,11 @@ import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
 import { isInTWA } from "@/lib/platform";
-import { Wallet, Sparkles, CheckCircle2, Circle, Loader2, Crown, Lock, Trash2, Building2 } from "lucide-react";
+import { Wallet, Sparkles, CheckCircle2, Loader2, Crown, Lock, Trash2, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { PlaidLinkButton } from "@/components/PlaidLinkButton";
-
-type RoadmapStatus = "done" | "in_progress" | "next" | "later";
-
-interface RoadmapItem {
-  label: string;
-  detail: string;
-  status: RoadmapStatus;
-}
 
 interface PlaidAccount {
   id: string;
@@ -52,23 +46,6 @@ interface MoneyStatus {
   enabled: boolean;
   stage: string;
   message: string;
-  roadmap: Array<{ id: string; label: string; status: RoadmapStatus }>;
-}
-
-// Fallback roadmap when /status hasn't loaded yet (or for free users who can't fetch it)
-const FALLBACK_ROADMAP: RoadmapItem[] = [
-  { label: "Backend infrastructure", detail: "Database, sync engine, security", status: "done" },
-  { label: "Bank connection",        detail: "Securely connect your accounts (read-only)", status: "in_progress" },
-  { label: "Transaction feed",       detail: "See every transaction across all your banks", status: "next" },
-  { label: "One-tap split",          detail: "Turn any transaction into a Spliiit expense", status: "later" },
-  { label: "Monthly summary",        detail: "Where your money goes, top categories, top merchants", status: "later" },
-  { label: "Ask anything (AI)",      detail: '"Can I afford a $1000 trip in August?"', status: "later" },
-];
-
-function StatusIcon({ status }: { status: RoadmapStatus }) {
-  if (status === "done") return <CheckCircle2 className="w-5 h-5 text-primary" />;
-  if (status === "in_progress") return <Loader2 className="w-5 h-5 text-primary animate-spin" />;
-  return <Circle className="w-5 h-5 text-muted-foreground/40" />;
 }
 
 function formatCurrency(amount: number | null, code: string | null): string {
@@ -92,6 +69,7 @@ export default function MoneyPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [pendingDisconnect, setPendingDisconnect] = useState<string | null>(null);
+  const [requestSubmitted, setRequestSubmitted] = useState(false);
 
   // Defense-in-depth — TWA users bounced even if they navigate here directly.
   useEffect(() => {
@@ -103,7 +81,7 @@ export default function MoneyPage() {
 
   const isPremium = !!user.isPremium;
 
-  // Fetch status — drives the roadmap + tells us whether Plaid is wired
+  // Fetch status — tells us whether Plaid is actually wired
   const statusQuery = useQuery<MoneyStatus>({
     queryKey: ["/api/money/status"],
     enabled: !!user,
@@ -136,16 +114,33 @@ export default function MoneyPage() {
     },
   });
 
+  // Best-effort admin notification when a user requests a bank connection.
+  // We don't block the UI on it — the confirmation shows regardless.
+  const connectRequestMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/money/connect-request");
+      return res.json();
+    },
+  });
+
   const plaidLive = statusQuery.data?.enabled === true;
   const items = accountsQuery.data?.items ?? [];
   const hasConnectedBanks = items.length > 0;
-  const roadmap: RoadmapItem[] = statusQuery.data?.roadmap
-    ? statusQuery.data.roadmap.map((r) => ({
-        label: r.label,
-        detail: FALLBACK_ROADMAP.find((f) => f.label === r.label)?.detail ?? "",
-        status: r.status,
-      }))
-    : FALLBACK_ROADMAP;
+
+  // When Plaid is actually wired (dev/prod), Premium users get the real Connect + accounts flow.
+  const showRealPlaid = isPremium && plaidLive;
+  // Otherwise the Connect button either gates non-Premium to upgrade, or submits an
+  // honest request for Premium users — no bank data is collected in this path.
+  const showRequestFlow = !showRealPlaid;
+
+  const handleConnect = () => {
+    if (!isPremium) {
+      setLocation("/upgrade");
+      return;
+    }
+    connectRequestMutation.mutate();   // notify admin (best-effort)
+    setRequestSubmitted(true);
+  };
 
   return (
     <div className="space-y-6">
@@ -160,28 +155,26 @@ export default function MoneyPage() {
         {isPremium ? (
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-medium mb-3">
             <Sparkles className="w-3.5 h-3.5" />
-            Premium · Beta · Early access
+            Premium
           </div>
         ) : (
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 text-amber-600 text-xs font-medium mb-3">
             <Lock className="w-3.5 h-3.5" />
-            Premium-only · Coming soon
+            Premium feature
           </div>
         )}
 
         <p className="text-muted-foreground text-sm max-w-md mx-auto">
-          {isPremium && plaidLive ? (
-            <>Connect your bank accounts to see everything in one place. Splitting stays free forever — Money adds the tracking layer.</>
-          ) : isPremium ? (
-            <>We're building a way to track your money and one-tap split shared expenses — all in one place. You're getting early access because you're Premium.</>
+          {isPremium ? (
+            <>Connect your bank accounts to see everything in one place — securely and read-only. Splitting stays free forever; Money is your Premium tracking layer.</>
           ) : (
-            <>Track your money and one-tap split shared expenses — all in one place. Premium members get exclusive early access when it ships.</>
+            <>Connect your bank accounts and see everything in one place. Money is a Premium feature — splitting stays free forever.</>
           )}
         </p>
       </div>
 
-      {/* ── Premium + Plaid live: Connect / connected accounts ─────────── */}
-      {isPremium && plaidLive && (
+      {/* ── Premium + Plaid live: real Connect / connected accounts ─────── */}
+      {showRealPlaid && (
         <>
           {/* Empty state — no banks yet */}
           {!hasConnectedBanks && !accountsQuery.isLoading && (
@@ -281,37 +274,40 @@ export default function MoneyPage() {
         </>
       )}
 
-      {/* What's coming — visible to everyone (FOMO for free users, progress signal for Premium) */}
-      <div className="rounded-2xl border border-border bg-card/50 p-5">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-4">
-          What's coming
-        </h2>
-        <ul className="space-y-4">
-          {roadmap.map((item, idx) => (
-            <li key={idx} className="flex items-start gap-3">
-              <div className="mt-0.5 shrink-0">
-                <StatusIcon status={item.status} />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium text-sm">{item.label}</span>
-                  {item.status === "in_progress" && (
-                    <span className="text-[10px] uppercase tracking-wider text-primary font-semibold">
-                      Building now
-                    </span>
-                  )}
-                  {item.status === "done" && (
-                    <span className="text-[10px] uppercase tracking-wider text-primary font-semibold">
-                      Live
-                    </span>
-                  )}
-                </div>
-                <p className="text-xs text-muted-foreground mt-0.5">{item.detail}</p>
-              </div>
-            </li>
-          ))}
-        </ul>
-      </div>
+      {/* ── Request flow: non-Premium → upgrade wall; Premium → honest request ── */}
+      {showRequestFlow && (
+        requestSubmitted ? (
+          <div className="rounded-2xl border border-primary/30 bg-primary/5 p-6 text-center space-y-3">
+            <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary/10">
+              <CheckCircle2 className="w-6 h-6 text-primary" />
+            </div>
+            <h2 className="text-base font-semibold">Request received ✓</h2>
+            <p className="text-xs text-muted-foreground max-w-sm mx-auto leading-relaxed">
+              Your bank connection request has been made. We'll email you once it's approved — and then
+              again to securely collect what's needed from your side to activate the connection.
+            </p>
+            <p className="text-[11px] text-muted-foreground/80 max-w-sm mx-auto">
+              No bank details have been collected or connected yet.
+            </p>
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-dashed border-primary/40 bg-primary/5 p-6 text-center space-y-4">
+            <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary/10">
+              <Building2 className="w-6 h-6 text-primary" />
+            </div>
+            <div>
+              <h2 className="text-base font-semibold mb-1">Connect your bank account</h2>
+              <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+                Securely via Plaid — read-only. We never see your password and can't move money.
+              </p>
+            </div>
+            <Button onClick={handleConnect} className="w-full sm:w-auto">
+              <Building2 className="w-4 h-4 mr-2" />
+              Connect your bank account
+            </Button>
+          </div>
+        )
+      )}
 
       {/* Trust note — same for everyone */}
       <div className="rounded-2xl border border-border bg-card/30 p-5">
@@ -351,7 +347,7 @@ export default function MoneyPage() {
         <div className="text-center pt-2 pb-8 space-y-3">
           <p className="text-sm font-semibold text-foreground">💎 This is a Premium feature</p>
           <p className="text-xs text-muted-foreground max-w-sm mx-auto leading-relaxed">
-            Money is exclusive to Premium members. Upgrade to unlock it the moment it ships.
+            Money is exclusive to Premium members. Upgrade to unlock it.
           </p>
           <button
             onClick={() => setLocation("/upgrade")}

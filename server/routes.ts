@@ -3369,6 +3369,31 @@ setInterval(loadAll,30000);
     }
   });
 
+  // Money: a user tapped "Connect your bank account" (no Plaid flow yet).
+  // Fires an admin notification email so we know to follow up. Best-effort —
+  // the client shows its confirmation regardless of whether the email sends.
+  app.post("/api/money/connect-request", requireAuth, feedbackLimiter, async (req, res) => {
+    const userId = (req.session as any).userId;
+    const user = await storage.getUser(userId);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    try {
+      await sendSupportEmail({
+        fromName: sanitize(user.name, 100),
+        fromEmail: sanitize(user.email, 200),
+        subject: "Bank connection request (Money)",
+        message:
+          `${user.name} (${user.email}) tapped "Connect your bank account" in the Money tab.\n` +
+          `Premium: ${user.isPremium ? "yes" : "no"} · User ID: ${userId}\n\n` +
+          `No bank data was collected — follow up to activate their connection.`,
+        userId,
+      });
+    } catch (err) {
+      // Never fail the user's flow over a notification email — just log it.
+      console.error("Bank connect-request email failed:", err);
+    }
+    res.json({ ok: true });
+  });
+
   // ========== AI Mode (conversational expense entry) ==========
   // All endpoints are Premium-gated. The AI proposes; users confirm via the
   // existing /api/expenses + /api/friends/expenses endpoints (no new write
