@@ -124,6 +124,41 @@ async function runMigrations() {
     await pool.query(`CREATE INDEX IF NOT EXISTS activity_log_group_id_idx ON activity_log(group_id)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS activity_log_created_at_idx ON activity_log(created_at)`);
 
+    // ── Personal Finance (Premium) — user-private, separate from group expenses ──
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS personal_categories (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id varchar NOT NULL,
+        name text NOT NULL,
+        emoji text NOT NULL DEFAULT '💸',
+        color text NOT NULL DEFAULT '#64748b',
+        kind text NOT NULL DEFAULT 'expense',
+        is_default boolean NOT NULL DEFAULT false,
+        sort_order integer NOT NULL DEFAULT 0,
+        created_at text NOT NULL
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS personal_categories_user_idx ON personal_categories(user_id)`);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS personal_transactions (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id varchar NOT NULL,
+        type text NOT NULL,
+        amount real NOT NULL,
+        description text NOT NULL,
+        category_id varchar,
+        date text NOT NULL,
+        notes text,
+        source text NOT NULL DEFAULT 'manual',
+        linked_expense_id varchar,
+        deleted_at text DEFAULT NULL,
+        created_at text NOT NULL
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS personal_tx_user_idx ON personal_transactions(user_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS personal_tx_user_date_idx ON personal_transactions(user_id, date)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS personal_tx_deleted_idx ON personal_transactions(deleted_at)`);
+
     // ── Free AI scan quota (Phase 1+2 launch — May 2026) ──────────────────────
     // Idempotent additions so new environments boot cleanly without a separate
     // drizzle-kit push step. (We learned this lesson the hard way — bundling

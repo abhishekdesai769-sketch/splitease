@@ -2,6 +2,7 @@ import { eq, and, or, ilike, inArray, ne, isNull, isNotNull, lt, sql, sum } from
 import { db } from "./db";
 import {
   users, friends, groups, expenses, otpCodes, resetTokens, groupInvites, groupInviteLinks, recurringExpenses, sentReminders, activityLog,
+  personalCategories, personalTransactions,
   type User, type InsertUser, type SafeUser,
   type Friend, type InsertFriend,
   type Group, type InsertGroup,
@@ -11,12 +12,30 @@ import {
   type RecurringExpense, type InsertRecurringExpense,
   type SentReminder,
   type ActivityLog,
+  type PersonalCategory, type InsertPersonalCategory,
+  type PersonalTransaction, type InsertPersonalTransaction,
 } from "@shared/schema";
 
 function toSafeUser(user: User): SafeUser {
   const { password, ...safe } = user;
   return safe;
 }
+
+// Seeded for each user on their first visit to Personal Finance.
+const DEFAULT_PERSONAL_CATEGORIES: Array<{ name: string; emoji: string; color: string; kind: string }> = [
+  { name: "Groceries",     emoji: "🛒",  color: "#16a34a", kind: "expense" },
+  { name: "Dining",        emoji: "🍽️",  color: "#ea580c", kind: "expense" },
+  { name: "Transport",     emoji: "🚗",  color: "#0284c7", kind: "expense" },
+  { name: "Rent",          emoji: "🏠",  color: "#7c3aed", kind: "expense" },
+  { name: "Utilities",     emoji: "💡",  color: "#ca8a04", kind: "expense" },
+  { name: "Shopping",      emoji: "🛍️",  color: "#db2777", kind: "expense" },
+  { name: "Entertainment", emoji: "🎬",  color: "#9333ea", kind: "expense" },
+  { name: "Health",        emoji: "💊",  color: "#dc2626", kind: "expense" },
+  { name: "Subscriptions", emoji: "🔁",  color: "#0891b2", kind: "expense" },
+  { name: "Other",         emoji: "💸",  color: "#64748b", kind: "expense" },
+  { name: "Salary",        emoji: "💰",  color: "#15803d", kind: "income"  },
+  { name: "Other income",  emoji: "➕",  color: "#059669", kind: "income"  },
+];
 
 export interface IStorage {
   // Users
@@ -33,6 +52,13 @@ export interface IStorage {
   getAllUsers(): Promise<SafeUser[]>;
   updateUser(id: string, data: Partial<Pick<User, "isAdmin" | "isApproved" | "name">>): Promise<User | undefined>;
   renameUserInActivityLog(userId: string, name: string): Promise<void>;
+  // Personal Finance (Premium) — user-private
+  getPersonalCategories(userId: string): Promise<PersonalCategory[]>;
+  createPersonalCategory(data: InsertPersonalCategory): Promise<PersonalCategory>;
+  getPersonalTransactions(userId: string, opts?: { month?: string }): Promise<PersonalTransaction[]>;
+  createPersonalTransaction(data: InsertPersonalTransaction): Promise<PersonalTransaction>;
+  updatePersonalTransaction(userId: string, id: string, data: Partial<InsertPersonalTransaction>): Promise<PersonalTransaction | undefined>;
+  deletePersonalTransaction(userId: string, id: string): Promise<boolean>;
   updateUserPassword(id: string, hashedPassword: string): Promise<void>;
   updateUserSubscription(id: string, data: { isPremium: boolean; stripeCustomerId?: string; stripeSubscriptionId?: string | null; premiumUntil?: string | null }): Promise<User | undefined>;
   getUserByStripeCustomerId(stripeCustomerId: string): Promise<User | undefined>;
@@ -198,6 +224,65 @@ export class PgStorage implements IStorage {
   // so historical entries ("X added Grocery run") don't keep showing the old name.
   async renameUserInActivityLog(userId: string, name: string): Promise<void> {
     await db.update(activityLog).set({ userName: name }).where(eq(activityLog.userId, userId));
+  }
+
+  // ── Personal Finance (Premium) — every query is scoped to a single userId ──
+  async getPersonalCategories(userId: string): Promise<PersonalCategory[]> {
+    const existing = await db.select().from(personalCategories)
+      .where(eq(personalCategories.userId, userId))
+      .orderBy(personalCategories.sortOrder);
+    if (existing.length > 0) return existing;
+    // First visit — seed this user's default categories.
+    const now = new Date().toISOString();
+    const rows = DEFAULT_PERSONAL_CATEGORIES.map((c, i) => ({
+      userId, name: c.name, emoji: c.emoji, color: c.color, kind: c.kind,
+      isDefault: true, sortOrder: i, createdAt: now,
+    }));
+    await db.insert(personalCategories).values(rows);
+    return db.select().from(personalCategories)
+      .where(eq(personalCategories.userId, userId))
+      .orderBy(personalCategories.sortOrder);
+  }
+
+  async createPersonalCategory(data: InsertPersonalCategory): Promise<PersonalCategory> {
+    const [row] = await db.insert(personalCategories).values(data).returning();
+    return row;
+  }
+
+  async getPersonalTransactions(userId: string, opts?: { month?: string }): Promise<PersonalTransaction[]> {
+    const conds = [eq(personalTransactions.userId, userId), isNull(personalTransactions.deletedAt)];
+    if (opts?.month) {
+      // month = 'YYYY-MM' → match date text 'YYYY-MM%'
+      conds.push(ilike(personalTransactions.date, `${opts.month}%`));
+    }
+    return db.select().from(personalTransactions)
+      .where(and(...conds))
+      .orderBy(sql`${personalTransactions.date} desc, ${personalTransactions.createdAt} desc`);
+  }
+
+  async createPersonalTransaction(data: InsertPersonalTransaction): Promise<PersonalTransaction> {
+    const [row] = await db.insert(personalTransactions).values(data).returning();
+    return row;
+  }
+
+  async updatePersonalTransaction(userId: string, id: string, data: Partial<InsertPersonalTransaction>): Promise<PersonalTransaction | undefined> {
+    const [row] = await db.update(personalTransactions)
+      .set(data)
+      .where(and(eq(personalTransactions.id, id), eq(personalTransactions.userId, userId)))
+      .returning();
+    return row;
+  }
+
+  async deletePersonalTransaction(userId: string, id: string): Promise<boolean> {
+    const result = await db.update(personalTransactions)
+      .set({ deletedAt: new Date().toISOString() })
+      .where(and(
+        eq(personalTransactions.id, id),
+        eq(personalTransactions.userId, userId),
+        isNull(personalTransactions.deletedAt),
+      ))
+      .returning();
+    return result.length > 0;
   }
 
   async getUserStats(userId: string): Promise<{

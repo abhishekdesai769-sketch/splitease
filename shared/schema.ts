@@ -553,3 +553,52 @@ export const resetPasswordSchema = z.object({
   token: z.string().min(1),
   password: z.string().min(10, "Password must be at least 10 characters").max(128, "Password too long"),
 });
+
+// ─────────────────────────────────────────────────────────────────────
+// Personal Finance (Premium) — user-private, fully separate from group
+// expenses. NEVER mixed into the `expenses` table or the locked split math
+// in lib/simplify.ts. Privacy: every row is scoped to a single user_id.
+// ─────────────────────────────────────────────────────────────────────
+
+// Per-user spending/income categories (seeded with defaults on first use).
+export const personalCategories = pgTable("personal_categories", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  name: text("name").notNull(),
+  emoji: text("emoji").notNull().default("💸"),
+  color: text("color").notNull().default("#64748b"),
+  kind: text("kind").notNull().default("expense"), // 'expense' | 'income'
+  isDefault: boolean("is_default").notNull().default(false),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: text("created_at").notNull(),
+}, (table) => [
+  index("personal_categories_user_idx").on(table.userId),
+]);
+
+export const insertPersonalCategorySchema = createInsertSchema(personalCategories).omit({ id: true });
+export type InsertPersonalCategory = z.infer<typeof insertPersonalCategorySchema>;
+export type PersonalCategory = typeof personalCategories.$inferSelect;
+
+// A single personal money event — income or expense. Always single-user.
+export const personalTransactions = pgTable("personal_transactions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  type: text("type").notNull(),                 // 'expense' | 'income'
+  amount: real("amount").notNull(),             // always positive, stored in CAD
+  description: text("description").notNull(),
+  categoryId: varchar("category_id"),           // nullable — uncategorized allowed
+  date: text("date").notNull(),                 // 'YYYY-MM-DD'
+  notes: text("notes"),
+  source: text("source").notNull().default("manual"), // 'manual' | 'csv' | 'bank' | 'promoted'
+  linkedExpenseId: varchar("linked_expense_id"),      // set when promoted into a group/friend split
+  deletedAt: text("deleted_at").default(sql`NULL`),
+  createdAt: text("created_at").notNull(),
+}, (table) => [
+  index("personal_tx_user_idx").on(table.userId),
+  index("personal_tx_user_date_idx").on(table.userId, table.date),
+  index("personal_tx_deleted_idx").on(table.deletedAt),
+]);
+
+export const insertPersonalTransactionSchema = createInsertSchema(personalTransactions).omit({ id: true });
+export type InsertPersonalTransaction = z.infer<typeof insertPersonalTransactionSchema>;
+export type PersonalTransaction = typeof personalTransactions.$inferSelect;

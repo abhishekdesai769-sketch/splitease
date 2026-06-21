@@ -3394,6 +3394,100 @@ setInterval(loadAll,30000);
     res.json({ ok: true });
   });
 
+  // ─── Personal Finance (Premium) ────────────────────────────────────────
+  // User-private money tracking, fully separate from group expenses. Every
+  // endpoint is gated on isPremium and scoped to the session user's id.
+  async function requirePremiumUser(req: any, res: any) {
+    const user = await storage.getUser(req.session.userId);
+    if (!user) { res.status(401).json({ error: "unauthorized" }); return null; }
+    if (!user.isPremium) { res.status(403).json({ error: "premium_required" }); return null; }
+    return user;
+  }
+
+  app.get("/api/personal/categories", requireAuth, async (req: any, res) => {
+    const user = await requirePremiumUser(req, res);
+    if (!user) return;
+    const categories = await storage.getPersonalCategories(user.id);
+    res.json({ categories });
+  });
+
+  app.get("/api/personal/transactions", requireAuth, async (req: any, res) => {
+    const user = await requirePremiumUser(req, res);
+    if (!user) return;
+    const month = typeof req.query.month === "string" && /^\d{4}-\d{2}$/.test(req.query.month)
+      ? req.query.month : undefined;
+    const transactions = await storage.getPersonalTransactions(user.id, { month });
+    res.json({ transactions });
+  });
+
+  app.post("/api/personal/transactions", requireAuth, async (req: any, res) => {
+    const user = await requirePremiumUser(req, res);
+    if (!user) return;
+    const b = req.body || {};
+    const type = b.type === "income" ? "income" : "expense";
+    const amount = Number(b.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return res.status(400).json({ error: "amount must be a positive number" });
+    }
+    const description = typeof b.description === "string" ? sanitize(b.description, 200) : "";
+    if (!description.trim()) return res.status(400).json({ error: "description is required" });
+    const date = typeof b.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(b.date)
+      ? b.date : new Date().toISOString().slice(0, 10);
+    const categoryId = typeof b.categoryId === "string" && b.categoryId ? b.categoryId : null;
+    const notes = typeof b.notes === "string" ? sanitize(b.notes, 500) : null;
+    const source = typeof b.source === "string" && ["manual", "csv", "bank", "promoted"].includes(b.source)
+      ? b.source : "manual";
+
+    const transaction = await storage.createPersonalTransaction({
+      userId: user.id,
+      type,
+      amount: Math.round(amount * 100) / 100,
+      description,
+      categoryId,
+      date,
+      notes,
+      source,
+      linkedExpenseId: null,
+      createdAt: new Date().toISOString(),
+    });
+    res.json({ transaction });
+  });
+
+  app.patch("/api/personal/transactions/:id", requireAuth, async (req: any, res) => {
+    const user = await requirePremiumUser(req, res);
+    if (!user) return;
+    const b = req.body || {};
+    const patch: any = {};
+    if (b.type === "income" || b.type === "expense") patch.type = b.type;
+    if (b.amount !== undefined) {
+      const amount = Number(b.amount);
+      if (!Number.isFinite(amount) || amount <= 0) {
+        return res.status(400).json({ error: "amount must be a positive number" });
+      }
+      patch.amount = Math.round(amount * 100) / 100;
+    }
+    if (typeof b.description === "string") {
+      const d = sanitize(b.description, 200);
+      if (!d.trim()) return res.status(400).json({ error: "description cannot be empty" });
+      patch.description = d;
+    }
+    if (typeof b.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(b.date)) patch.date = b.date;
+    if ("categoryId" in b) patch.categoryId = b.categoryId || null;
+    if ("notes" in b) patch.notes = typeof b.notes === "string" ? sanitize(b.notes, 500) : null;
+
+    const updated = await storage.updatePersonalTransaction(user.id, req.params.id, patch);
+    if (!updated) return res.status(404).json({ error: "Transaction not found" });
+    res.json({ transaction: updated });
+  });
+
+  app.delete("/api/personal/transactions/:id", requireAuth, async (req: any, res) => {
+    const user = await requirePremiumUser(req, res);
+    if (!user) return;
+    const ok = await storage.deletePersonalTransaction(user.id, req.params.id);
+    if (!ok) return res.status(404).json({ error: "Transaction not found" });
+    res.status(204).send();
+  });
+
   // ========== AI Mode (conversational expense entry) ==========
   // All endpoints are Premium-gated. The AI proposes; users confirm via the
   // existing /api/expenses + /api/friends/expenses endpoints (no new write
