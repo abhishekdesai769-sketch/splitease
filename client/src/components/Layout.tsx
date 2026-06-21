@@ -8,6 +8,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { SupportDrawer } from "@/components/SupportDrawer";
 import { PushPermissionPrompt } from "@/components/PushPermissionPrompt";
 import { isInTWA } from "@/lib/platform";
+import { GetAppBanner } from "@/components/GetAppBanner";
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
@@ -98,6 +99,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           on iPhones with no physical button (now that contentInset is
           "never", we have to budget for that ourselves). */}
       <main className="flex-1 max-w-3xl mx-auto w-full px-4 py-5 pb-[calc(6rem+env(safe-area-inset-bottom))]">
+        <GetAppBanner />
         {children}
       </main>
 
