@@ -169,13 +169,13 @@ export default function MoneyPage() {
           {isPremium ? (
             <>Track your income and spending in one place — separate from anything you split. Splitting stays free forever; Money is your Premium tracking layer.</>
           ) : (
-            <>Connect your bank accounts and see everything in one place. Money is a Premium feature — splitting stays free forever.</>
+            <>Track your income and spending in one place — free to start. Upgrade anytime for unlimited + bank import. Splitting stays free forever.</>
           )}
         </p>
       </div>
 
-      {/* Premium → Personal Finance suite (the main Money experience) */}
-      {isPremium && <PersonalFinance />}
+      {/* Personal Finance suite — freemium (everyone; non-Premium capped, handled inside) */}
+      <PersonalFinance />
 
       {isPremium && (
         <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground px-1 pt-2">
@@ -285,7 +285,7 @@ export default function MoneyPage() {
       )}
 
       {/* ── Request flow: non-Premium → upgrade wall; Premium → honest request ── */}
-      {showRequestFlow && (
+      {isPremium && showRequestFlow && (
         requestSubmitted ? (
           <div className="rounded-2xl border border-primary/30 bg-primary/5 p-6 text-center space-y-3">
             <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary/10">
@@ -355,9 +355,9 @@ export default function MoneyPage() {
         </div>
       ) : (
         <div className="text-center pt-2 pb-8 space-y-3">
-          <p className="text-sm font-semibold text-foreground">💎 This is a Premium feature</p>
+          <p className="text-sm font-semibold text-foreground">💎 Go unlimited with Premium</p>
           <p className="text-xs text-muted-foreground max-w-sm mx-auto leading-relaxed">
-            Money is exclusive to Premium members. Upgrade to unlock it.
+            Unlimited transactions, budgets, and bank import — all in Premium.
           </p>
           <button
             onClick={() => setLocation("/upgrade")}

@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
 import { AMOUNT_IN_CLASS, AMOUNT_OUT_CLASS } from "@/lib/balance-display";
+import { useAuth } from "@/lib/auth";
 import type { PersonalCategory, PersonalTransaction } from "@shared/schema";
 
 const PF_ONBOARDED_KEY = "spliiit_pf_onboarded";
@@ -85,6 +86,8 @@ export function PersonalFinance() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const isPremium = !!user?.isPremium;
 
   const [month, setMonth] = useState(() => monthKey(new Date()));
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -110,6 +113,14 @@ export function PersonalFinance() {
     },
     staleTime: 30 * 1000,
   });
+
+  // Freemium usage — non-Premium users get a limited number of free entries.
+  const usageQuery = useQuery<{ isPremium: boolean; count: number; limit: number; remaining: number }>({
+    queryKey: ["/api/personal/usage"],
+    staleTime: 30 * 1000,
+  });
+  const usage = usageQuery.data;
+  const atFreeLimit = !isPremium && !!usage && usage.remaining <= 0;
 
   const categories = categoriesQuery.data?.categories ?? [];
   const catById = useMemo(
@@ -151,17 +162,27 @@ export function PersonalFinance() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/personal/transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/personal/usage"] });
       toast({ title: editing ? "Transaction updated" : "Transaction added" });
       setSheetOpen(false);
       setEditing(null);
     },
-    onError: (err: Error) => toast({ title: "Couldn't save", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => {
+      if (/free_limit_reached|402/.test(err.message)) {
+        setSheetOpen(false);
+        toast({ title: "Free limit reached", description: "Upgrade for unlimited transactions." });
+        setLocation("/upgrade");
+        return;
+      }
+      toast({ title: "Couldn't save", description: err.message, variant: "destructive" });
+    },
   });
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => { await apiRequest("DELETE", `/api/personal/transactions/${id}`); },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/personal/transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/personal/usage"] });
       toast({ title: "Deleted" });
       setSheetOpen(false);
       setEditing(null);
@@ -169,7 +190,15 @@ export function PersonalFinance() {
     onError: (err: Error) => toast({ title: "Couldn't delete", description: err.message, variant: "destructive" }),
   });
 
-  const openNew = () => { setEditing(null); setSheetOpen(true); };
+  const openNew = () => {
+    if (atFreeLimit) {
+      toast({ title: "Free limit reached", description: `You've logged all ${usage?.limit ?? 10} free transactions. Upgrade for unlimited.` });
+      setLocation("/upgrade");
+      return;
+    }
+    setEditing(null);
+    setSheetOpen(true);
+  };
   const openEdit = (t: PersonalTransaction) => { setEditing(t); setSheetOpen(true); };
 
   // Bridge: stash a draft and head to Friends to turn this into a split.
@@ -207,6 +236,22 @@ export function PersonalFinance() {
             </div>
           </div>
         </Card>
+      )}
+
+      {/* Freemium banner (non-Premium only) */}
+      {!isPremium && usage && (
+        <div className={`rounded-xl border p-3 flex items-center justify-between gap-3 ${atFreeLimit ? "border-amber-500/40 bg-amber-500/10" : "border-border bg-card/50"}`}>
+          <p className="text-xs text-muted-foreground">
+            {atFreeLimit ? (
+              <><span className="font-semibold text-foreground">Free limit reached.</span> Upgrade for unlimited tracking.</>
+            ) : (
+              <><span className="font-semibold text-foreground">{usage.remaining}</span> of {usage.limit} free transactions left</>
+            )}
+          </p>
+          <Button size="sm" variant={atFreeLimit ? "default" : "outline"} className="shrink-0" onClick={() => setLocation("/upgrade")}>
+            Upgrade
+          </Button>
+        </div>
       )}
 
       {/* Month switcher */}

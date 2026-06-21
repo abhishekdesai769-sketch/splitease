@@ -59,6 +59,7 @@ export interface IStorage {
   createPersonalTransaction(data: InsertPersonalTransaction): Promise<PersonalTransaction>;
   updatePersonalTransaction(userId: string, id: string, data: Partial<InsertPersonalTransaction>): Promise<PersonalTransaction | undefined>;
   deletePersonalTransaction(userId: string, id: string): Promise<boolean>;
+  countPersonalTransactions(userId: string): Promise<number>;
   updateUserPassword(id: string, hashedPassword: string): Promise<void>;
   updateUserSubscription(id: string, data: { isPremium: boolean; stripeCustomerId?: string; stripeSubscriptionId?: string | null; premiumUntil?: string | null }): Promise<User | undefined>;
   getUserByStripeCustomerId(stripeCustomerId: string): Promise<User | undefined>;
@@ -283,6 +284,14 @@ export class PgStorage implements IStorage {
       ))
       .returning();
     return result.length > 0;
+  }
+
+  // Lifetime non-deleted transaction count — drives the freemium free-tier cap.
+  async countPersonalTransactions(userId: string): Promise<number> {
+    const [row] = await db.select({ count: sql<number>`count(*)::int` })
+      .from(personalTransactions)
+      .where(and(eq(personalTransactions.userId, userId), isNull(personalTransactions.deletedAt)));
+    return row?.count ?? 0;
   }
 
   async getUserStats(userId: string): Promise<{

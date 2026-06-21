@@ -3394,25 +3394,40 @@ setInterval(loadAll,30000);
     res.json({ ok: true });
   });
 
-  // ─── Personal Finance (Premium) ────────────────────────────────────────
-  // User-private money tracking, fully separate from group expenses. Every
-  // endpoint is gated on isPremium and scoped to the session user's id.
-  async function requirePremiumUser(req: any, res: any) {
+  // ─── Personal Finance (freemium) ───────────────────────────────────────
+  // User-private money tracking, separate from group expenses & the locked
+  // split math. Anyone can use it; non-Premium users are capped at
+  // FREE_PERSONAL_LIMIT lifetime transactions (enforced on create), Premium
+  // is unlimited. Every query is scoped to the session user's id.
+  const FREE_PERSONAL_LIMIT = 10;
+  async function requireUser(req: any, res: any) {
     const user = await storage.getUser(req.session.userId);
     if (!user) { res.status(401).json({ error: "unauthorized" }); return null; }
-    if (!user.isPremium) { res.status(403).json({ error: "premium_required" }); return null; }
     return user;
   }
 
   app.get("/api/personal/categories", requireAuth, async (req: any, res) => {
-    const user = await requirePremiumUser(req, res);
+    const user = await requireUser(req, res);
     if (!user) return;
     const categories = await storage.getPersonalCategories(user.id);
     res.json({ categories });
   });
 
+  // Freemium usage — drives the "X of N free left" banner + upgrade gating.
+  app.get("/api/personal/usage", requireAuth, async (req: any, res) => {
+    const user = await requireUser(req, res);
+    if (!user) return;
+    const count = await storage.countPersonalTransactions(user.id);
+    res.json({
+      isPremium: !!user.isPremium,
+      count,
+      limit: FREE_PERSONAL_LIMIT,
+      remaining: Math.max(0, FREE_PERSONAL_LIMIT - count),
+    });
+  });
+
   app.get("/api/personal/transactions", requireAuth, async (req: any, res) => {
-    const user = await requirePremiumUser(req, res);
+    const user = await requireUser(req, res);
     if (!user) return;
     const month = typeof req.query.month === "string" && /^\d{4}-\d{2}$/.test(req.query.month)
       ? req.query.month : undefined;
@@ -3421,8 +3436,15 @@ setInterval(loadAll,30000);
   });
 
   app.post("/api/personal/transactions", requireAuth, async (req: any, res) => {
-    const user = await requirePremiumUser(req, res);
+    const user = await requireUser(req, res);
     if (!user) return;
+    // Freemium cap — non-Premium users get FREE_PERSONAL_LIMIT lifetime entries.
+    if (!user.isPremium) {
+      const count = await storage.countPersonalTransactions(user.id);
+      if (count >= FREE_PERSONAL_LIMIT) {
+        return res.status(402).json({ error: "free_limit_reached", limit: FREE_PERSONAL_LIMIT });
+      }
+    }
     const b = req.body || {};
     const type = b.type === "income" ? "income" : "expense";
     const amount = Number(b.amount);
@@ -3454,7 +3476,7 @@ setInterval(loadAll,30000);
   });
 
   app.patch("/api/personal/transactions/:id", requireAuth, async (req: any, res) => {
-    const user = await requirePremiumUser(req, res);
+    const user = await requireUser(req, res);
     if (!user) return;
     const b = req.body || {};
     const patch: any = {};
@@ -3481,7 +3503,7 @@ setInterval(loadAll,30000);
   });
 
   app.delete("/api/personal/transactions/:id", requireAuth, async (req: any, res) => {
-    const user = await requirePremiumUser(req, res);
+    const user = await requireUser(req, res);
     if (!user) return;
     const ok = await storage.deletePersonalTransaction(user.id, req.params.id);
     if (!ok) return res.status(404).json({ error: "Transaction not found" });
