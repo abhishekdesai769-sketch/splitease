@@ -18,7 +18,7 @@ import GroupDetail from "@/pages/group-detail";
 import FriendDetail from "@/pages/friend-detail";
 import Expenses from "@/pages/expenses";
 import Admin from "@/pages/admin";
-import AuthPage from "@/pages/auth";
+import { LandingGate } from "@/pages/landing";
 import ResetPassword from "@/pages/reset-password";
 import NotFound from "@/pages/not-found";
 import Import from "@/pages/import";
@@ -167,7 +167,7 @@ function AppRouter() {
         />
       );
     }
-    return <AuthPage />;
+    return <LandingGate />;
   }
 
   // Onboarding gate — show once for new users (and legacy users with no currency set)
