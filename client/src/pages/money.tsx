@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { PlaidLinkButton } from "@/components/PlaidLinkButton";
+import { PersonalFinance } from "@/components/PersonalFinance";
 
 interface PlaidAccount {
   id: string;
@@ -166,12 +167,21 @@ export default function MoneyPage() {
 
         <p className="text-muted-foreground text-sm max-w-md mx-auto">
           {isPremium ? (
-            <>Connect your bank accounts to see everything in one place — securely and read-only. Splitting stays free forever; Money is your Premium tracking layer.</>
+            <>Track your income and spending in one place — separate from anything you split. Splitting stays free forever; Money is your Premium tracking layer.</>
           ) : (
             <>Connect your bank accounts and see everything in one place. Money is a Premium feature — splitting stays free forever.</>
           )}
         </p>
       </div>
+
+      {/* Premium → Personal Finance suite (the main Money experience) */}
+      {isPremium && <PersonalFinance />}
+
+      {isPremium && (
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground px-1 pt-2">
+          Auto-import from your bank
+        </h3>
+      )}
 
       {/* ── Premium + Plaid live: real Connect / connected accounts ─────── */}
       {showRealPlaid && (
