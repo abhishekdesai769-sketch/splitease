@@ -21,12 +21,12 @@ import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import {
   Plus, TrendingUp, TrendingDown, Wallet, Trash2,
-  ChevronLeft, ChevronRight, Split, Sparkles, X,
+  ChevronLeft, ChevronRight, Split, Sparkles, X, Users, UsersRound,
 } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
 import { AMOUNT_IN_CLASS, AMOUNT_OUT_CLASS } from "@/lib/balance-display";
 import { useAuth } from "@/lib/auth";
-import type { PersonalCategory, PersonalTransaction } from "@shared/schema";
+import type { PersonalCategory, PersonalTransaction, Group } from "@shared/schema";
 
 const PF_ONBOARDED_KEY = "spliiit_pf_onboarded";
 const SPLIT_DRAFT_KEY = "spliiit_split_draft";
@@ -92,6 +92,7 @@ export function PersonalFinance() {
   const [month, setMonth] = useState(() => monthKey(new Date()));
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editing, setEditing] = useState<PersonalTransaction | null>(null);
+  const [splitTarget, setSplitTarget] = useState<PersonalTransaction | null>(null);
   const [showIntro, setShowIntro] = useState(() => {
     try { return localStorage.getItem(PF_ONBOARDED_KEY) !== "1"; } catch { return false; }
   });
@@ -121,6 +122,13 @@ export function PersonalFinance() {
   });
   const usage = usageQuery.data;
   const atFreeLimit = !isPremium && !!usage && usage.remaining <= 0;
+
+  // Groups for the "Split in a group" picker — only fetched when the chooser opens.
+  const groupsQuery = useQuery<Group[]>({
+    queryKey: ["/api/groups"],
+    enabled: !!splitTarget,
+    staleTime: 60 * 1000,
+  });
 
   const categories = categoriesQuery.data?.categories ?? [];
   const catById = useMemo(
@@ -201,13 +209,26 @@ export function PersonalFinance() {
   };
   const openEdit = (t: PersonalTransaction) => { setEditing(t); setSheetOpen(true); };
 
-  // Bridge: stash a draft and head to Friends to turn this into a split.
-  const splitToGroup = (t: PersonalTransaction) => {
+  // Bridge: stash a draft, then hand off to either the Friends or a Group split
+  // flow. Both pages read the draft on mount and pre-fill their Add Expense form.
+  const stashDraft = (t: PersonalTransaction) => {
     try {
       sessionStorage.setItem(SPLIT_DRAFT_KEY, JSON.stringify({ amount: t.amount, description: t.description }));
     } catch {}
+  };
+  const splitWithFriend = () => {
+    if (!splitTarget) return;
+    stashDraft(splitTarget);
+    setSplitTarget(null);
     toast({ title: "Let's split it", description: "Pick who to split this with." });
     setLocation("/friends");
+  };
+  const splitInGroup = (groupId: string) => {
+    if (!splitTarget) return;
+    stashDraft(splitTarget);
+    setSplitTarget(null);
+    toast({ title: "Let's split it", description: "Add it to the group." });
+    setLocation(`/groups/${groupId}`);
   };
 
   const thisMonth = monthKey(new Date());
@@ -352,7 +373,7 @@ export function PersonalFinance() {
                     </span>
                   </button>
                   {!isIncome && (
-                    <button onClick={() => splitToGroup(t)} title="Split with friends" aria-label="Split with friends" className="p-1.5 text-muted-foreground hover:text-primary shrink-0">
+                    <button onClick={() => setSplitTarget(t)} title="Split this" aria-label="Split this" className="p-1.5 text-muted-foreground hover:text-primary shrink-0">
                       <Split className="w-4 h-4" />
                     </button>
                   )}
@@ -373,6 +394,44 @@ export function PersonalFinance() {
         saving={saveMutation.isPending}
         deleting={deleteMutation.isPending}
       />
+
+      {/* Split chooser — friend or group */}
+      <Sheet open={!!splitTarget} onOpenChange={(o) => { if (!o) setSplitTarget(null); }}>
+        <SheetContent side="bottom" className="rounded-t-2xl max-h-[80vh] overflow-y-auto">
+          <SheetHeader className="text-left">
+            <SheetTitle className="truncate">Split “{splitTarget?.description}”</SheetTitle>
+          </SheetHeader>
+          <div className="space-y-4 pt-4">
+            <button onClick={splitWithFriend} className="w-full flex items-center gap-3 p-3 rounded-xl border border-border hover:bg-muted transition-colors text-left">
+              <div className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-primary/10 shrink-0"><Users className="w-5 h-5 text-primary" /></div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium">Split with a friend</p>
+                <p className="text-xs text-muted-foreground">Pick one or more friends</p>
+              </div>
+              <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+            </button>
+
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground px-1 mb-2">Or split in a group</p>
+              {groupsQuery.isLoading ? (
+                <p className="text-xs text-muted-foreground px-1">Loading groups…</p>
+              ) : (groupsQuery.data?.length ?? 0) === 0 ? (
+                <p className="text-xs text-muted-foreground px-1">You're not in any groups yet.</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {groupsQuery.data!.map((g) => (
+                    <button key={g.id} onClick={() => splitInGroup(g.id)} className="w-full flex items-center gap-3 p-2.5 rounded-xl border border-border hover:bg-muted transition-colors text-left">
+                      <div className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-muted shrink-0"><UsersRound className="w-4 h-4 text-muted-foreground" /></div>
+                      <span className="text-sm font-medium flex-1 truncate">{g.name}</span>
+                      <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

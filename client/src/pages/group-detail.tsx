@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, apiFormRequest, queryClient } from "@/lib/queryClient";
 import type { Group, Expense, SafeUser, ActivityLog } from "@shared/schema";
@@ -42,6 +42,22 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
   const [amount, setAmount] = useState("");
   const [paidById, setPaidById] = useState("");
   const [splitAmong, setSplitAmong] = useState<string[]>([]);
+
+  // Bridge from Personal Finance ("Split this" → this group): if a draft was
+  // stashed, pre-fill the Add Expense form and open it. One-shot — cleared on read.
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem("spliiit_split_draft");
+      if (!raw) return;
+      sessionStorage.removeItem("spliiit_split_draft");
+      const draft = JSON.parse(raw);
+      if (draft && typeof draft.amount === "number") {
+        setDescription(typeof draft.description === "string" ? draft.description : "");
+        setAmount(String(draft.amount));
+        setAddOpen(true);
+      }
+    } catch {}
+  }, []);
   const [groupSplitType, setGroupSplitType] = useState<"equal" | "they_pay" | "you_pay" | "custom">("equal");
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [isRecurring, setIsRecurring] = useState(false);
