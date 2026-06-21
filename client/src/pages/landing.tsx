@@ -316,8 +316,8 @@ function Landing({ onSignIn }: { onSignIn: () => void }) {
               <span>Spl<span className="text-teal-400">iii</span>t</span>
             </div>
             <div className="flex flex-wrap justify-center gap-x-5 gap-y-2 text-sm text-zinc-500">
-              <a href="/#/privacy" className="hover:text-zinc-300 transition">Privacy</a>
-              <a href="/#/terms" className="hover:text-zinc-300 transition">Terms</a>
+              <a href="/privacy" className="hover:text-zinc-300 transition">Privacy</a>
+              <a href="mailto:inquiries@klarityit.ca" className="hover:text-zinc-300 transition">Contact</a>
               <button onClick={onSignIn} className="hover:text-zinc-300 transition">Sign in</button>
             </div>
             <p className="text-xs text-zinc-600">© 2026 Spliiit · Split expenses effortlessly</p>
