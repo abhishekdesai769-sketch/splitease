@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, apiFormRequest, queryClient } from "@/lib/queryClient";
 import type { SafeUser, Expense } from "@shared/schema";
@@ -38,6 +38,22 @@ export default function Friends() {
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurringFrequency, setRecurringFrequency] = useState<"monthly" | "weekly">("monthly");
+
+  // Bridge from Personal Finance ("Split this"): if a draft was stashed, pre-fill
+  // the Add Expense form and open it. One-shot — cleared immediately on read.
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem("spliiit_split_draft");
+      if (!raw) return;
+      sessionStorage.removeItem("spliiit_split_draft");
+      const draft = JSON.parse(raw);
+      if (draft && typeof draft.amount === "number") {
+        setDescription(typeof draft.description === "string" ? draft.description : "");
+        setAmount(String(draft.amount));
+        setAddExpenseOpen(true);
+      }
+    } catch {}
+  }, []);
   const [currency, setCurrency] = useState("CAD");
   const [upgradeSheetOpen, setUpgradeSheetOpen] = useState(false);
 
