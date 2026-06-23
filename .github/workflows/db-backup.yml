@@ -6,9 +6,9 @@ name: Daily Neon DB backup
 # the off-Neon copy — if Neon is gone, your data is still in GitHub.
 #
 # REQUIRED secrets (set in repo Settings → Secrets and variables → Actions):
-#   - NEON_DATABASE_URL  : the FULL Neon connection string (with credentials)
-#                          Use the read-only role if you can; otherwise the
-#                          standard URL is fine — pg_dump only reads.
+#   - DATABASE_URL       : the FULL Neon connection string (with credentials).
+#                          Reuses the same secret the app/nightly backup uses;
+#                          pg_dump only reads.
 #   - BACKUP_GPG_PASSPHRASE
 #                        : a strong random passphrase to encrypt each dump.
 #                          Store this in 1Password — without it the backups
@@ -50,10 +50,10 @@ jobs:
 
       - name: Dump database (plain SQL → gzip)
         env:
-          DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
           if [ -z "$DATABASE_URL" ]; then
-            echo "::error::NEON_DATABASE_URL secret is not set."
+            echo "::error::DATABASE_URL secret is not set."
             exit 1
           fi
           # --no-owner and --no-acl make the dump portable across Neon projects.
