@@ -34,10 +34,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Install postgres-client and gpg
+      - name: Install PostgreSQL 17 client, gpg, gzip
         run: |
+          # Neon runs Postgres 17 — the default ubuntu postgresql-client is 16,
+          # which makes pg_dump abort on version mismatch (empty dump). Pull the
+          # PG17 client from the official PGDG apt repo, same as nightly-backup.yml.
+          sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/pgdg.gpg
           sudo apt-get update -qq
-          sudo apt-get install -y -qq postgresql-client gpg gzip
+          sudo apt-get install -y -qq postgresql-client-17 gpg gzip
+          # Prepend PG17 to PATH so `pg_dump` in later steps resolves to 17.
+          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
+          /usr/lib/postgresql/17/bin/pg_dump --version
 
       - name: Generate backup filename
         id: meta
