@@ -28,14 +28,14 @@ Settings → Spliiit service → Environment. **Verify these exist:**
 - ⬜ `STRIPE_WEBHOOK_SECRET` — if missing, Stripe webhooks return 503 (no Premium grants will work). Get from Stripe → Webhooks → your endpoint → Signing secret.
 - ⬜ `DATABASE_URL` — check if the host contains `-pooler`. If NOT, the app is on the direct-connection URL (limited concurrent connections). To switch: Neon dashboard → Connection details → toggle "Connection pooling" → copy → paste into Render → restart.
 
-### GitHub Actions secrets (10 min — for daily backups)
+### GitHub Actions secrets (DONE — daily backups working as of 2026-06-23)
 
 GitHub → repo → Settings → Secrets and variables → Actions.
 
-- ⬜ `NEON_DATABASE_URL` — same value as Render's `DATABASE_URL`. Required for the daily backup workflow.
-- ⬜ `BACKUP_GPG_PASSPHRASE` — generate with `openssl rand -hex 32`. **CRITICAL:** also paste this into 1Password under "Spliiit production / BACKUP_GPG_PASSPHRASE." If you lose this, ALL future backups become unrecoverable.
+- ✅ `NEON_DATABASE_URL` — **no longer needed.** The `db-backup.yml` workflow was repointed to the existing `DATABASE_URL` secret (which was already set), so a separate Neon URL secret is not required.
+- ✅ `BACKUP_GPG_PASSPHRASE` — added 2026-06-23, stored in 1Password. **CRITICAL:** if you lose this, ALL backups become unrecoverable.
 
-After both are added: GitHub → Actions tab → "Daily Neon DB backup" → Run workflow → wait 30s → confirm Releases tab shows `backup-YYYY-MM-DD` with an encrypted attachment.
+Verified working: `db-backup.yml` succeeds and uploads an encrypted `backup-YYYY-MM-DD` release (197 KB `.gpg`, confirmed). It also opens a GitHub issue on failure (no more silent failures). The old redundant `nightly-backup.yml` was removed — there is now ONE encrypted daily backup.
 
 ### OneDrive backup (10 min — third copy beyond GitHub + laptop)
 
