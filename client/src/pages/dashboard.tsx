@@ -12,6 +12,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { CelebrationBanner } from "@/components/CelebrationBanner";
 import { WhatsNewModal } from "@/components/WhatsNewModal";
+import { formatMoney } from "@/components/CurrencySelector";
 
 function StatCard({ icon: Icon, label, value, href, color }: { icon: any; label: string; value: string; href?: string; color?: string }) {
   const inner = (
@@ -34,6 +35,7 @@ function StatCard({ icon: Icon, label, value, href, color }: { icon: any; label:
 export default function Dashboard() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const userCurrency = user?.defaultCurrency;
   const { data: groups = [] } = useQuery<Group[]>({ queryKey: ["/api/groups"] });
   const { data: expenses = [] } = useQuery<Expense[]>({ queryKey: ["/api/expenses"] });
   const { data: friendsList = [] } = useQuery<SafeUser[]>({ queryKey: ["/api/friends"] });
@@ -276,8 +278,8 @@ export default function Dashboard() {
       <div className="grid grid-cols-2 gap-3">
         <StatCard icon={Users2} label="Friends" value={String(friendsList.length)} href="/friends" />
         <StatCard icon={UsersRound} label="Groups" value={String(groups.length)} href="/groups" />
-        <StatCard icon={TrendingDown} label="You Owe" value={`$${youOwe.toFixed(2)}`} color={AMOUNT_OUT_CLASS} />
-        <StatCard icon={TrendingUp} label="You're Owed" value={`$${youAreOwed.toFixed(2)}`} color={AMOUNT_IN_CLASS} />
+        <StatCard icon={TrendingDown} label="You Owe" value={formatMoney(youOwe, userCurrency)} color={AMOUNT_OUT_CLASS} />
+        <StatCard icon={TrendingUp} label="You're Owed" value={formatMoney(youAreOwed, userCurrency)} color={AMOUNT_IN_CLASS} />
       </div>
 
       {/* AI Mode tile — full-width, gradient, dashboard-prominent. Visible
@@ -334,7 +336,7 @@ export default function Dashboard() {
                       </>
                     )}
                     {" "}
-                    <span className={`font-semibold ${theyOweMe ? AMOUNT_IN_CLASS : AMOUNT_OUT_CLASS}`}>${s.amount.toFixed(2)}</span>
+                    <span className={`font-semibold ${theyOweMe ? AMOUNT_IN_CLASS : AMOUNT_OUT_CLASS}`}>{formatMoney(s.amount, userCurrency)}</span>
                   </p>
                 </Card>
               );
@@ -356,7 +358,7 @@ export default function Dashboard() {
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium truncate">{rec.description}</p>
                   <p className="text-xs text-muted-foreground font-mono">
-                    ${rec.amount.toFixed(2)} · {rec.frequency}
+                    {formatMoney(rec.amount, userCurrency)} · {rec.frequency}
                     {getRecurringSplitLabel(rec) && ` · ${getRecurringSplitLabel(rec)}`}
                   </p>
                   <p className="text-xs text-muted-foreground/60 font-mono">next {rec.nextRunDate}</p>
@@ -388,7 +390,7 @@ export default function Dashboard() {
                     Paid by {getPersonName(expense.paidById)} · {new Date(expense.date).toLocaleDateString()}
                   </p>
                 </div>
-                <p className="text-base font-semibold text-primary shrink-0 font-mono">${expense.amount.toFixed(2)}</p>
+                <p className="text-base font-semibold text-primary shrink-0 font-mono">{formatMoney(expense.amount, userCurrency, expense.currency, expense.originalAmount)}</p>
               </Card>
             ))}
           </div>

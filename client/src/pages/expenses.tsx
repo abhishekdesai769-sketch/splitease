@@ -8,10 +8,12 @@ import { Receipt, Mail, Loader2 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
+import { formatMoney } from "@/components/CurrencySelector";
 
 export default function Expenses() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const userCurrency = user?.defaultCurrency;
   const { data: groups = [] } = useQuery<Group[]>({ queryKey: ["/api/groups"] });
   const { data: expenses = [] } = useQuery<Expense[]>({ queryKey: ["/api/expenses"] });
   const { data: friendsList = [] } = useQuery<SafeUser[]>({ queryKey: ["/api/friends"] });
@@ -80,7 +82,7 @@ export default function Expenses() {
         <div>
           <h1 className="text-xl font-semibold tracking-tight font-serif">All <em className="italic text-accent-foreground">Expenses</em></h1>
           <p className="text-sm text-muted-foreground mt-0.5 font-mono">
-            {expenses.length} expenses · ${totalExpenses.toFixed(2)} total
+            {expenses.length} expenses · {formatMoney(totalExpenses, userCurrency)} total
           </p>
         </div>
         {expenses.length > 0 && (
@@ -132,7 +134,7 @@ export default function Expenses() {
                       </p>
                     </div>
                     <span className="text-base font-semibold text-foreground shrink-0 font-mono">
-                      ${expense.amount.toFixed(2)}
+                      {formatMoney(expense.amount, userCurrency, expense.currency, expense.originalAmount)}
                     </span>
                   </div>
                 </Card>

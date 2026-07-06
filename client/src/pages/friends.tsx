@@ -14,7 +14,7 @@ import { Switch } from "@/components/ui/switch";
 import { UpgradePromptSheet } from "@/components/UpgradePromptSheet";
 import { isInTWA } from "@/lib/platform";
 import { ScanReceiptButton } from "@/components/ScanReceiptButton";
-import { CurrencySelector } from "@/components/CurrencySelector";
+import { CurrencySelector, formatMoney } from "@/components/CurrencySelector";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 import { useAuth } from "@/lib/auth";
@@ -24,6 +24,7 @@ import { displayBalance, isEffectivelySettled, AMOUNT_IN_CLASS, AMOUNT_OUT_CLASS
 export default function Friends() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const userCurrency = user?.defaultCurrency;
   const [addFriendOpen, setAddFriendOpen] = useState(false);
   const [inviteLinkCopied, setInviteLinkCopied] = useState(false);
   const [addExpenseOpen, setAddExpenseOpen] = useState(false);
@@ -687,7 +688,7 @@ export default function Friends() {
                   )}
                 </p>
                 <p className="text-2xl font-bold text-primary">
-                  ${Math.abs(settleUpFriend.amount).toFixed(2)}
+                  {formatMoney(Math.abs(settleUpFriend.amount), userCurrency)}
                 </p>
               </div>
               <p className="text-xs text-muted-foreground text-center">
@@ -740,7 +741,7 @@ export default function Friends() {
                         balance > 0 ? AMOUNT_IN_CLASS : AMOUNT_OUT_CLASS
                       }`}
                     >
-                      {balance > 0 ? `+$${balance.toFixed(2)}` : `-$${Math.abs(balance).toFixed(2)}`}
+                      {balance > 0 ? `+${formatMoney(balance, userCurrency)}` : `-${formatMoney(Math.abs(balance), userCurrency)}`}
                     </span>
                   )}
                   {balance === 0 && hasExpenses && (

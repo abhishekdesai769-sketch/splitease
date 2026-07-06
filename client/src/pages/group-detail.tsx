@@ -16,7 +16,7 @@ import { Switch } from "@/components/ui/switch";
 import { UpgradePromptSheet } from "@/components/UpgradePromptSheet";
 import { isInTWA } from "@/lib/platform";
 import { ScanReceiptButton } from "@/components/ScanReceiptButton";
-import { CurrencySelector, formatExpenseAmount } from "@/components/CurrencySelector";
+import { CurrencySelector, formatExpenseAmount, formatMoney } from "@/components/CurrencySelector";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
@@ -28,6 +28,7 @@ import { track } from "@/lib/analytics";
 
 export default function GroupDetail({ groupId }: { groupId: string }) {
   const { user } = useAuth();
+  const userCurrency = user?.defaultCurrency;
   const { toast } = useToast();
   const [addOpen, setAddOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -828,7 +829,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
             </h1>
           )}
           <p className="text-sm text-muted-foreground font-mono">
-            {members.length} members · ${totalGroupSpend.toFixed(2)} total
+            {members.length} members · {formatMoney(totalGroupSpend, userCurrency)} total
           </p>
         </div>
         {/* Three-dots group actions menu */}
@@ -1748,7 +1749,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
             return (
               <p className="text-base font-semibold mb-3">
                 {net > 0 ? "You are owed " : "You owe "}
-                <span className={net > 0 ? AMOUNT_IN_CLASS : AMOUNT_OUT_CLASS}>${Math.abs(net).toFixed(2)}</span>
+                <span className={net > 0 ? AMOUNT_IN_CLASS : AMOUNT_OUT_CLASS}>{formatMoney(Math.abs(net), userCurrency)}</span>
                 {" in total"}
               </p>
             );
@@ -2035,7 +2036,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                       </>
                     ) : (
                       <span className={`text-base font-semibold ${expenseAmountColor(expense)}`}>
-                        ${expense.amount.toFixed(2)}
+                        {formatMoney(expense.amount, userCurrency)}
                       </span>
                     )}
                   </span>
@@ -2078,7 +2079,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
             <div className="space-y-4 pt-2">
               {/* Amount + Date */}
               <div className="flex items-center justify-between">
-                <span className="text-2xl font-bold text-primary">${detailExpense.amount.toFixed(2)}</span>
+                <span className="text-2xl font-bold text-primary">{formatMoney(detailExpense.amount, userCurrency, detailExpense.currency, detailExpense.originalAmount)}</span>
                 <span className="text-sm text-muted-foreground font-mono">{new Date(detailExpense.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
               </div>
 
@@ -2122,7 +2123,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                             </div>
                             <span className="text-sm">{getPersonName(personId)}</span>
                           </div>
-                          <span className="text-sm font-medium">${share.toFixed(2)}</span>
+                          <span className="text-sm font-medium">{formatMoney(share, userCurrency)}</span>
                         </div>
                       );
                     });

@@ -101,3 +101,29 @@ export function formatExpenseAmount(amount: number, currency?: string | null, or
   const sym = info?.symbol ?? currency;
   return `${sym}${originalAmount.toFixed(2)} → ${cad}`;
 }
+
+/** The display symbol for a currency code. CAD renders as the bare "$" the app
+ *  has always shown; every other currency uses its real symbol (₹, €, US$, …). */
+export function currencySymbol(code?: string | null): string {
+  if (!code || code === "CAD") return "$";
+  const info = CURRENCIES.find((c) => c.code === code);
+  return info?.symbol ?? `${code} `;
+}
+
+/** Format an amount for display in the VIEWER's currency. Pure display — never
+ *  changes stored values or any balance math.
+ *  - Converted expense (premium: non-CAD currency + originalAmount) →
+ *    "₹2070.00 → $33.00"  (what was entered → the stored base amount).
+ *  - Otherwise the amount is already in the viewer's base currency →
+ *    "₹2070.00"  using the viewer's own currency symbol. */
+export function formatMoney(
+  amount: number,
+  viewerCurrency?: string | null,
+  expenseCurrency?: string | null,
+  originalAmount?: number | null,
+): string {
+  if (expenseCurrency && expenseCurrency !== "CAD" && originalAmount != null) {
+    return `${currencySymbol(expenseCurrency)}${originalAmount.toFixed(2)} → ${currencySymbol("CAD")}${amount.toFixed(2)}`;
+  }
+  return `${currencySymbol(viewerCurrency)}${amount.toFixed(2)}`;
+}
