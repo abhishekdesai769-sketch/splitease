@@ -656,7 +656,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
   const customSplitError = groupSplitType === "custom" && finalAmount > 0
     ? (customSplitMode === "percent"
         ? (Math.abs(customSplitTotal - 100) > 0.1 ? `Total: ${customSplitTotal.toFixed(1)}% — needs to be 100%` : null)
-        : (Math.abs(customSplitTotal - finalAmount) > 0.01 ? `$${customSplitTotal.toFixed(2)} allocated of $${finalAmount.toFixed(2)} total` : null))
+        : (Math.round(customSplitTotal * 100) !== Math.round(finalAmount * 100) ? `Allocated $${customSplitTotal.toFixed(2)} of $${finalAmount.toFixed(2)} total — the shares must add up to the total.` : null))
     : null;
   const customSplitAmounts: Record<string, number> = groupSplitType === "custom"
     ? Object.fromEntries(
@@ -671,6 +671,22 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
           .filter(([, amt]) => (amt as number) > 0)
       )
     : {};
+
+  // Single source of truth for "why can't I submit?". Used by BOTH the submit
+  // handler and (implicitly) the UI, so they can never disagree and the click
+  // can never silently do nothing — it either submits or names the blocker.
+  const submitBlocker: string | null =
+    !description.trim() ? "Add a description."
+    : (!amount || finalAmount <= 0) ? "Enter an amount greater than 0."
+    : !paidById ? "Choose who paid."
+    : groupSplitType === "custom"
+      ? (customSplitError
+          ? customSplitError
+          : Object.keys(customSplitAmounts).length === 0
+            ? "Give each person a share greater than 0 (or uncheck them)."
+            : null)
+      : splitAmong.length === 0 ? "Choose who to split with."
+      : null;
 
   const resetForm = () => {
     setDescription("");
@@ -1033,12 +1049,14 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
               className="space-y-5 pt-2"
               onSubmit={(e) => {
                 e.preventDefault();
-                if (description.trim() && amount && paidById && splitAmong.length > 0) {
-                  if (isRecurring) {
-                    createRecurringMutation.mutate();
-                  } else {
-                    createExpenseMutation.mutate();
-                  }
+                if (submitBlocker) {
+                  toast({ title: "Can't add this yet", description: submitBlocker, variant: "destructive" });
+                  return;
+                }
+                if (isRecurring) {
+                  createRecurringMutation.mutate();
+                } else {
+                  createExpenseMutation.mutate();
                 }
               }}
             >
@@ -1419,15 +1437,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
               <Button
                 type="submit"
                 className="w-full"
-                disabled={
-                  !description.trim() ||
-                  !amount ||
-                  !paidById ||
-                  (groupSplitType !== "custom" && splitAmong.length === 0) ||
-                  (groupSplitType === "custom" && (!!customSplitError || Object.keys(customSplitAmounts).length === 0)) ||
-                  createExpenseMutation.isPending ||
-                  createRecurringMutation.isPending
-                }
+                disabled={createExpenseMutation.isPending || createRecurringMutation.isPending}
                 data-testid="submit-expense"
               >
                 {(createExpenseMutation.isPending || createRecurringMutation.isPending)

@@ -280,12 +280,20 @@ export default function Friends() {
                   className="space-y-4 pt-2"
                   onSubmit={(e) => {
                     e.preventDefault();
-                    if (description.trim() && amount && paidById && splitWithId) {
-                      if (isRecurring) {
-                        addRecurringMutation.mutate();
-                      } else {
-                        addExpenseMutation.mutate();
-                      }
+                    const blocker =
+                      !description.trim() ? "Add a description."
+                      : (!amount || (parseFloat(amount) || 0) <= 0) ? "Enter an amount greater than 0."
+                      : !paidById ? "Choose who paid."
+                      : !splitWithId ? "Choose who to split with."
+                      : null;
+                    if (blocker) {
+                      toast({ title: "Can't add this yet", description: blocker, variant: "destructive" });
+                      return;
+                    }
+                    if (isRecurring) {
+                      addRecurringMutation.mutate();
+                    } else {
+                      addExpenseMutation.mutate();
                     }
                   }}
                 >
@@ -503,14 +511,7 @@ export default function Friends() {
                   <Button
                     type="submit"
                     className="w-full"
-                    disabled={
-                      !description.trim() ||
-                      !amount ||
-                      !paidById ||
-                      !splitWithId ||
-                      addExpenseMutation.isPending ||
-                      addRecurringMutation.isPending
-                    }
+                    disabled={addExpenseMutation.isPending || addRecurringMutation.isPending}
                     data-testid="submit-direct-expense"
                   >
                     {(addExpenseMutation.isPending || addRecurringMutation.isPending)
