@@ -172,7 +172,11 @@ function Landing({ onSignIn }: { onSignIn: () => void }) {
       <nav className="sticky top-0 z-40 backdrop-blur-md bg-[#0a0f0e]/70 border-b border-white/5">
         <div className="max-w-6xl mx-auto px-5 h-14 flex items-center justify-between">
           <div className="flex items-center gap-2 font-semibold">
-            <img src="/icon-192.png" alt="" className="w-7 h-7 rounded-lg" />
+            <svg viewBox="0 0 32 32" fill="none" className="w-7 h-7" aria-hidden="true">
+              <rect width="32" height="32" rx="8" fill="#2dd4bf" fillOpacity="0.15" />
+              <path d="M9 11h14M9 16h14M9 21h14" stroke="#2dd4bf" strokeWidth="2" strokeLinecap="round" />
+              <path d="M16 8v16" stroke="#2dd4bf" strokeWidth="2" strokeLinecap="round" />
+            </svg>
             <span>Spl<span className="text-teal-400">iii</span>t</span>
           </div>
           <div className="flex items-center gap-1.5">
@@ -312,7 +316,11 @@ function Landing({ onSignIn }: { onSignIn: () => void }) {
         <footer className="border-t border-white/5 px-5 py-10">
           <div className="max-w-6xl mx-auto flex flex-col items-center gap-4 text-center">
             <div className="flex items-center gap-2 font-semibold">
-              <img src="/icon-192.png" alt="" className="w-6 h-6 rounded-md" />
+              <svg viewBox="0 0 32 32" fill="none" className="w-6 h-6" aria-hidden="true">
+                <rect width="32" height="32" rx="8" fill="#2dd4bf" fillOpacity="0.15" />
+                <path d="M9 11h14M9 16h14M9 21h14" stroke="#2dd4bf" strokeWidth="2" strokeLinecap="round" />
+                <path d="M16 8v16" stroke="#2dd4bf" strokeWidth="2" strokeLinecap="round" />
+              </svg>
               <span>Spl<span className="text-teal-400">iii</span>t</span>
             </div>
             <div className="flex flex-wrap justify-center gap-x-5 gap-y-2 text-sm text-zinc-500">
