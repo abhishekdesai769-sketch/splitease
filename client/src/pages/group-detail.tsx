@@ -1804,7 +1804,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                         </p>
                       </div>
                       <span className={`text-base font-semibold shrink-0 font-mono ${youOwe ? AMOUNT_OUT_CLASS : AMOUNT_IN_CLASS}`}>
-                        ${s.amount.toFixed(2)}
+                        {formatMoney(s.amount, userCurrency)}
                       </span>
                     </Card>
                   );
@@ -1865,7 +1865,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                       }`}
                     >
                       {displayAmt > 0 ? "gets back" : displayAmt < 0 ? "pays" : "settled"}{" "}
-                      {displayAmt !== 0 && `$${Math.abs(displayAmt).toFixed(2)}`}
+                      {displayAmt !== 0 && formatMoney(Math.abs(displayAmt), userCurrency)}
                     </span>
                   </div>
                 );
@@ -1942,7 +1942,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                   <span className="font-semibold text-foreground">{getPersonName(settleReceiverId)}</span>
                 </p>
                 <p className="text-xl font-bold text-primary">
-                  ${parseFloat(settleAmount).toFixed(2)}
+                  {formatMoney(parseFloat(settleAmount) || 0, userCurrency)}
                 </p>
               </div>
             )}
@@ -2572,7 +2572,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                   <div key={i} className="flex justify-between text-xs py-1 border-b border-muted/30">
                     <span className="truncate flex-1">{r.description}</span>
                     <span className="text-muted-foreground ml-2">{r.date}</span>
-                    <span className="font-medium ml-2">${Number(r.cost).toFixed(2)}</span>
+                    <span className="font-medium ml-2">{formatMoney(Number(r.cost), userCurrency)}</span>
                   </div>
                 ))}
                 {importPreview.length > 25 && (

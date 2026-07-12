@@ -8,6 +8,8 @@ import { Crown, Check, Loader2, ExternalLink, Repeat, Trash2, RotateCcw, Gift, C
 import { useHashLocation } from "wouter/use-hash-location";
 import type { RecurringExpense } from "@shared/schema";
 import { isIosNative, purchasePremium, restorePurchases, type IAPPlan } from "@/lib/iap";
+import { useAuth } from "@/lib/auth";
+import { formatMoney } from "@/components/CurrencySelector";
 
 // ── Referral Card ─────────────────────────────────────────────────────────────
 function ReferralCard() {
@@ -115,6 +117,8 @@ function PremiumDashboard({ until, premiumFeatures, portalMutation }: {
   portalMutation: any;
 }) {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const userCurrency = user?.defaultCurrency;
 
   const { data: recurringList = [], isLoading: recurringLoading } = useQuery<RecurringExpense[]>({
     queryKey: ["/api/recurring"],
@@ -175,7 +179,7 @@ function PremiumDashboard({ until, premiumFeatures, portalMutation }: {
                 <div className="min-w-0">
                   <p className="text-sm font-medium truncate">{rec.description}</p>
                   <p className="text-xs text-muted-foreground font-mono">
-                    ${rec.amount.toFixed(2)} · {rec.frequency} · next {rec.nextRunDate}
+                    {formatMoney(rec.amount, userCurrency)} · {rec.frequency} · next {rec.nextRunDate}
                   </p>
                 </div>
                 <button

@@ -13,11 +13,13 @@ import { Link } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { calculateGroupBalances } from "@/lib/simplify";
 import { displayBalance, AMOUNT_IN_CLASS, AMOUNT_OUT_CLASS } from "@/lib/balance-display";
+import { formatMoney } from "@/components/CurrencySelector";
 import { track } from "@/lib/analytics";
 import { triggerReview } from "@/lib/reviewPrompt";
 
 export default function Groups() {
   const { user } = useAuth();
+  const userCurrency = user?.defaultCurrency;
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [groupName, setGroupName] = useState("");
@@ -141,7 +143,7 @@ export default function Groups() {
                   </div>
                   {netBalance !== 0 && (
                     <span className={`text-base font-semibold shrink-0 font-mono ${netBalance > 0 ? AMOUNT_IN_CLASS : AMOUNT_OUT_CLASS}`}>
-                      {netBalance > 0 ? "+" : "-"}${Math.abs(netBalance).toFixed(2)}
+                      {netBalance > 0 ? "+" : "-"}{formatMoney(Math.abs(netBalance), userCurrency)}
                     </span>
                   )}
                   {netBalance === 0 && expenseCount > 0 && (

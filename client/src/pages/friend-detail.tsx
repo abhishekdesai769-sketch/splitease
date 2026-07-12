@@ -14,7 +14,7 @@ import { Switch } from "@/components/ui/switch";
 import { UpgradePromptSheet } from "@/components/UpgradePromptSheet";
 import { isInTWA } from "@/lib/platform";
 import { ScanReceiptButton } from "@/components/ScanReceiptButton";
-import { CurrencySelector, formatExpenseAmount } from "@/components/CurrencySelector";
+import { CurrencySelector, formatExpenseAmount, formatMoney } from "@/components/CurrencySelector";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
@@ -25,6 +25,7 @@ import { recordExpenseAndCheck, triggerReview } from "@/lib/reviewPrompt";
 
 export default function FriendDetail({ friendId }: { friendId: string }) {
   const { user } = useAuth();
+  const userCurrency = user?.defaultCurrency;
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const [addExpenseOpen, setAddExpenseOpen] = useState(false);
@@ -929,11 +930,11 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
               <p className="text-lg font-semibold text-muted-foreground">All settled up</p>
             ) : myBalance > 0 ? (
               <p className={`text-lg font-semibold font-mono ${AMOUNT_IN_CLASS}`}>
-                {friend.name} pays you ${myBalance.toFixed(2)}
+                {friend.name} pays you {formatMoney(myBalance, userCurrency)}
               </p>
             ) : (
               <p className={`text-lg font-semibold font-mono ${AMOUNT_OUT_CLASS}`}>
-                You pay {friend.name} ${Math.abs(myBalance).toFixed(2)}
+                You pay {friend.name} {formatMoney(Math.abs(myBalance), userCurrency)}
               </p>
             )}
           </div>
@@ -973,7 +974,7 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
                 )}
               </p>
               <p className="text-2xl font-bold text-primary">
-                ${Math.abs(myBalance).toFixed(2)}
+                {formatMoney(Math.abs(myBalance), userCurrency)}
               </p>
             </div>
             <p className="text-xs text-muted-foreground text-center">
@@ -1205,7 +1206,7 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
                         </span>
                       ) : (
                         <span className="text-base font-semibold text-foreground">
-                          ${expense.amount.toFixed(2)}
+                          {formatMoney(expense.amount, userCurrency)}
                         </span>
                       )}
                     </span>

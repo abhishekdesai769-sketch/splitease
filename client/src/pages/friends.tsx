@@ -805,7 +805,7 @@ export default function Friends() {
                   </p>
                 </div>
                 <span className="text-sm font-semibold text-primary shrink-0 font-mono">
-                  ${s.amount.toFixed(2)}
+                  {formatMoney(s.amount, userCurrency)}
                 </span>
               </Card>
             ))}
