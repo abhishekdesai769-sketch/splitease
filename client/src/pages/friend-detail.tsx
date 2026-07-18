@@ -23,6 +23,23 @@ import { displayBalance, AMOUNT_IN_CLASS, AMOUNT_OUT_CLASS } from "@/lib/balance
 import { PaymentMethodsView } from "@/components/PaymentMethods";
 import { recordExpenseAndCheck, triggerReview } from "@/lib/reviewPrompt";
 
+/**
+ * Derive one participant's share of an expense from the STORED values only —
+ * this is display-only and never affects balance math (see simplify.ts).
+ * `splitAmounts` is a JSON map {userId: amount} for unequal splits; when it's
+ * null the expense is divided equally among everyone in `splitAmongIds`.
+ */
+function participantShare(expense: Expense, userId: string): number {
+  const ids = expense.splitAmongIds || [];
+  let custom: Record<string, number> | null = null;
+  if (expense.splitAmounts) {
+    try { custom = JSON.parse(expense.splitAmounts); } catch { custom = null; }
+  }
+  if (custom) return Number(custom[userId] ?? 0);
+  if (!ids.includes(userId)) return 0;
+  return ids.length > 0 ? expense.amount / ids.length : 0;
+}
+
 export default function FriendDetail({ friendId }: { friendId: string }) {
   const { user } = useAuth();
   const userCurrency = user?.defaultCurrency;
@@ -61,6 +78,7 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
   const [receiptExpenseId, setReceiptExpenseId] = useState<string | null>(null);
   const [receiptData, setReceiptData] = useState<any>(null);
   const [receiptLoading, setReceiptLoading] = useState(false);
+  const [detailExpense, setDetailExpense] = useState<Expense | null>(null);
 
   const handleViewReceipt = async (expenseId: string) => {
     setReceiptExpenseId(expenseId);
@@ -1057,6 +1075,79 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
         </DialogContent>
       </Dialog>
 
+      {/* Expense Details Dialog — full name + split breakdown (display only) */}
+      <Dialog open={!!detailExpense} onOpenChange={(open) => { if (!open) setDetailExpense(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="pr-6 break-words">
+              {detailExpense?.isSettlement ? "Settlement" : detailExpense?.description}
+            </DialogTitle>
+          </DialogHeader>
+          {detailExpense && (() => {
+            const exp = detailExpense;
+            const yourShare = participantShare(exp, user?.id || "");
+            const friendShare = participantShare(exp, friendId);
+            const ids = exp.splitAmongIds || [];
+            const othersCount = ids.filter((id) => id !== user?.id && id !== friendId).length;
+            const othersTotal = Math.max(0, exp.amount - yourShare - friendShare);
+            const totalDisplay = exp.currency && exp.currency !== "CAD" && exp.originalAmount
+              ? formatExpenseAmount(exp.amount, exp.currency, exp.originalAmount)
+              : formatMoney(exp.amount, userCurrency);
+            return (
+              <div className="space-y-4 pt-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">
+                    {exp.paidById === user?.id ? "You" : (friend?.name || "Your friend")} paid
+                  </span>
+                  <span className="font-mono font-semibold text-lg">{totalDisplay}</span>
+                </div>
+                <div className="text-xs text-muted-foreground font-mono">
+                  {new Date(exp.date).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })}
+                </div>
+                {!exp.isSettlement && (
+                  <div className="rounded-lg border p-3 space-y-2">
+                    <p className="text-xs font-medium text-muted-foreground">
+                      {exp.splitAmounts ? "Unequal split" : "Split equally"}
+                      {ids.length > 0 ? ` · ${ids.length} ${ids.length === 1 ? "person" : "people"}` : ""}
+                    </p>
+                    <div className="flex items-center justify-between text-sm">
+                      <span>You</span>
+                      <span className="font-mono">{formatMoney(yourShare, userCurrency)}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span>{friend?.name || "Your friend"}</span>
+                      <span className="font-mono">{formatMoney(friendShare, userCurrency)}</span>
+                    </div>
+                    {othersCount > 0 && (
+                      <div className="flex items-center justify-between text-sm text-muted-foreground">
+                        <span>{othersCount} other{othersCount > 1 ? "s" : ""}</span>
+                        <span className="font-mono">{formatMoney(othersTotal, userCurrency)}</span>
+                      </div>
+                    )}
+                    <div className="border-t pt-2 flex items-center justify-between text-sm font-medium">
+                      <span>{exp.paidById === user?.id ? `${friend?.name || "Your friend"} owes you` : "You owe"}</span>
+                      <span className={`font-mono ${exp.paidById === user?.id ? AMOUNT_IN_CLASS : AMOUNT_OUT_CLASS}`}>
+                        {formatMoney(exp.paidById === user?.id ? friendShare : yourShare, userCurrency)}
+                      </span>
+                    </div>
+                  </div>
+                )}
+                {(exp as any).receiptData && (
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => { setDetailExpense(null); handleViewReceipt(exp.id); }}
+                    data-testid="view-receipt-from-detail"
+                  >
+                    <FileText className="w-4 h-4 mr-2" /> View receipt items
+                  </Button>
+                )}
+              </div>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+
       {/* Delete Expense Confirmation Dialog */}
       <Dialog open={!!deleteExpenseId} onOpenChange={(open) => { if (!open) setDeleteExpenseId(null); }}>
         <DialogContent>
@@ -1171,6 +1262,8 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
           <div className="space-y-2">
             {sortedExpenses.map((expense) => {
               const paidByName = expense.paidById === user?.id ? "You" : friend.name;
+              const yourShare = participantShare(expense, user?.id || "");
+              const friendShare = participantShare(expense, friendId);
               return (
                 <Card
                   key={expense.id}
@@ -1186,8 +1279,8 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
                       )}
                     </div>
                     <div
-                      className={`flex-1 min-w-0 ${(expense as any).receiptData ? "cursor-pointer" : ""}`}
-                      onClick={() => { if ((expense as any).receiptData) handleViewReceipt(expense.id); }}
+                      className="flex-1 min-w-0 cursor-pointer"
+                      onClick={() => setDetailExpense(expense)}
                     >
                       <p className="text-base font-medium truncate">
                         {expense.isSettlement ? "Settlement" : expense.description}
@@ -1198,6 +1291,22 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
                       <p className="text-sm text-muted-foreground font-mono mt-0.5">
                         {paidByName} paid · {new Date(expense.date).toLocaleDateString()}
                       </p>
+                      {!expense.isSettlement && (
+                        <p className="text-xs font-mono mt-1">
+                          {expense.paidById === user?.id ? (
+                            <span className={AMOUNT_IN_CLASS}>
+                              {friend.name} owes you {formatMoney(friendShare, userCurrency)}
+                            </span>
+                          ) : (
+                            <span className={AMOUNT_OUT_CLASS}>
+                              You owe {formatMoney(yourShare, userCurrency)}
+                            </span>
+                          )}
+                          <span className="text-muted-foreground">
+                            {" · "}{expense.splitAmounts ? "unequal split" : "split equally"}
+                          </span>
+                        </p>
+                      )}
                     </div>
                     <span className="text-right shrink-0 font-mono">
                       {expense.currency && expense.currency !== "CAD" && expense.originalAmount ? (
