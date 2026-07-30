@@ -11,7 +11,7 @@ import { db } from "./db";
 import { referralClicks, deviceTokens } from "@shared/schema";
 import { eq, and, gt, desc, sql, isNull } from "drizzle-orm";
 import { signupSchema, loginSchema, forgotPasswordSchema, resetPasswordSchema } from "@shared/schema";
-import { notifyExpenseCreated, sendOtpEmail, sendResetPasswordEmail, sendExportEmail, sendSupportEmail, sendInviteToInviteeEmail, sendInviteToAdminEmail, sendPremiumWelcomeEmail } from "./email";
+import { notifyExpenseCreated, sendOtpEmail, sendResetPasswordEmail, sendExportEmail, sendSupportEmail, sendInviteToInviteeEmail, sendInviteToAdminEmail, sendPremiumWelcomeEmail, sendFounderPremiumAlert } from "./email";
 import { pushExpenseCreated, pushGroupMemberJoined, pushAddedToGroup, deleteDeviceToken as deleteDeviceTokenRow } from "./push";
 import { parseReceipt, RECEIPT_SCANNING_ENABLED } from "./receipt-parser";
 import { checkScanEligibility, incrementScanCounters, recordScanAudit, normalizeEmail, commitScanByScanId } from "./premium-access";
@@ -5000,9 +5000,20 @@ setInterval(loadAll,30000);
             premiumUntil: periodEnd,
           });
           console.log(`[stripe] user ${userId} upgraded to premium until ${periodEnd}`);
-          // Send welcome email (non-blocking)
+          // Send welcome email to the customer + alert the founder (both non-blocking)
           storage.getUser(userId).then((u) => {
-            if (u) sendPremiumWelcomeEmail(u.email, u.name, periodEnd, stripePlanType);
+            if (u) {
+              sendPremiumWelcomeEmail(u.email, u.name, periodEnd, stripePlanType);
+              sendFounderPremiumAlert({
+                event: "new",
+                source: "Stripe (web)",
+                customerName: u.name,
+                customerEmail: u.email,
+                planType: stripePlanType,
+                premiumUntil: periodEnd,
+                userId,
+              }).catch(() => {});
+            }
           }).catch(() => {});
           break;
         }
@@ -5044,6 +5055,13 @@ setInterval(loadAll,30000);
             premiumUntil: null,
           });
           console.log(`[stripe] subscription cancelled for customer ${sub.customer}`);
+          sendFounderPremiumAlert({
+            event: "cancelled",
+            source: "Stripe (web)",
+            customerName: user.name,
+            customerEmail: user.email,
+            userId: user.id,
+          }).catch(() => {});
           break;
         }
 
@@ -5141,7 +5159,18 @@ setInterval(loadAll,30000);
               : 30;
             const iapPlanType: "monthly" | "yearly" = daysUntil > 300 ? "yearly" : "monthly";
             storage.getUser(userId).then((u) => {
-              if (u) sendPremiumWelcomeEmail(u.email, u.name, premiumUntil, iapPlanType);
+              if (u) {
+                sendPremiumWelcomeEmail(u.email, u.name, premiumUntil, iapPlanType);
+                sendFounderPremiumAlert({
+                  event: "new",
+                  source: "Apple / RevenueCat (iOS)",
+                  customerName: u.name,
+                  customerEmail: u.email,
+                  planType: iapPlanType,
+                  premiumUntil,
+                  userId,
+                }).catch(() => {});
+              }
             }).catch(() => {});
           }
           break;
@@ -5156,6 +5185,16 @@ setInterval(loadAll,30000);
             premiumUntil,
           });
           console.log(`[iap] webhook CANCELLATION: user ${userId} → access until ${premiumUntil}`);
+          storage.getUser(userId).then((u) => {
+            if (u) sendFounderPremiumAlert({
+              event: "cancelled",
+              source: "Apple / RevenueCat (iOS)",
+              customerName: u.name,
+              customerEmail: u.email,
+              premiumUntil,
+              userId,
+            }).catch(() => {});
+          }).catch(() => {});
           break;
         }
 

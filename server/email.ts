@@ -360,6 +360,75 @@ export async function sendSupportEmail(opts: {
 }
 
 /**
+ * Notify the FOUNDER (not the customer) whenever someone upgrades to — or
+ * churns from — Premium. The customer gets sendPremiumWelcomeEmail(); this is
+ * the internal business-ops counterpart so you actually KNOW a paying customer
+ * arrived. Goes to spliiit@klarityit.ca. Fire-and-forget: callers must never
+ * let it block or fail a payment webhook (always `.catch(() => {})`).
+ */
+export async function sendFounderPremiumAlert(opts: {
+  event: "new" | "cancelled";
+  source: string;                 // e.g. "Stripe (web)" | "Apple / RevenueCat (iOS)"
+  customerName?: string | null;
+  customerEmail?: string | null;
+  planType?: "monthly" | "yearly" | "free" | null;
+  premiumUntil?: string | null;
+  userId?: string | null;
+}) {
+  if (!resend) return;
+  const FOUNDER_EMAIL = "spliiit@klarityit.ca";
+  const name = (opts.customerName || "").trim() || "A user";
+  const emailAddr = opts.customerEmail || "unknown email";
+  const until = opts.premiumUntil
+    ? new Date(opts.premiumUntil).toLocaleDateString("en-CA", { year: "numeric", month: "short", day: "numeric" })
+    : null;
+
+  const isNew = opts.event === "new";
+  const headline = isNew ? `🎉 New Premium customer: ${name}` : `⚠️ Premium cancelled: ${name}`;
+  const banner = isNew ? "#2dd4a8" : "#f59e0b";
+
+  const rows: [string, string][] = [];
+  rows.push(["Customer", `${name} &lt;${emailAddr}&gt;`]);
+  rows.push(["Source", opts.source]);
+  if (opts.planType && opts.planType !== "free") rows.push(["Plan", opts.planType]);
+  if (until) rows.push([isNew ? "Paid through" : "Access until", until]);
+  if (opts.userId) rows.push(["User ID", opts.userId]);
+
+  const rowsHtml = rows.map(([k, v]) =>
+    `<tr>
+       <td style="font-size:13px;color:#6b7280;padding:6px 14px 6px 0;white-space:nowrap;vertical-align:top;">${k}</td>
+       <td style="font-size:14px;color:#111827;font-weight:600;">${v}</td>
+     </tr>`
+  ).join("");
+
+  const html = `
+<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <tr><td align="center" style="padding:24px 16px;">
+    <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="max-width:520px;">
+      <tr><td>${EMAIL_LOGO}</td></tr>
+      <tr><td style="font-size:18px;font-weight:700;color:#111827;padding-bottom:4px;">${headline}</td></tr>
+      <tr><td style="font-size:13px;color:#6b7280;padding-bottom:16px;">Internal alert — the customer got their own welcome email.</td></tr>
+      <tr><td style="padding-bottom:16px;">
+        <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="border:1px solid #e5e7eb;border-left:4px solid ${banner};border-radius:10px;">
+          <tr><td style="padding:16px;">
+            <table width="100%" cellpadding="0" cellspacing="0" role="presentation">${rowsHtml}</table>
+          </td></tr>
+        </table>
+      </td></tr>
+      <tr><td style="border-top:1px solid #f3f4f6;padding-top:16px;font-size:12px;color:#9ca3af;">${EMAIL_FOOTER}</td></tr>
+    </table>
+  </td></tr>
+</table>`;
+
+  const text =
+    `${headline}\n\n` +
+    rows.map(([k, v]) => `${k}: ${v.replace(/&lt;/g, "<").replace(/&gt;/g, ">")}`).join("\n") +
+    `\n\n— Spliiit (internal alert)`;
+
+  await sendEmail(FOUNDER_EMAIL, headline, html, text);
+}
+
+/**
  * Notify the invitee that someone wants to add them to a group
  */
 export async function sendInviteToInviteeEmail(opts: {
