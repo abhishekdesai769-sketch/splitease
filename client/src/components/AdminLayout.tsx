@@ -18,10 +18,10 @@
 
 import { useState, useEffect, type ReactNode } from "react";
 import {
-  Home, Users, Sparkles, AlertTriangle, Megaphone, Menu, X,
+  Home, Users, Sparkles, AlertTriangle, Megaphone, Menu, X, TrendingUp,
 } from "lucide-react";
 
-export type AdminSection = "home" | "users" | "ai-mode" | "errors" | "campaigns";
+export type AdminSection = "home" | "growth" | "users" | "ai-mode" | "errors" | "campaigns";
 
 interface NavItem {
   id: AdminSection;
@@ -32,6 +32,7 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { id: "home",      label: "Home",      icon: Home,           hash: "#/admin/home" },
+  { id: "growth",    label: "Growth",    icon: TrendingUp,     hash: "#/admin/growth" },
   { id: "users",     label: "Users",     icon: Users,          hash: "#/admin/users" },
   { id: "ai-mode",   label: "AI Mode",   icon: Sparkles,       hash: "#/admin/ai-mode" },
   { id: "errors",    label: "Errors",    icon: AlertTriangle,  hash: "#/admin/errors" },
@@ -46,7 +47,7 @@ export function getActiveSection(): AdminSection {
   // Match #/admin or #/admin/<section> or #/admin/users/<id> etc.
   const m = hash.match(/^#\/admin(?:\/([^/]+))?/);
   const seg = m?.[1] || "home";
-  const known: AdminSection[] = ["home", "users", "ai-mode", "errors", "campaigns"];
+  const known: AdminSection[] = ["home", "growth", "users", "ai-mode", "errors", "campaigns"];
   if ((known as string[]).includes(seg)) return seg as AdminSection;
   return "home";
 }

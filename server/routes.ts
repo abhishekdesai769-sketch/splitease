@@ -7,7 +7,7 @@ import { randomBytes, createHash } from "crypto";
 import { OAuth2Client } from "google-auth-library";
 import appleSignin from "apple-signin-auth";
 import { storage } from "./storage";
-import { db } from "./db";
+import { db, pool } from "./db";
 import { referralClicks, deviceTokens } from "@shared/schema";
 import { eq, and, gt, desc, sql, isNull } from "drizzle-orm";
 import { signupSchema, loginSchema, forgotPasswordSchema, resetPasswordSchema } from "@shared/schema";
@@ -1334,6 +1334,63 @@ setInterval(loadAll,30000);
   app.get("/api/admin/users", requireAuth, requireAdmin, async (_req, res) => {
     const allUsers = await storage.getAllUsers();
     res.json(allUsers);
+  });
+
+  // Growth / KPI snapshot for the admin dashboard. Read-only aggregates:
+  // total & active users, premium, expenses, groups, and this-month-vs-last-
+  // month deltas. Timestamps are stored as ISO/text, so we cast to timestamptz
+  // for the month-window math. Never touches balance/settlement logic.
+  app.get("/api/admin/growth", requireAuth, requireAdmin, async (_req, res) => {
+    try {
+      const usersQ = pool.query(`
+        SELECT
+          count(*) FILTER (WHERE is_ghost = false) AS total_users,
+          count(*) FILTER (WHERE is_ghost = false AND is_premium = true) AS premium_users,
+          count(*) FILTER (WHERE is_ghost = true) AS ghost_placeholders,
+          count(*) FILTER (WHERE is_ghost = false AND created_at::timestamptz >= date_trunc('month', now())) AS new_this_month,
+          count(*) FILTER (WHERE is_ghost = false AND created_at::timestamptz >= date_trunc('month', now()) - interval '1 month' AND created_at::timestamptz < date_trunc('month', now())) AS new_last_month
+        FROM users
+      `);
+      const activeQ = pool.query(`
+        SELECT
+          count(DISTINCT user_id) FILTER (WHERE created_at::timestamptz >= now() - interval '7 days') AS active_7d,
+          count(DISTINCT user_id) FILTER (WHERE created_at::timestamptz >= now() - interval '30 days') AS active_30d
+        FROM activity_log
+      `);
+      const expensesQ = pool.query(`
+        SELECT
+          count(*) AS total_expenses,
+          count(*) FILTER (WHERE date::timestamptz >= date_trunc('month', now())) AS this_month,
+          count(*) FILTER (WHERE date::timestamptz >= date_trunc('month', now()) - interval '1 month' AND date::timestamptz < date_trunc('month', now())) AS last_month
+        FROM expenses
+        WHERE deleted_at IS NULL AND is_settlement = false
+      `);
+      const groupsQ = pool.query(`SELECT count(*) AS total_groups FROM groups WHERE deleted_at IS NULL`);
+
+      const [u, a, e, g] = await Promise.all([usersQ, activeQ, expensesQ, groupsQ]);
+      const n = (v: any) => Number(v ?? 0);
+      res.json({
+        users: {
+          total: n(u.rows[0].total_users),
+          premium: n(u.rows[0].premium_users),
+          ghostPlaceholders: n(u.rows[0].ghost_placeholders),
+          newThisMonth: n(u.rows[0].new_this_month),
+          newLastMonth: n(u.rows[0].new_last_month),
+          active7d: n(a.rows[0].active_7d),
+          active30d: n(a.rows[0].active_30d),
+        },
+        expenses: {
+          total: n(e.rows[0].total_expenses),
+          thisMonth: n(e.rows[0].this_month),
+          lastMonth: n(e.rows[0].last_month),
+        },
+        groups: { total: n(g.rows[0].total_groups) },
+        generatedAt: new Date().toISOString(),
+      });
+    } catch (err: any) {
+      console.error("[admin/growth] error:", err?.message);
+      res.status(500).json({ error: "Failed to compute growth stats" });
+    }
   });
 
   // Per-user expense-creation activity. Powers the admin "Activated" tab —

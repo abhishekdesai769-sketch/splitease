@@ -168,6 +168,24 @@ async function runMigrations() {
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS normalized_email text`);
     await pool.query(`CREATE INDEX IF NOT EXISTS users_normalized_email_idx ON users(normalized_email)`);
 
+    // ── User signup timestamp (Growth analytics — Jul 2026) ────────────────
+    // Add the column NULLABLE first: a volatile now() default on ADD COLUMN
+    // would stamp every existing row with the SAME migration-time value and
+    // destroy real signup history. So: add null → backfill each existing user
+    // from their earliest activity_log entry → fall back to now() for users
+    // with zero activity → THEN set the default so every FUTURE signup is
+    // stamped automatically (drizzle inserts omit it, DB fills it in). Kept
+    // DB-only (not in the drizzle schema) so no insert/select path can break.
+    // Idempotent: re-runs match no NULL rows and just re-assert the default.
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at text`);
+    await pool.query(`
+      UPDATE users u SET created_at = a.first_seen
+      FROM (SELECT user_id, min(created_at) AS first_seen FROM activity_log GROUP BY user_id) a
+      WHERE u.id = a.user_id AND u.created_at IS NULL
+    `);
+    await pool.query(`UPDATE users SET created_at = now()::text WHERE created_at IS NULL`);
+    await pool.query(`ALTER TABLE users ALTER COLUMN created_at SET DEFAULT now()::text`);
+
     // One-time backfill for normalized_email on existing users. Matches the
     // logic in server/premium-access.ts:normalizeEmail() — lowercase + strip
     // +alias + strip dots in the local-part for Gmail/Googlemail only.

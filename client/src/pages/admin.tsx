@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useDeferredValue, useCallback, memo } from "react";
+import { useState, useMemo, useEffect, useDeferredValue, useCallback, memo, type ReactNode } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { SafeUser } from "@shared/schema";
@@ -12,6 +12,7 @@ import {
   Shield, Trash2, RotateCcw, FolderX, ReceiptText,
   Search, Clock, AlertTriangle, KeyRound, Crown, Settings,
   Users, BarChart2, StickyNote, Smartphone, Mail, Chrome, Pencil,
+  TrendingUp, TrendingDown, Activity,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
@@ -136,6 +137,108 @@ const UserCard = memo(function UserCard({
     </Card>
   );
 });
+
+// ── Growth dashboard ──────────────────────────────────────────────────────
+interface GrowthStats {
+  users: {
+    total: number; premium: number; ghostPlaceholders: number;
+    newThisMonth: number; newLastMonth: number; active7d: number; active30d: number;
+  };
+  expenses: { total: number; thisMonth: number; lastMonth: number };
+  groups: { total: number };
+  generatedAt: string;
+}
+
+function pctChange(now: number, prev: number): { label: string; dir: "up" | "down" | "flat" } {
+  if (prev === 0) return now > 0 ? { label: "new", dir: "up" } : { label: "—", dir: "flat" };
+  const pct = Math.round(((now - prev) / prev) * 100);
+  if (pct === 0) return { label: "0%", dir: "flat" };
+  return { label: `${pct > 0 ? "+" : ""}${pct}%`, dir: pct > 0 ? "up" : "down" };
+}
+
+function GrowthStatCard({ icon: Icon, label, value, sub }: { icon: any; label: string; value: string | number; sub?: ReactNode }) {
+  return (
+    <Card className="p-4">
+      <div className="flex items-center gap-2 text-muted-foreground mb-1.5">
+        <Icon className="w-4 h-4" />
+        <span className="text-xs font-medium">{label}</span>
+      </div>
+      <div className="text-2xl font-bold tracking-tight">{value}</div>
+      {sub && <div className="text-xs mt-1">{sub}</div>}
+    </Card>
+  );
+}
+
+function MoMRow({ label, now, prev }: { label: string; now: number; prev: number }) {
+  const c = pctChange(now, prev);
+  const color = c.dir === "up" ? "text-green-600 dark:text-green-500"
+    : c.dir === "down" ? "text-red-600 dark:text-red-500" : "text-muted-foreground";
+  const Arrow = c.dir === "down" ? TrendingDown : TrendingUp;
+  return (
+    <div className="flex items-center justify-between py-2 border-b border-border last:border-0">
+      <span className="text-sm">{label}</span>
+      <div className="flex items-center gap-3">
+        <span className="text-sm text-muted-foreground font-mono">
+          {prev} → <span className="text-foreground font-semibold">{now}</span>
+        </span>
+        <span className={`text-xs font-semibold inline-flex items-center gap-0.5 w-14 justify-end ${color}`}>
+          {c.dir !== "flat" && <Arrow className="w-3 h-3" />}{c.label}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function GrowthPanel() {
+  const { data, isLoading, error } = useQuery<GrowthStats>({ queryKey: ["/api/admin/growth"] });
+
+  if (isLoading) return <div className="text-sm text-muted-foreground py-10 text-center">Loading growth…</div>;
+  if (error || !data) return <div className="text-sm text-destructive py-10 text-center">Couldn't load growth stats.</div>;
+
+  const { users, expenses, groups } = data;
+  const conversion = users.total > 0 ? ((users.premium / users.total) * 100).toFixed(1) : "0.0";
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h1 className="text-xl font-semibold tracking-tight">Growth</h1>
+        <p className="text-sm text-muted-foreground">
+          Live snapshot · updated {new Date(data.generatedAt).toLocaleString()}
+        </p>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <GrowthStatCard icon={Users} label="Total users" value={users.total}
+          sub={<span className="text-muted-foreground">{users.newThisMonth} new this month</span>} />
+        <GrowthStatCard icon={Activity} label="Active · 30d" value={users.active30d}
+          sub={<span className="text-muted-foreground">{users.active7d} in last 7 days</span>} />
+        <GrowthStatCard icon={Crown} label="Premium" value={users.premium}
+          sub={<span className="text-muted-foreground">{conversion}% of users</span>} />
+        <GrowthStatCard icon={ReceiptText} label="Total expenses" value={expenses.total}
+          sub={<span className="text-muted-foreground">{expenses.thisMonth} this month</span>} />
+      </div>
+
+      <Card className="p-4">
+        <h2 className="text-sm font-semibold mb-1 flex items-center gap-2">
+          <TrendingUp className="w-4 h-4 text-primary" /> This month vs last month
+        </h2>
+        <MoMRow label="New signups" now={users.newThisMonth} prev={users.newLastMonth} />
+        <MoMRow label="Expenses created" now={expenses.thisMonth} prev={expenses.lastMonth} />
+      </Card>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <GrowthStatCard icon={Users} label="Active groups" value={groups.total} />
+        <GrowthStatCard icon={Users} label="Placeholders" value={users.ghostPlaceholders}
+          sub={<span className="text-muted-foreground">invited, not signed up</span>} />
+      </div>
+
+      <p className="text-[11px] text-muted-foreground leading-relaxed">
+        "Active" = added, edited, or settled an expense within the window. Expenses exclude deleted
+        entries and settle-up payments. New-signup counts before Jul 2026 are approximated from first activity.
+      </p>
+    </div>
+  );
+}
 
 export default function Admin() {
   const { user, refreshUser } = useAuth();
@@ -439,6 +542,7 @@ export default function Admin() {
 
   const sectionTitle = {
     home: "Home",
+    growth: "Growth",
     users: "Users",
     "ai-mode": "AI Mode",
     errors: "Errors",
@@ -451,6 +555,9 @@ export default function Admin() {
       {activeSection === "home" && (
         <AdminHomePanel allUsers={allUsers} />
       )}
+
+      {/* Growth — KPI snapshot + month-over-month deltas */}
+      {activeSection === "growth" && <GrowthPanel />}
 
       {/* AI Mode — dedicated section, same panel as before */}
       {activeSection === "ai-mode" && (
