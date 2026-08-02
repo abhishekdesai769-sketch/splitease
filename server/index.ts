@@ -190,6 +190,21 @@ async function runMigrations() {
     // redeploy or a second instance can't double-send the founder digest.
     await pool.query(`CREATE TABLE IF NOT EXISTS analytics_digest_sent (week_key text PRIMARY KEY, sent_at text NOT NULL)`);
 
+    // Safe text→timestamptz cast for analytics. expenses.date etc. are text and
+    // a malformed value (e.g. a DD/MM/YYYY CSV import) would make a bare
+    // `::timestamptz` cast THROW and 500 the whole Growth dashboard. safe_ts()
+    // returns NULL instead of throwing, so bad rows drop out of the window math
+    // rather than breaking every metric. Used across the analytics queries.
+    await pool.query(`
+      CREATE OR REPLACE FUNCTION safe_ts(t text) RETURNS timestamptz AS $$
+      BEGIN
+        RETURN t::timestamptz;
+      EXCEPTION WHEN others THEN
+        RETURN NULL;
+      END;
+      $$ LANGUAGE plpgsql IMMUTABLE
+    `);
+
     // One-time backfill for normalized_email on existing users. Matches the
     // logic in server/premium-access.ts:normalizeEmail() — lowercase + strip
     // +alias + strip dots in the local-part for Gmail/Googlemail only.

@@ -36,25 +36,25 @@ async function processWeeklyAnalyticsDigest() {
         ) t
       ),
       first_exp AS (
-        SELECT uid, min(d::timestamptz) AS first_at FROM (
+        SELECT uid, min(safe_ts(d)) AS first_at FROM (
           SELECT paid_by_id AS uid, date AS d FROM expenses WHERE deleted_at IS NULL AND is_settlement = false
           UNION ALL SELECT unnest(split_among_ids), date FROM expenses WHERE deleted_at IS NULL AND is_settlement = false
         ) t GROUP BY uid
       ),
       ex AS (
-        SELECT paid_by_id AS uid, date::timestamptz AS d FROM expenses WHERE deleted_at IS NULL AND is_settlement = false
-        UNION ALL SELECT unnest(split_among_ids), date::timestamptz FROM expenses WHERE deleted_at IS NULL AND is_settlement = false
+        SELECT paid_by_id AS uid, safe_ts(date) AS d FROM expenses WHERE deleted_at IS NULL AND is_settlement = false
+        UNION ALL SELECT unnest(split_among_ids), safe_ts(date) FROM expenses WHERE deleted_at IS NULL AND is_settlement = false
       )
       SELECT
         (SELECT count(*) FROM users WHERE is_ghost = false) AS total_users,
         (SELECT count(*) FROM users u WHERE u.is_ghost = false AND EXISTS (SELECT 1 FROM activated a WHERE a.uid = u.id)) AS activated_users,
-        (SELECT count(*) FROM users WHERE is_ghost = false AND is_premium = true AND (premium_until IS NULL OR premium_until::timestamptz > now())) AS active_premium,
-        (SELECT count(*) FROM first_exp fe JOIN users u ON u.id = fe.uid AND u.is_ghost = false WHERE fe.first_at >= now() - interval '30 days') AS new_30d,
+        (SELECT count(*) FROM users WHERE is_ghost = false AND is_premium = true AND safe_ts(premium_until) > now()) AS active_premium,
+        (SELECT count(*) FROM first_exp fe JOIN users u ON u.id = fe.uid AND u.is_ghost = false WHERE fe.first_at >= now() - interval '30 days' AND fe.first_at < now()) AS new_30d,
         (SELECT count(*) FROM first_exp fe JOIN users u ON u.id = fe.uid AND u.is_ghost = false WHERE fe.first_at >= now() - interval '60 days' AND fe.first_at < now() - interval '30 days') AS new_prev30d,
-        (SELECT count(DISTINCT ex.uid) FROM ex JOIN users u ON u.id = ex.uid AND u.is_ghost = false WHERE ex.d >= now() - interval '30 days') AS active_30d,
+        (SELECT count(DISTINCT ex.uid) FROM ex JOIN users u ON u.id = ex.uid AND u.is_ghost = false WHERE ex.d >= now() - interval '30 days' AND ex.d < now()) AS active_30d,
         (SELECT count(DISTINCT ex.uid) FROM ex JOIN users u ON u.id = ex.uid AND u.is_ghost = false WHERE ex.d >= now() - interval '60 days' AND ex.d < now() - interval '30 days') AS active_prev30d,
-        (SELECT count(*) FROM expenses WHERE deleted_at IS NULL AND is_settlement = false AND date::timestamptz >= now() - interval '30 days') AS exp_30d,
-        (SELECT count(*) FROM expenses WHERE deleted_at IS NULL AND is_settlement = false AND date::timestamptz >= now() - interval '60 days' AND date::timestamptz < now() - interval '30 days') AS exp_prev30d
+        (SELECT count(*) FROM expenses WHERE deleted_at IS NULL AND is_settlement = false AND safe_ts(date) >= now() - interval '30 days' AND safe_ts(date) < now()) AS exp_30d,
+        (SELECT count(*) FROM expenses WHERE deleted_at IS NULL AND is_settlement = false AND safe_ts(date) >= now() - interval '60 days' AND safe_ts(date) < now() - interval '30 days') AS exp_prev30d
     `);
     const r = rows[0] || {};
     const N = (v: any) => Number(v ?? 0);
@@ -90,8 +90,15 @@ async function processWeeklyAnalyticsDigest() {
       insight = `Activation looks healthy — push virality: your invite loop is the growth engine.`;
     }
 
-    await sendWeeklyAnalyticsDigest({ to: "spliiit@klarityit.ca", rows: digestRows, insight });
-    console.log("[scheduler] weekly analytics digest sent for", weekKey);
+    try {
+      await sendWeeklyAnalyticsDigest({ to: "spliiit@klarityit.ca", rows: digestRows, insight });
+      console.log("[scheduler] weekly analytics digest sent for", weekKey);
+    } catch (sendErr) {
+      // Send failed AFTER we claimed the week — release the claim so the next
+      // daily tick retries instead of silently skipping the week.
+      await pool.query(`DELETE FROM analytics_digest_sent WHERE week_key = $1`, [weekKey]).catch(() => {});
+      throw sendErr;
+    }
   } catch (err) {
     console.error("[scheduler] processWeeklyAnalyticsDigest failed:", err);
   }

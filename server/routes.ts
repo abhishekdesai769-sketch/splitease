@@ -1366,26 +1366,28 @@ setInterval(loadAll,30000);
           count(*) FILTER (WHERE u.is_ghost = true)  AS ghost_placeholders,
           count(*) FILTER (WHERE u.is_ghost = false AND a.uid IS NOT NULL) AS activated_users,
           count(*) FILTER (WHERE u.is_ghost = false AND u.is_premium = true) AS premium_users,
-          count(*) FILTER (WHERE u.is_ghost = false AND u.is_premium = true AND (u.premium_until IS NULL OR u.premium_until::timestamptz > now())) AS active_premium,
+          count(*) FILTER (WHERE u.is_ghost = false AND u.is_premium = true AND safe_ts(u.premium_until) > now()) AS active_premium,
           count(*) FILTER (WHERE u.is_ghost = false AND u.is_premium = true AND u.stripe_subscription_id IS NOT NULL) AS stripe_subs,
-          count(*) FILTER (WHERE u.is_ghost = false AND u.is_premium = true AND u.stripe_subscription_id IS NULL) AS revenuecat_subs,
+          count(*) FILTER (WHERE u.is_ghost = false AND u.is_premium = true AND u.stripe_subscription_id IS NULL) AS nonstripe_subs,
           count(*) FILTER (WHERE u.is_ghost = false AND u.referred_by_code IS NOT NULL) AS referred_signups,
           count(*) FILTER (WHERE u.is_ghost = false AND u.referred_by_code IS NOT NULL AND a.uid IS NOT NULL) AS referred_activated
         FROM users u
         LEFT JOIN activated a ON a.uid = u.id
       `);
 
-      // New activations by first-expense date (rolling 30d vs prior 30d).
+      // New activations by first-expense date (rolling last-30d vs prior-30d).
+      // safe_ts() so a malformed date can't throw; upper-bounded so a future-
+      // dated expense can't leak into the current window.
       const activationQ = pool.query(`
         WITH first_exp AS (
-          SELECT uid, min(d::timestamptz) AS first_at FROM (
+          SELECT uid, min(safe_ts(d)) AS first_at FROM (
             SELECT paid_by_id AS uid, date AS d FROM expenses WHERE deleted_at IS NULL AND is_settlement = false
             UNION ALL
             SELECT unnest(split_among_ids) AS uid, date AS d FROM expenses WHERE deleted_at IS NULL AND is_settlement = false
           ) t GROUP BY uid
         )
         SELECT
-          count(*) FILTER (WHERE fe.first_at >= now() - interval '30 days') AS new_30d,
+          count(*) FILTER (WHERE fe.first_at >= now() - interval '30 days' AND fe.first_at < now()) AS new_30d,
           count(*) FILTER (WHERE fe.first_at >= now() - interval '60 days' AND fe.first_at < now() - interval '30 days') AS new_prev30d
         FROM first_exp fe JOIN users u ON u.id = fe.uid AND u.is_ghost = false
       `);
@@ -1394,23 +1396,23 @@ setInterval(loadAll,30000);
       // dated within the window (covers friend + group, unlike activity_log).
       const engagementQ = pool.query(`
         WITH ex AS (
-          SELECT paid_by_id AS uid, date::timestamptz AS d FROM expenses WHERE deleted_at IS NULL AND is_settlement = false
+          SELECT paid_by_id AS uid, safe_ts(date) AS d FROM expenses WHERE deleted_at IS NULL AND is_settlement = false
           UNION ALL
-          SELECT unnest(split_among_ids) AS uid, date::timestamptz AS d FROM expenses WHERE deleted_at IS NULL AND is_settlement = false
+          SELECT unnest(split_among_ids) AS uid, safe_ts(date) AS d FROM expenses WHERE deleted_at IS NULL AND is_settlement = false
         )
         SELECT
-          count(DISTINCT ex.uid) FILTER (WHERE ex.d >= now() - interval '7 days')  AS active_7d,
-          count(DISTINCT ex.uid) FILTER (WHERE ex.d >= now() - interval '30 days') AS active_30d,
+          count(DISTINCT ex.uid) FILTER (WHERE ex.d >= now() - interval '7 days'  AND ex.d < now()) AS active_7d,
+          count(DISTINCT ex.uid) FILTER (WHERE ex.d >= now() - interval '30 days' AND ex.d < now()) AS active_30d,
           count(DISTINCT ex.uid) FILTER (WHERE ex.d >= now() - interval '60 days' AND ex.d < now() - interval '30 days') AS active_prev30d
         FROM ex JOIN users u ON u.id = ex.uid AND u.is_ghost = false
       `);
 
-      // Expense volume (rolling).
+      // Expense volume (rolling, safe-cast + upper-bounded).
       const expensesQ = pool.query(`
         SELECT
           count(*) AS total_expenses,
-          count(*) FILTER (WHERE date::timestamptz >= now() - interval '30 days') AS last_30d,
-          count(*) FILTER (WHERE date::timestamptz >= now() - interval '60 days' AND date::timestamptz < now() - interval '30 days') AS prev_30d
+          count(*) FILTER (WHERE safe_ts(date) >= now() - interval '30 days' AND safe_ts(date) < now()) AS last_30d,
+          count(*) FILTER (WHERE safe_ts(date) >= now() - interval '60 days' AND safe_ts(date) < now() - interval '30 days') AS prev_30d
         FROM expenses
         WHERE deleted_at IS NULL AND is_settlement = false
       `);
@@ -1468,7 +1470,7 @@ setInterval(loadAll,30000);
           activePremium: n(c.rows[0].active_premium),
           conversionRate: rate(premium, total),
           stripeSubs: n(c.rows[0].stripe_subs),
-          revenuecatSubs: n(c.rows[0].revenuecat_subs),
+          nonStripeSubs: n(c.rows[0].nonstripe_subs),
         },
         generatedAt: new Date().toISOString(),
       });

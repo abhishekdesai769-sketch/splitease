@@ -162,7 +162,7 @@ interface GrowthStats {
   };
   monetization: {
     premium: number; activePremium: number; conversionRate: number;
-    stripeSubs: number; revenuecatSubs: number;
+    stripeSubs: number; nonStripeSubs: number;
   };
   generatedAt: string;
 }
@@ -308,7 +308,8 @@ function GrowthPanel() {
           <GrowthStatCard icon={DollarSign} label="Conversion" value={fmtPct(monetization.conversionRate)}
             sub={<span className="text-muted-foreground">premium ÷ all users</span>} />
           <GrowthStatCard icon={DollarSign} label="Stripe (web)" value={monetization.stripeSubs} />
-          <GrowthStatCard icon={DollarSign} label="Apple (iOS)" value={monetization.revenuecatSubs} />
+          <GrowthStatCard icon={DollarSign} label="Non-Stripe" value={monetization.nonStripeSubs}
+            sub={<span className="text-muted-foreground">iOS + comped</span>} />
         </div>
       </div>
 
