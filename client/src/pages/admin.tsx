@@ -12,12 +12,20 @@ import {
   Shield, Trash2, RotateCcw, FolderX, ReceiptText,
   Search, Clock, AlertTriangle, KeyRound, Crown, Settings,
   Users, BarChart2, StickyNote, Smartphone, Mail, Chrome, Pencil,
-  TrendingUp, TrendingDown, Activity,
+  TrendingUp, TrendingDown, Activity, UserCheck, UserX, DollarSign, Share2,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { AdminLayout, getActiveSection, type AdminSection } from "@/components/AdminLayout";
+
+// Deterministic avatar palette for users whose own `avatarColor` isn't loaded
+// in a given view (e.g. search results, new-signups feed). Mirrors the
+// server-side palette in server/middleware.ts so colors stay consistent.
+const AVATAR_COLORS = [
+  "#0d9488", "#0891b2", "#7c3aed", "#db2777", "#ea580c",
+  "#d97706", "#059669", "#4f46e5", "#be185d", "#2563eb",
+];
 
 interface EnrichedGroup {
   id: string;
@@ -138,16 +146,27 @@ const UserCard = memo(function UserCard({
   );
 });
 
-// ── Growth dashboard ──────────────────────────────────────────────────────
+// ── Growth dashboard (activation-first) ───────────────────────────────────
 interface GrowthStats {
   users: {
-    total: number; premium: number; ghostPlaceholders: number;
-    newThisMonth: number; newLastMonth: number; active7d: number; active30d: number;
+    total: number; activated: number; dormant: number; activationRate: number;
+    premium: number; ghostPlaceholders: number;
   };
-  expenses: { total: number; thisMonth: number; lastMonth: number };
+  activation: { new30d: number; newPrev30d: number };
+  engagement: { active7d: number; active30d: number; activePrev30d: number };
+  expenses: { total: number; last30d: number; prev30d: number };
   groups: { total: number };
+  virality: {
+    referredSignups: number; referredActivated: number; referredShare: number;
+    invitesSent: number; invitesAccepted: number; inviteAcceptRate: number;
+  };
+  monetization: {
+    premium: number; activePremium: number; conversionRate: number;
+    stripeSubs: number; revenuecatSubs: number;
+  };
   generatedAt: string;
 }
+interface DormantUser { id: string; name: string; email: string; created_at: string | null }
 
 function pctChange(now: number, prev: number): { label: string; dir: "up" | "down" | "flat" } {
   if (prev === 0) return now > 0 ? { label: "new", dir: "up" } : { label: "—", dir: "flat" };
@@ -191,51 +210,118 @@ function MoMRow({ label, now, prev }: { label: string; now: number; prev: number
 
 function GrowthPanel() {
   const { data, isLoading, error } = useQuery<GrowthStats>({ queryKey: ["/api/admin/growth"] });
+  const [showDormant, setShowDormant] = useState(false);
+  const { data: dormantData, isLoading: dormantLoading } = useQuery<{ dormant: DormantUser[]; count: number }>({
+    queryKey: ["/api/admin/growth/dormant"],
+    enabled: showDormant,
+  });
 
   if (isLoading) return <div className="text-sm text-muted-foreground py-10 text-center">Loading growth…</div>;
   if (error || !data) return <div className="text-sm text-destructive py-10 text-center">Couldn't load growth stats.</div>;
 
-  const { users, expenses, groups } = data;
-  const conversion = users.total > 0 ? ((users.premium / users.total) * 100).toFixed(1) : "0.0";
+  const { users, activation, engagement, expenses, groups, virality, monetization } = data;
+  const fmtPct = (x: number) => `${(x * 100).toFixed(1)}%`;
 
   return (
     <div className="space-y-4">
       <div>
         <h1 className="text-xl font-semibold tracking-tight">Growth</h1>
         <p className="text-sm text-muted-foreground">
-          Live snapshot · updated {new Date(data.generatedAt).toLocaleString()}
+          Live · updated {new Date(data.generatedAt).toLocaleString()} · all comparisons are rolling 30-day windows
         </p>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <GrowthStatCard icon={Users} label="Total users" value={users.total}
-          sub={<span className="text-muted-foreground">{users.newThisMonth} new this month</span>} />
-        <GrowthStatCard icon={Activity} label="Active · 30d" value={users.active30d}
-          sub={<span className="text-muted-foreground">{users.active7d} in last 7 days</span>} />
-        <GrowthStatCard icon={Crown} label="Premium" value={users.premium}
-          sub={<span className="text-muted-foreground">{conversion}% of users</span>} />
-        <GrowthStatCard icon={ReceiptText} label="Total expenses" value={expenses.total}
-          sub={<span className="text-muted-foreground">{expenses.thisMonth} this month</span>} />
+      {/* ── Activation cockpit (North Star) ── */}
+      <div>
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Activation — your North Star</h2>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <GrowthStatCard icon={TrendingUp} label="Activation rate" value={fmtPct(users.activationRate)}
+            sub={<span className="text-muted-foreground">{users.activated} of {users.total} ever in an expense</span>} />
+          <GrowthStatCard icon={UserCheck} label="Activated users" value={users.activated}
+            sub={<span className="text-muted-foreground">paid or were owed in a real expense</span>} />
+          <GrowthStatCard icon={UserX} label="Dormant" value={users.dormant}
+            sub={
+              <button className="text-primary hover:underline" onClick={() => setShowDormant((s) => !s)}>
+                {showDormant ? "hide list" : "view list →"}
+              </button>
+            } />
+          <GrowthStatCard icon={Activity} label="Active · 30d" value={engagement.active30d}
+            sub={<span className="text-muted-foreground">{engagement.active7d} in last 7 days</span>} />
+        </div>
       </div>
 
+      {/* Dormant drill-down (re-engagement target) */}
+      {showDormant && (
+        <Card className="p-4">
+          <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
+            <UserX className="w-4 h-4 text-muted-foreground" /> Dormant users — signed up, never in an expense
+          </h3>
+          {dormantLoading ? (
+            <p className="text-sm text-muted-foreground py-3">Loading…</p>
+          ) : (
+            <>
+              <p className="text-xs text-muted-foreground mb-2">
+                Showing {dormantData?.dormant.length ?? 0}{(dormantData?.count ?? 0) >= 1000 ? " (capped at 1000)" : ""} — your re-engagement list.
+              </p>
+              <div className="max-h-72 overflow-y-auto divide-y divide-border">
+                {(dormantData?.dormant ?? []).map((u) => (
+                  <div key={u.id} className="flex items-center justify-between py-1.5 text-sm">
+                    <span className="truncate mr-3">{u.name}</span>
+                    <span className="text-muted-foreground font-mono text-xs truncate">{u.email}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </Card>
+      )}
+
+      {/* ── Rolling 30d vs prior 30d ── */}
       <Card className="p-4">
         <h2 className="text-sm font-semibold mb-1 flex items-center gap-2">
-          <TrendingUp className="w-4 h-4 text-primary" /> This month vs last month
+          <TrendingUp className="w-4 h-4 text-primary" /> Last 30 days vs the 30 before
         </h2>
-        <MoMRow label="New signups" now={users.newThisMonth} prev={users.newLastMonth} />
-        <MoMRow label="Expenses created" now={expenses.thisMonth} prev={expenses.lastMonth} />
+        <MoMRow label="Newly activated users" now={activation.new30d} prev={activation.newPrev30d} />
+        <MoMRow label="Active users" now={engagement.active30d} prev={engagement.activePrev30d} />
+        <MoMRow label="Expenses created" now={expenses.last30d} prev={expenses.prev30d} />
       </Card>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <GrowthStatCard icon={Users} label="Active groups" value={groups.total} />
-        <GrowthStatCard icon={Users} label="Placeholders" value={users.ghostPlaceholders}
-          sub={<span className="text-muted-foreground">invited, not signed up</span>} />
+      {/* ── Virality (invite-driven engine) ── */}
+      <div>
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Virality</h2>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <GrowthStatCard icon={Share2} label="Referred signups" value={virality.referredSignups}
+            sub={<span className="text-muted-foreground">{fmtPct(virality.referredShare)} of all users</span>} />
+          <GrowthStatCard icon={UserCheck} label="Referred + activated" value={virality.referredActivated} />
+          <GrowthStatCard icon={Users} label="Invites accepted" value={virality.invitesAccepted}
+            sub={<span className="text-muted-foreground">{fmtPct(virality.inviteAcceptRate)} of {virality.invitesSent} sent</span>} />
+          <GrowthStatCard icon={Users} label="Active groups" value={groups.total} />
+        </div>
       </div>
 
-      <p className="text-[11px] text-muted-foreground leading-relaxed">
-        "Active" = added, edited, or settled an expense within the window. Expenses exclude deleted
-        entries and settle-up payments. New-signup counts before Jul 2026 are approximated from first activity.
-      </p>
+      {/* ── Monetization ── */}
+      <div>
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Monetization</h2>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <GrowthStatCard icon={Crown} label="Premium (active)" value={monetization.activePremium}
+            sub={<span className="text-muted-foreground">{monetization.premium} ever premium</span>} />
+          <GrowthStatCard icon={DollarSign} label="Conversion" value={fmtPct(monetization.conversionRate)}
+            sub={<span className="text-muted-foreground">premium ÷ all users</span>} />
+          <GrowthStatCard icon={DollarSign} label="Stripe (web)" value={monetization.stripeSubs} />
+          <GrowthStatCard icon={DollarSign} label="Apple (iOS)" value={monetization.revenuecatSubs} />
+        </div>
+      </div>
+
+      {/* ── Honest notes + roadmap ── */}
+      <Card className="p-4 bg-muted/30">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Definitions & what's next</h3>
+        <ul className="text-[11px] text-muted-foreground leading-relaxed space-y-1 list-disc pl-4">
+          <li><b>Activated</b> = a real (non-placeholder) user who was ever the payer or a participant in a non-deleted, non-settlement expense — even if later settled.</li>
+          <li><b>Active</b> = paid or participated in an expense dated within the window (covers friends + groups). Uses expense date, which is user-entered.</li>
+          <li><b>Rolling windows:</b> "last 30 days" vs "the 30 days before" — no misleading month-start dips.</li>
+          <li><b>On the roadmap:</b> true MRR (needs plan+price stored per subscriber), feature-usage / "what to cut" (needs a PostHog server API key), the downloads→signup funnel (installs live in App Store Connect + Play Console), and D1/D7/D30 retention cohorts (needs per-event server timestamps).</li>
+        </ul>
+      </Card>
     </div>
   );
 }

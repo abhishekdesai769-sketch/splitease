@@ -1,6 +1,101 @@
 import { storage } from "./storage";
-import { sendAutoReminderEmail } from "./email";
+import { pool } from "./db";
+import { sendAutoReminderEmail, sendWeeklyAnalyticsDigest } from "./email";
 import { pushExpenseCreated, pushWeeklyDigest } from "./push";
+
+// ISO-8601 week key (e.g. "2026-W31") — the once-per-week idempotency key.
+function isoWeekKey(d: Date): string {
+  const date = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const dayNum = (date.getUTCDay() + 6) % 7;
+  date.setUTCDate(date.getUTCDate() - dayNum + 3);
+  const firstThursday = new Date(Date.UTC(date.getUTCFullYear(), 0, 4));
+  const week = 1 + Math.round(
+    ((date.getTime() - firstThursday.getTime()) / 86400000 - 3 + ((firstThursday.getUTCDay() + 6) % 7)) / 7,
+  );
+  return `${date.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
+}
+
+// Weekly analytics digest to the founder — rolling KPIs + one prioritized
+// insight. Claims the ISO-week key first (INSERT ... ON CONFLICT DO NOTHING) so
+// a redeploy or a second instance can never double-send. Read-only analytics.
+async function processWeeklyAnalyticsDigest() {
+  try {
+    const now = new Date();
+    const weekKey = isoWeekKey(now);
+    const claim = await pool.query(
+      `INSERT INTO analytics_digest_sent (week_key, sent_at) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+      [weekKey, now.toISOString()],
+    );
+    if (claim.rowCount === 0) return; // already sent this week
+
+    const { rows } = await pool.query(`
+      WITH activated AS (
+        SELECT DISTINCT uid FROM (
+          SELECT paid_by_id AS uid FROM expenses WHERE deleted_at IS NULL AND is_settlement = false
+          UNION SELECT unnest(split_among_ids) FROM expenses WHERE deleted_at IS NULL AND is_settlement = false
+        ) t
+      ),
+      first_exp AS (
+        SELECT uid, min(d::timestamptz) AS first_at FROM (
+          SELECT paid_by_id AS uid, date AS d FROM expenses WHERE deleted_at IS NULL AND is_settlement = false
+          UNION ALL SELECT unnest(split_among_ids), date FROM expenses WHERE deleted_at IS NULL AND is_settlement = false
+        ) t GROUP BY uid
+      ),
+      ex AS (
+        SELECT paid_by_id AS uid, date::timestamptz AS d FROM expenses WHERE deleted_at IS NULL AND is_settlement = false
+        UNION ALL SELECT unnest(split_among_ids), date::timestamptz FROM expenses WHERE deleted_at IS NULL AND is_settlement = false
+      )
+      SELECT
+        (SELECT count(*) FROM users WHERE is_ghost = false) AS total_users,
+        (SELECT count(*) FROM users u WHERE u.is_ghost = false AND EXISTS (SELECT 1 FROM activated a WHERE a.uid = u.id)) AS activated_users,
+        (SELECT count(*) FROM users WHERE is_ghost = false AND is_premium = true AND (premium_until IS NULL OR premium_until::timestamptz > now())) AS active_premium,
+        (SELECT count(*) FROM first_exp fe JOIN users u ON u.id = fe.uid AND u.is_ghost = false WHERE fe.first_at >= now() - interval '30 days') AS new_30d,
+        (SELECT count(*) FROM first_exp fe JOIN users u ON u.id = fe.uid AND u.is_ghost = false WHERE fe.first_at >= now() - interval '60 days' AND fe.first_at < now() - interval '30 days') AS new_prev30d,
+        (SELECT count(DISTINCT ex.uid) FROM ex JOIN users u ON u.id = ex.uid AND u.is_ghost = false WHERE ex.d >= now() - interval '30 days') AS active_30d,
+        (SELECT count(DISTINCT ex.uid) FROM ex JOIN users u ON u.id = ex.uid AND u.is_ghost = false WHERE ex.d >= now() - interval '60 days' AND ex.d < now() - interval '30 days') AS active_prev30d,
+        (SELECT count(*) FROM expenses WHERE deleted_at IS NULL AND is_settlement = false AND date::timestamptz >= now() - interval '30 days') AS exp_30d,
+        (SELECT count(*) FROM expenses WHERE deleted_at IS NULL AND is_settlement = false AND date::timestamptz >= now() - interval '60 days' AND date::timestamptz < now() - interval '30 days') AS exp_prev30d
+    `);
+    const r = rows[0] || {};
+    const N = (v: any) => Number(v ?? 0);
+    const total = N(r.total_users), activated = N(r.activated_users);
+    const dormant = Math.max(0, total - activated);
+    const actRate = total > 0 ? (activated / total) * 100 : 0;
+    const new30 = N(r.new_30d), newPrev = N(r.new_prev30d);
+    const act30 = N(r.active_30d), actPrev = N(r.active_prev30d);
+    const exp30 = N(r.exp_30d), expPrev = N(r.exp_prev30d);
+
+    const delta = (a: number, b: number): { delta: string; dir: "up" | "down" | "flat" } => {
+      if (b === 0) return a > 0 ? { delta: "new", dir: "up" } : { delta: "", dir: "flat" };
+      const p = Math.round(((a - b) / b) * 100);
+      return { delta: `${p > 0 ? "+" : ""}${p}%`, dir: p > 0 ? "up" : p < 0 ? "down" : "flat" };
+    };
+
+    const digestRows = [
+      { label: "Activation rate", value: `${actRate.toFixed(1)}%` },
+      { label: "Activated users", value: String(activated) },
+      { label: "Dormant users", value: String(dormant) },
+      { label: "Newly activated (30d)", value: String(new30), ...delta(new30, newPrev) },
+      { label: "Active users (30d)", value: String(act30), ...delta(act30, actPrev) },
+      { label: "Expenses created (30d)", value: String(exp30), ...delta(exp30, expPrev) },
+      { label: "Active premium", value: String(N(r.active_premium)) },
+    ];
+
+    let insight: string;
+    if (total > 0 && dormant / total > 0.4) {
+      insight = `${dormant} of ${total} users (${Math.round((dormant / total) * 100)}%) signed up but never split an expense. Your biggest lever is activation — get new users to their first expense faster.`;
+    } else if (act30 < actPrev) {
+      insight = `Active users fell vs the prior 30 days — dig into retention: why aren't people coming back?`;
+    } else {
+      insight = `Activation looks healthy — push virality: your invite loop is the growth engine.`;
+    }
+
+    await sendWeeklyAnalyticsDigest({ to: "spliiit@klarityit.ca", rows: digestRows, insight });
+    console.log("[scheduler] weekly analytics digest sent for", weekKey);
+  } catch (err) {
+    console.error("[scheduler] processWeeklyAnalyticsDigest failed:", err);
+  }
+}
 
 async function processRecurringExpenses() {
   const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
@@ -263,6 +358,7 @@ export function startRecurringExpenseScheduler() {
   processRecurringExpenses();
   processAutoReminders();
   processWeeklyDigestPush();
+  processWeeklyAnalyticsDigest();
 
   // Recurring expenses: check every 6 hours
   setInterval(processRecurringExpenses, 6 * 60 * 60 * 1000);
@@ -272,4 +368,7 @@ export function startRecurringExpenseScheduler() {
 
   // Weekly digest push: check every 24 hours (per-user throttle gates 6-day cadence)
   setInterval(processWeeklyDigestPush, 24 * 60 * 60 * 1000);
+
+  // Weekly founder analytics digest: check every 24h (ISO-week guard sends once/week)
+  setInterval(processWeeklyAnalyticsDigest, 24 * 60 * 60 * 1000);
 }

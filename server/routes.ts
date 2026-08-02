@@ -1336,60 +1336,168 @@ setInterval(loadAll,30000);
     res.json(allUsers);
   });
 
-  // Growth / KPI snapshot for the admin dashboard. Read-only aggregates:
-  // total & active users, premium, expenses, groups, and this-month-vs-last-
-  // month deltas. Timestamps are stored as ISO/text, so we cast to timestamptz
-  // for the month-window math. Never touches balance/settlement logic.
+  // Growth / KPI snapshot for the admin dashboard — ACTIVATION-first, read-only.
+  //
+  // Design decisions (see the analytics build spec):
+  //  - ACTIVATED = a non-ghost user who has EVER been the payer OR a participant
+  //    (in split_among_ids) of a non-deleted, non-settlement expense. Derived
+  //    from the `expenses` table — NOT activity_log, which only logs GROUP
+  //    expense adds and so undercounts + omits friend-only users.
+  //  - All month-over-month math is ROLLING (last 30d vs prior 30d), never
+  //    calendar-month-to-date (which shows false -97% dips on day 1).
+  //  - We do NOT use users.created_at for historical "new user" counts: it was
+  //    backfilled and dormant users were stamped with the migration time. We
+  //    count NEW ACTIVATIONS by first-expense date instead (trustworthy).
+  //  - Timestamps are text/ISO → cast to timestamptz for window math.
+  // Never touches balance/settlement logic or stored amounts.
   app.get("/api/admin/growth", requireAuth, requireAdmin, async (_req, res) => {
     try {
-      const usersQ = pool.query(`
+      // Core user counts + activation + monetization + virality (single pass).
+      const coreQ = pool.query(`
+        WITH activated AS (
+          SELECT DISTINCT uid FROM (
+            SELECT paid_by_id AS uid FROM expenses WHERE deleted_at IS NULL AND is_settlement = false
+            UNION
+            SELECT unnest(split_among_ids) AS uid FROM expenses WHERE deleted_at IS NULL AND is_settlement = false
+          ) t
+        )
         SELECT
-          count(*) FILTER (WHERE is_ghost = false) AS total_users,
-          count(*) FILTER (WHERE is_ghost = false AND is_premium = true) AS premium_users,
-          count(*) FILTER (WHERE is_ghost = true) AS ghost_placeholders,
-          count(*) FILTER (WHERE is_ghost = false AND created_at::timestamptz >= date_trunc('month', now())) AS new_this_month,
-          count(*) FILTER (WHERE is_ghost = false AND created_at::timestamptz >= date_trunc('month', now()) - interval '1 month' AND created_at::timestamptz < date_trunc('month', now())) AS new_last_month
-        FROM users
+          count(*) FILTER (WHERE u.is_ghost = false) AS total_users,
+          count(*) FILTER (WHERE u.is_ghost = true)  AS ghost_placeholders,
+          count(*) FILTER (WHERE u.is_ghost = false AND a.uid IS NOT NULL) AS activated_users,
+          count(*) FILTER (WHERE u.is_ghost = false AND u.is_premium = true) AS premium_users,
+          count(*) FILTER (WHERE u.is_ghost = false AND u.is_premium = true AND (u.premium_until IS NULL OR u.premium_until::timestamptz > now())) AS active_premium,
+          count(*) FILTER (WHERE u.is_ghost = false AND u.is_premium = true AND u.stripe_subscription_id IS NOT NULL) AS stripe_subs,
+          count(*) FILTER (WHERE u.is_ghost = false AND u.is_premium = true AND u.stripe_subscription_id IS NULL) AS revenuecat_subs,
+          count(*) FILTER (WHERE u.is_ghost = false AND u.referred_by_code IS NOT NULL) AS referred_signups,
+          count(*) FILTER (WHERE u.is_ghost = false AND u.referred_by_code IS NOT NULL AND a.uid IS NOT NULL) AS referred_activated
+        FROM users u
+        LEFT JOIN activated a ON a.uid = u.id
       `);
-      const activeQ = pool.query(`
+
+      // New activations by first-expense date (rolling 30d vs prior 30d).
+      const activationQ = pool.query(`
+        WITH first_exp AS (
+          SELECT uid, min(d::timestamptz) AS first_at FROM (
+            SELECT paid_by_id AS uid, date AS d FROM expenses WHERE deleted_at IS NULL AND is_settlement = false
+            UNION ALL
+            SELECT unnest(split_among_ids) AS uid, date AS d FROM expenses WHERE deleted_at IS NULL AND is_settlement = false
+          ) t GROUP BY uid
+        )
         SELECT
-          count(DISTINCT user_id) FILTER (WHERE created_at::timestamptz >= now() - interval '7 days') AS active_7d,
-          count(DISTINCT user_id) FILTER (WHERE created_at::timestamptz >= now() - interval '30 days') AS active_30d
-        FROM activity_log
+          count(*) FILTER (WHERE fe.first_at >= now() - interval '30 days') AS new_30d,
+          count(*) FILTER (WHERE fe.first_at >= now() - interval '60 days' AND fe.first_at < now() - interval '30 days') AS new_prev30d
+        FROM first_exp fe JOIN users u ON u.id = fe.uid AND u.is_ghost = false
       `);
+
+      // Engagement: distinct real users who paid or participated in an expense
+      // dated within the window (covers friend + group, unlike activity_log).
+      const engagementQ = pool.query(`
+        WITH ex AS (
+          SELECT paid_by_id AS uid, date::timestamptz AS d FROM expenses WHERE deleted_at IS NULL AND is_settlement = false
+          UNION ALL
+          SELECT unnest(split_among_ids) AS uid, date::timestamptz AS d FROM expenses WHERE deleted_at IS NULL AND is_settlement = false
+        )
+        SELECT
+          count(DISTINCT ex.uid) FILTER (WHERE ex.d >= now() - interval '7 days')  AS active_7d,
+          count(DISTINCT ex.uid) FILTER (WHERE ex.d >= now() - interval '30 days') AS active_30d,
+          count(DISTINCT ex.uid) FILTER (WHERE ex.d >= now() - interval '60 days' AND ex.d < now() - interval '30 days') AS active_prev30d
+        FROM ex JOIN users u ON u.id = ex.uid AND u.is_ghost = false
+      `);
+
+      // Expense volume (rolling).
       const expensesQ = pool.query(`
         SELECT
           count(*) AS total_expenses,
-          count(*) FILTER (WHERE date::timestamptz >= date_trunc('month', now())) AS this_month,
-          count(*) FILTER (WHERE date::timestamptz >= date_trunc('month', now()) - interval '1 month' AND date::timestamptz < date_trunc('month', now())) AS last_month
+          count(*) FILTER (WHERE date::timestamptz >= now() - interval '30 days') AS last_30d,
+          count(*) FILTER (WHERE date::timestamptz >= now() - interval '60 days' AND date::timestamptz < now() - interval '30 days') AS prev_30d
         FROM expenses
         WHERE deleted_at IS NULL AND is_settlement = false
       `);
-      const groupsQ = pool.query(`SELECT count(*) AS total_groups FROM groups WHERE deleted_at IS NULL`);
 
-      const [u, a, e, g] = await Promise.all([usersQ, activeQ, expensesQ, groupsQ]);
+      // Groups + invite funnel.
+      const auxQ = pool.query(`
+        SELECT
+          (SELECT count(*) FROM groups WHERE deleted_at IS NULL) AS total_groups,
+          (SELECT count(*) FROM group_invites) AS invites_sent,
+          (SELECT count(*) FROM group_invites WHERE status = 'completed') AS invites_accepted
+      `);
+
+      const [c, act, eng, e, aux] = await Promise.all([coreQ, activationQ, engagementQ, expensesQ, auxQ]);
       const n = (v: any) => Number(v ?? 0);
+      const rate = (num: number, den: number) => (den > 0 ? num / den : 0);
+
+      const total = n(c.rows[0].total_users);
+      const activated = n(c.rows[0].activated_users);
+      const premium = n(c.rows[0].premium_users);
+
       res.json({
         users: {
-          total: n(u.rows[0].total_users),
-          premium: n(u.rows[0].premium_users),
-          ghostPlaceholders: n(u.rows[0].ghost_placeholders),
-          newThisMonth: n(u.rows[0].new_this_month),
-          newLastMonth: n(u.rows[0].new_last_month),
-          active7d: n(a.rows[0].active_7d),
-          active30d: n(a.rows[0].active_30d),
+          total,
+          activated,
+          dormant: Math.max(0, total - activated),
+          activationRate: rate(activated, total),
+          premium,
+          ghostPlaceholders: n(c.rows[0].ghost_placeholders),
+        },
+        activation: {
+          new30d: n(act.rows[0].new_30d),
+          newPrev30d: n(act.rows[0].new_prev30d),
+        },
+        engagement: {
+          active7d: n(eng.rows[0].active_7d),
+          active30d: n(eng.rows[0].active_30d),
+          activePrev30d: n(eng.rows[0].active_prev30d),
         },
         expenses: {
           total: n(e.rows[0].total_expenses),
-          thisMonth: n(e.rows[0].this_month),
-          lastMonth: n(e.rows[0].last_month),
+          last30d: n(e.rows[0].last_30d),
+          prev30d: n(e.rows[0].prev_30d),
         },
-        groups: { total: n(g.rows[0].total_groups) },
+        groups: { total: n(aux.rows[0].total_groups) },
+        virality: {
+          referredSignups: n(c.rows[0].referred_signups),
+          referredActivated: n(c.rows[0].referred_activated),
+          referredShare: rate(n(c.rows[0].referred_signups), total),
+          invitesSent: n(aux.rows[0].invites_sent),
+          invitesAccepted: n(aux.rows[0].invites_accepted),
+          inviteAcceptRate: rate(n(aux.rows[0].invites_accepted), n(aux.rows[0].invites_sent)),
+        },
+        monetization: {
+          premium,
+          activePremium: n(c.rows[0].active_premium),
+          conversionRate: rate(premium, total),
+          stripeSubs: n(c.rows[0].stripe_subs),
+          revenuecatSubs: n(c.rows[0].revenuecat_subs),
+        },
         generatedAt: new Date().toISOString(),
       });
     } catch (err: any) {
       console.error("[admin/growth] error:", err?.message);
       res.status(500).json({ error: "Failed to compute growth stats" });
+    }
+  });
+
+  // Dormant users drill-down — non-ghost signups who have NEVER been in an
+  // expense (the re-engagement target). Read-only.
+  app.get("/api/admin/growth/dormant", requireAuth, requireAdmin, async (_req, res) => {
+    try {
+      const r = await pool.query(`
+        SELECT u.id, u.name, u.email, u.created_at
+        FROM users u
+        WHERE u.is_ghost = false
+          AND NOT EXISTS (
+            SELECT 1 FROM expenses e
+            WHERE e.deleted_at IS NULL AND e.is_settlement = false
+              AND (e.paid_by_id = u.id OR u.id = ANY(e.split_among_ids))
+          )
+        ORDER BY u.created_at DESC NULLS LAST
+        LIMIT 1000
+      `);
+      res.json({ dormant: r.rows, count: r.rowCount });
+    } catch (err: any) {
+      console.error("[admin/growth/dormant] error:", err?.message);
+      res.status(500).json({ error: "Failed to load dormant users" });
     }
   });
 

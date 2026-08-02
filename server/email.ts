@@ -429,6 +429,53 @@ export async function sendFounderPremiumAlert(opts: {
 }
 
 /**
+ * Weekly analytics digest to the founder — rolling KPIs + one prioritized
+ * "do this next" insight. Fire-and-forget from the scheduler. Reuses the shared
+ * sendEmail helper (no-ops gracefully if RESEND_API_KEY is unset).
+ */
+export async function sendWeeklyAnalyticsDigest(opts: {
+  to: string;
+  rows: { label: string; value: string; delta?: string; dir?: "up" | "down" | "flat" }[];
+  insight: string;
+}) {
+  if (!resend) return;
+  const rowsHtml = opts.rows.map((r) => {
+    const color = r.dir === "up" ? "#16a34a" : r.dir === "down" ? "#dc2626" : "#6b7280";
+    return `<tr>
+      <td style="font-size:13px;color:#6b7280;padding:6px 14px 6px 0;">${r.label}</td>
+      <td style="font-size:15px;color:#111827;font-weight:700;">${r.value}</td>
+      <td style="font-size:12px;font-weight:600;color:${color};padding-left:10px;">${r.delta ?? ""}</td>
+    </tr>`;
+  }).join("");
+  const html = `
+<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <tr><td align="center" style="padding:24px 16px;">
+    <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="max-width:520px;">
+      <tr><td>${EMAIL_LOGO}</td></tr>
+      <tr><td style="font-size:18px;font-weight:700;color:#111827;padding-bottom:2px;">Weekly growth digest</td></tr>
+      <tr><td style="font-size:13px;color:#6b7280;padding-bottom:16px;">Rolling last-30-days vs the 30 before.</td></tr>
+      <tr><td style="padding-bottom:16px;">
+        <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="border:1px solid #e5e7eb;border-radius:10px;">
+          <tr><td style="padding:16px;"><table width="100%" cellpadding="0" cellspacing="0" role="presentation">${rowsHtml}</table></td></tr>
+        </table>
+      </td></tr>
+      <tr><td style="padding-bottom:16px;">
+        <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:10px;">
+          <tr><td style="padding:14px 16px;font-size:13px;color:#065f46;"><b>Do this next:</b> ${opts.insight}</td></tr>
+        </table>
+      </td></tr>
+      <tr><td style="border-top:1px solid #f3f4f6;padding-top:16px;font-size:12px;color:#9ca3af;">${EMAIL_FOOTER}</td></tr>
+    </table>
+  </td></tr>
+</table>`;
+  const text =
+    `Weekly growth digest (rolling 30d)\n\n` +
+    opts.rows.map((r) => `${r.label}: ${r.value}${r.delta ? ` (${r.delta})` : ""}`).join("\n") +
+    `\n\nDo this next: ${opts.insight}\n\n— Spliiit`;
+  await sendEmail(opts.to, "Spliiit — weekly growth digest", html, text);
+}
+
+/**
  * Notify the invitee that someone wants to add them to a group
  */
 export async function sendInviteToInviteeEmail(opts: {

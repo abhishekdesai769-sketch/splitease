@@ -186,6 +186,10 @@ async function runMigrations() {
     await pool.query(`UPDATE users SET created_at = now()::text WHERE created_at IS NULL`);
     await pool.query(`ALTER TABLE users ALTER COLUMN created_at SET DEFAULT now()::text`);
 
+    // Weekly analytics digest idempotency guard — one row per ISO week means a
+    // redeploy or a second instance can't double-send the founder digest.
+    await pool.query(`CREATE TABLE IF NOT EXISTS analytics_digest_sent (week_key text PRIMARY KEY, sent_at text NOT NULL)`);
+
     // One-time backfill for normalized_email on existing users. Matches the
     // logic in server/premium-access.ts:normalizeEmail() — lowercase + strip
     // +alias + strip dots in the local-part for Gmail/Googlemail only.
