@@ -32,7 +32,7 @@ const BODIES: Record<Tone, string> = {
   firm:
     "Hi Sam,\n\nThis is an automated reminder from Spliiit that you have an outstanding balance of $42.00 owed to Jordan.\n\nPlease settle this at your earliest convenience using the button below.\n\nThank you,\nSpliiit",
   funny:
-    "Hi Sam 😄\n\nFun fact: you owe Jordan $42.00. Less fun fact: it's been sitting there for a while. Even less fun fact: Spliiit just sent you this email about it.\n\nGood news though — settling up takes about 10 seconds flat. Then we can all move on with our lives. Deal?\n\n— Spliiit (comedy writer by night, balance tracker by day)",
+    "Hi Sam 😄\n\nFun fact: you owe Jordan $42.00. Less fun fact: it's been sitting there for a while. Even less fun fact: Spliiit just sent you this email about it.\n\nGood news though — settling up takes about 10 seconds flat. Then we can all move on with our lives. Deal?\n\n— Spliiit",
 };
 
 export function AutoRemindersMiniDemo() {

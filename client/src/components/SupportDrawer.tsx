@@ -41,7 +41,7 @@ function getEmailPreview(tone: ReminderTone, ownerName: string): { subject: stri
     friendly:
       `Hey ${debtor}! 👋\n\nSpliiit here — just a quick, friendly nudge that you have an outstanding balance of ${amt} with ${ownerName} on the app.\n\nNo stress at all, but whenever you get a chance to settle up it would mean a lot! Tap the button below to sort it out in seconds.\n\n— Spliiit`,
     funny:
-      `Hi ${debtor} 😄\n\nFun fact: you owe ${ownerName} ${amt}. Less fun fact: it's been sitting there for a while. Even less fun fact: Spliiit just sent you this email about it.\n\nGood news though — settling up takes about 10 seconds flat. Then we can all move on with our lives. Deal?\n\n— Spliiit (comedy writer by night, balance tracker by day)`,
+      `Hi ${debtor} 😄\n\nFun fact: you owe ${ownerName} ${amt}. Less fun fact: it's been sitting there for a while. Even less fun fact: Spliiit just sent you this email about it.\n\nGood news though — settling up takes about 10 seconds flat. Then we can all move on with our lives. Deal?\n\n— Spliiit`,
     firm:
       `Hi ${debtor},\n\nThis is an automated reminder from Spliiit that you have an outstanding balance of ${amt} owed to ${ownerName}.\n\nPlease settle this at your earliest convenience using the button below.\n\nThank you,\nSpliiit`,
     "passive-aggressive":
