@@ -458,6 +458,12 @@ export async function registerRoutes(
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 5_000,
   });
+  // Same idle-connection guard as server/db.ts — without this, a Neon-reaped
+  // idle session-pool connection emits an unhandled 'error' event and crashes
+  // the whole process. Log it instead; the pool reconnects on the next query.
+  sessionPool.on("error", (err) => {
+    console.error("[session] idle Postgres client error (non-fatal):", (err as Error)?.message);
+  });
   // SESSION_SECRET is REQUIRED in production. Without it, sessions are
   // signed with a runtime-generated key that doesn't survive restarts —
   // every deploy logs out every user AND the secret leaks into the random

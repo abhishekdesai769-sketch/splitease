@@ -7,6 +7,20 @@ import { createServer } from "http";
 import { startRecurringExpenseScheduler } from "./scheduler";
 import { pool } from "./db";
 
+// ===== Last-resort process guards =====
+// A single unhandled promise rejection or a stray throw in an async path would
+// otherwise take the whole server down (Render: "Exited with status 1"). For an
+// uptime-sensitive web service, log-and-survive beats crash-on-blip. The
+// specific Neon idle-connection crash is handled at the pool level (server/db.ts
+// + the session pool); these catch anything else so one bad request can't nuke
+// the process for every user.
+process.on("unhandledRejection", (reason) => {
+  console.error("[process] unhandledRejection (non-fatal):", reason);
+});
+process.on("uncaughtException", (err) => {
+  console.error("[process] uncaughtException (kept alive):", err);
+});
+
 const app = express();
 const httpServer = createServer(app);
 

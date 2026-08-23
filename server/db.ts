@@ -26,4 +26,15 @@ export const pool = new Pool({
   connectionTimeoutMillis: 5_000,
 });
 
+// Neon (serverless Postgres) aggressively closes IDLE connections. When it
+// does, node-postgres emits an 'error' event on the idle client — and in Node,
+// an EventEmitter that emits 'error' with NO listener THROWS, crashing the
+// whole process (Render logs this as "Exited with status 1"). This listener
+// makes a reaped idle connection a logged non-event instead of fatal; the pool
+// self-heals by opening a fresh connection on the next query. The pg docs
+// explicitly require this handler.
+pool.on("error", (err) => {
+  console.error("[db] idle Postgres client error (non-fatal):", (err as Error)?.message);
+});
+
 export const db = drizzle(pool, { schema });
