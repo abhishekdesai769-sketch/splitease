@@ -24,10 +24,25 @@ process.on("uncaughtException", (err) => {
 const app = express();
 const httpServer = createServer(app);
 
-// ===== CORS — only allow requests from the official domain =====
+// ===== CORS — allow the official domains (new spliiit.ca + legacy klarityit) =====
+// Both domains serve the same app during the migration; keep klarityit until the
+// installed mobile apps are rebuilt for spliiit.ca. Extra origins via CLIENT_URL
+// (comma-separated) if ever needed.
+const ALLOWED_ORIGINS = [
+  "https://spliiit.ca",
+  "https://www.spliiit.ca",
+  "https://spliiit.klarityit.ca",
+  "http://localhost:5000",
+  "http://localhost:5173",
+  ...(process.env.CLIENT_URL ? process.env.CLIENT_URL.split(",").map((o) => o.trim()) : []),
+];
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || "https://spliiit.klarityit.ca",
+    origin: (origin, cb) => {
+      // Allow same-origin / non-browser (no Origin header) and any allowlisted origin.
+      if (!origin || ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
+      return cb(null, false);
+    },
     credentials: true,
     methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
   })
@@ -264,42 +279,6 @@ async function runMigrations() {
     await pool.query(`CREATE INDEX IF NOT EXISTS ai_scan_audit_normalized_email_idx ON ai_scan_audit(normalized_email)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS ai_scan_audit_scanned_at_idx ON ai_scan_audit(scanned_at)`);
 
-    // ── Plaid Money integration (May 2026 — Sandbox first, then Production)
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS plaid_items (
-        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
-        user_id varchar NOT NULL,
-        plaid_item_id text NOT NULL,
-        access_token text NOT NULL,
-        institution_id text,
-        institution_name text,
-        status text NOT NULL DEFAULT 'active',
-        cursor text,
-        created_at text NOT NULL,
-        updated_at text NOT NULL
-      )
-    `);
-    await pool.query(`CREATE INDEX IF NOT EXISTS plaid_items_user_id_idx ON plaid_items(user_id)`);
-    await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS plaid_items_plaid_item_id_idx ON plaid_items(plaid_item_id)`);
-
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS plaid_accounts (
-        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
-        item_id varchar NOT NULL,
-        plaid_account_id text NOT NULL,
-        name text NOT NULL,
-        official_name text,
-        mask text,
-        type text NOT NULL,
-        subtype text,
-        current_balance real,
-        available_balance real,
-        iso_currency_code text,
-        last_synced_at text NOT NULL
-      )
-    `);
-    await pool.query(`CREATE INDEX IF NOT EXISTS plaid_accounts_item_id_idx ON plaid_accounts(item_id)`);
-    await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS plaid_accounts_plaid_account_id_idx ON plaid_accounts(plaid_account_id)`);
 
     // ── AI Mode (May 2026) — conversational expense entry ────────────────
     await pool.query(`

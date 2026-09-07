@@ -23,7 +23,6 @@ import ResetPassword from "@/pages/reset-password";
 import NotFound from "@/pages/not-found";
 import Import from "@/pages/import";
 import Upgrade from "@/pages/upgrade";
-import Money from "@/pages/money";
 import AiMode from "@/pages/ai-mode";
 import OnboardingPreferences from "@/pages/onboarding";
 import FirstRunWizard from "@/pages/first-run";
@@ -212,13 +211,6 @@ function AppRouter() {
             payments happen on the web. (See lib/platform.ts.) */}
         <Route path="/upgrade">
           {() => (isInTWA ? <Redirect to="/" /> : <Upgrade />)}
-        </Route>
-        {/* /money — visible to all logged-in users EXCEPT Android TWA.
-            The page itself renders two variants: Premium users see the
-            early-access roadmap, non-Premium see the upgrade teaser.
-            Defense-in-depth: money.tsx also checks isInTWA internally. */}
-        <Route path="/money">
-          {() => (isInTWA ? <Redirect to="/" /> : <Money />)}
         </Route>
         {user.isAdmin ? (
           <>

@@ -16,8 +16,7 @@ import { pushExpenseCreated, pushGroupMemberJoined, pushAddedToGroup, deleteDevi
 import { parseReceipt, RECEIPT_SCANNING_ENABLED } from "./receipt-parser";
 import { checkScanEligibility, incrementScanCounters, recordScanAudit, normalizeEmail, commitScanByScanId } from "./premium-access";
 import { isDisposableEmail } from "./disposable-emails";
-import * as plaid from "./plaid";
-import { plaidItems, plaidAccounts, aiConversations, aiMessages } from "@shared/schema";
+import { aiConversations, aiMessages } from "@shared/schema";
 import * as ai from "./ai";
 import { buildAttachmentContext } from "./receiptTranscription";
 import * as aiQuota from "./aiQuota";
@@ -130,221 +129,6 @@ export async function registerRoutes(
   });
 
   // ─────────────────────────────────────────────────────────────────────
-  // MONEY (a.k.a. Spliiit Insights) — bank-connected personal finance
-  //
-  // v0: placeholder/beta. Returns a "status" doc consumed by the client's
-  // /money page. Premium-gated (mirrors the client's nav + page gates).
-  //
-  // Roadmap (each becomes a real endpoint as we build):
-  //   - POST   /api/money/plaid-link-token      (Plaid Link Token create)
-  //   - POST   /api/money/plaid-exchange         (public_token → access_token)
-  //   - GET    /api/money/accounts               (list connected banks)
-  //   - DELETE /api/money/accounts/:id          (disconnect)
-  //   - GET    /api/money/transactions           (paginated tx feed)
-  //   - POST   /api/money/transactions/:id/review (Personal/Split/Ignore)
-  //   - POST   /api/money/transactions/:id/split (→ Spliiit expense)
-  //   - GET    /api/money/summary?month=YYYY-MM (dashboard data)
-  //   - POST   /api/money/ask                    (Claude Q&A)
-  //   - POST   /api/money/webhook/plaid          (Plaid sync webhook)
-  //
-  // v0 only exposes /status so the placeholder page can show beta info
-  // without 404s on missing endpoints.
-  // ─────────────────────────────────────────────────────────────────────
-  app.get("/api/money/status", requireAuth, async (req: any, res) => {
-    const user = await storage.getUser(req.session.userId);
-    if (!user) return res.status(401).json({ error: "unauthorized" });
-    if (!user.isPremium) {
-      return res.status(403).json({ error: "premium_required" });
-    }
-    res.json({
-      enabled: plaid.PLAID_ENABLED,    // true once PLAID_CLIENT_ID is wired
-      stage: plaid.PLAID_ENABLED ? "bank_connect_live" : "beta_preview",
-      version: "v1",
-      message: plaid.PLAID_ENABLED
-        ? "Money is live in beta — connect a bank to get started."
-        : "Money is in early-access beta. We'll notify you when bank connections are live.",
-      roadmap: [
-        { id: "backend",       label: "Backend infrastructure", status: "done" },
-        { id: "bank_connect",  label: "Bank connection",         status: plaid.PLAID_ENABLED ? "done" : "in_progress" },
-        { id: "tx_feed",       label: "Transaction feed",        status: "next" },
-        { id: "split_one_tap", label: "One-tap split",           status: "later" },
-        { id: "summary",       label: "Monthly summary",         status: "later" },
-        { id: "ai_qa",         label: "Ask anything (AI)",       status: "later" },
-      ],
-    });
-  });
-
-  // ─── Plaid Money endpoints ─────────────────────────────────────────────
-  // All gated on user.isPremium. If Plaid isn't configured (PLAID_CLIENT_ID
-  // missing from env), every endpoint returns 503 so the client can render
-  // a "coming soon" state gracefully instead of a generic crash.
-
-  function plaidGuard(req: any, res: any): boolean {
-    if (!plaid.PLAID_ENABLED) {
-      res.status(503).json({ error: "plaid_not_configured", message: "Bank connections aren't live yet — coming soon." });
-      return false;
-    }
-    return true;
-  }
-
-  // 1. Create a Link token — short-lived, scoped to this user. The client
-  //    sends it to Plaid Link UI to open the bank-connection flow.
-  app.post("/api/money/plaid-link-token", requireAuth, async (req: any, res) => {
-    if (!plaidGuard(req, res)) return;
-    const user = await storage.getUser(req.session.userId);
-    if (!user) return res.status(401).json({ error: "unauthorized" });
-    if (!user.isPremium) return res.status(403).json({ error: "premium_required" });
-    try {
-      const linkToken = await plaid.createLinkToken({ userId: user.id, userName: user.name });
-      res.json({ link_token: linkToken });
-    } catch (err: any) {
-      console.error("[plaid] createLinkToken failed:", err);
-      res.status(500).json({ error: "link_token_failed", message: err?.message || "Failed to start bank connection" });
-    }
-  });
-
-  // 2. Exchange a one-time public_token (received from Plaid Link on success)
-  //    for a long-lived access_token. Persist item + accounts to our DB.
-  app.post("/api/money/plaid-exchange", requireAuth, async (req: any, res) => {
-    if (!plaidGuard(req, res)) return;
-    const user = await storage.getUser(req.session.userId);
-    if (!user) return res.status(401).json({ error: "unauthorized" });
-    if (!user.isPremium) return res.status(403).json({ error: "premium_required" });
-
-    const publicToken = req.body?.public_token;
-    if (typeof publicToken !== "string" || !publicToken) {
-      return res.status(400).json({ error: "public_token_required" });
-    }
-
-    try {
-      const { accessToken, itemId } = await plaid.exchangePublicToken(publicToken);
-      const accounts = await plaid.getAccounts(accessToken);
-      const institutionId = accounts[0]?.institutionId ?? null;
-      const institutionMeta = institutionId ? await plaid.getInstitution(institutionId) : { name: null };
-      const now = new Date().toISOString();
-
-      // Persist item + accounts. Idempotent on plaid_item_id (unique index)
-      // and plaid_account_id (unique index) — re-connecting the same bank
-      // upserts the access_token instead of duplicating.
-      const [item] = await db.insert(plaidItems).values({
-        userId: user.id,
-        plaidItemId: itemId,
-        accessToken,
-        institutionId,
-        institutionName: institutionMeta.name,
-        status: "active",
-        createdAt: now,
-        updatedAt: now,
-      }).onConflictDoUpdate({
-        target: plaidItems.plaidItemId,
-        set: { accessToken, status: "active", updatedAt: now, userId: user.id },
-      }).returning();
-
-      // Upsert accounts
-      for (const a of accounts) {
-        await db.insert(plaidAccounts).values({
-          itemId: item.id,
-          plaidAccountId: a.plaidAccountId,
-          name: a.name,
-          officialName: a.officialName,
-          mask: a.mask,
-          type: a.type,
-          subtype: a.subtype,
-          currentBalance: a.currentBalance,
-          availableBalance: a.availableBalance,
-          isoCurrencyCode: a.isoCurrencyCode,
-          lastSyncedAt: now,
-        }).onConflictDoUpdate({
-          target: plaidAccounts.plaidAccountId,
-          set: {
-            name: a.name,
-            officialName: a.officialName,
-            mask: a.mask,
-            type: a.type,
-            subtype: a.subtype,
-            currentBalance: a.currentBalance,
-            availableBalance: a.availableBalance,
-            isoCurrencyCode: a.isoCurrencyCode,
-            lastSyncedAt: now,
-          },
-        });
-      }
-
-      res.json({
-        ok: true,
-        item: {
-          id: item.id,
-          institutionName: item.institutionName,
-          accountCount: accounts.length,
-        },
-      });
-    } catch (err: any) {
-      console.error("[plaid] exchange failed:", err);
-      res.status(500).json({ error: "exchange_failed", message: err?.message || "Failed to complete bank connection" });
-    }
-  });
-
-  // 3. List the user's connected banks + accounts. Used by the Money page UI.
-  app.get("/api/money/accounts", requireAuth, async (req: any, res) => {
-    if (!plaidGuard(req, res)) return;
-    const user = await storage.getUser(req.session.userId);
-    if (!user) return res.status(401).json({ error: "unauthorized" });
-    if (!user.isPremium) return res.status(403).json({ error: "premium_required" });
-
-    try {
-      const items = await db.select().from(plaidItems).where(eq(plaidItems.userId, user.id));
-      const result = await Promise.all(items.map(async (item) => {
-        const accounts = await db.select().from(plaidAccounts).where(eq(plaidAccounts.itemId, item.id));
-        return {
-          id: item.id,
-          institutionName: item.institutionName,
-          institutionId: item.institutionId,
-          status: item.status,
-          createdAt: item.createdAt,
-          accounts: accounts.map((a) => ({
-            id: a.id,
-            name: a.name,
-            officialName: a.officialName,
-            mask: a.mask,
-            type: a.type,
-            subtype: a.subtype,
-            currentBalance: a.currentBalance,
-            availableBalance: a.availableBalance,
-            isoCurrencyCode: a.isoCurrencyCode,
-            lastSyncedAt: a.lastSyncedAt,
-          })),
-        };
-      }));
-      res.json({ items: result });
-    } catch (err: any) {
-      console.error("[plaid] list accounts failed:", err);
-      res.status(500).json({ error: "list_failed", message: err?.message || "Failed to load accounts" });
-    }
-  });
-
-  // 4. Disconnect a bank. Removes from Plaid + cascade-deletes local rows.
-  app.delete("/api/money/items/:id", requireAuth, async (req: any, res) => {
-    if (!plaidGuard(req, res)) return;
-    const user = await storage.getUser(req.session.userId);
-    if (!user) return res.status(401).json({ error: "unauthorized" });
-    if (!user.isPremium) return res.status(403).json({ error: "premium_required" });
-
-    const itemId = req.params.id;
-    try {
-      const [item] = await db.select().from(plaidItems).where(eq(plaidItems.id, itemId));
-      if (!item || item.userId !== user.id) {
-        return res.status(404).json({ error: "not_found" });
-      }
-      // Best-effort Plaid-side removal — local cleanup happens regardless.
-      await plaid.removeItem(item.accessToken);
-      await db.delete(plaidAccounts).where(eq(plaidAccounts.itemId, item.id));
-      await db.delete(plaidItems).where(eq(plaidItems.id, item.id));
-      res.json({ ok: true });
-    } catch (err: any) {
-      console.error("[plaid] disconnect failed:", err);
-      res.status(500).json({ error: "disconnect_failed", message: err?.message || "Failed to disconnect" });
-    }
-  });
 
   // Apple App Site Association — iOS Universal Links.
   // Apple fetches this from /.well-known/apple-app-site-association (NO file extension)
@@ -1066,13 +850,27 @@ setInterval(loadAll,30000);
   const googleClient = new OAuth2Client(
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_CLIENT_SECRET,
-    `${process.env.APP_URL || "https://spliiit.klarityit.ca"}/api/auth/google/callback`
   );
+
+  // Build the OAuth callback from the request's OWN host, so both spliiit.ca
+  // and spliiit.klarityit.ca (and localhost in dev) complete login on the
+  // domain the user is actually on — no cross-domain bounce, no session/cookie
+  // mismatch. The redirect_uri MUST match between the auth-url step and the
+  // token exchange, so both use this helper. (app.set("trust proxy", 1) above
+  // means x-forwarded-proto is honoured behind Render.)
+  function reqBaseUrl(req: any): string {
+    const proto = (req.get("x-forwarded-proto") || req.protocol || "https").split(",")[0].trim();
+    return `${proto}://${req.get("host")}`;
+  }
+  function googleRedirectUri(req: any): string {
+    return `${reqBaseUrl(req)}/api/auth/google/callback`;
+  }
 
   app.get("/api/auth/google", (req, res) => {
     const url = googleClient.generateAuthUrl({
       scope: ["openid", "profile", "email"],
       prompt: "select_account",
+      redirect_uri: googleRedirectUri(req),
     });
     res.redirect(url);
   });
@@ -1082,7 +880,7 @@ setInterval(loadAll,30000);
       const code = req.query.code as string;
       if (!code) return res.redirect("/#/?error=google_failed");
 
-      const { tokens } = await googleClient.getToken(code);
+      const { tokens } = await googleClient.getToken({ code, redirect_uri: googleRedirectUri(req) });
       if (!tokens.id_token) return res.redirect("/#/?error=google_failed");
 
       const ticket = await googleClient.verifyIdToken({
@@ -1300,7 +1098,7 @@ setInterval(loadAll,30000);
     await storage.createResetToken({ userId: user.id, token, expiresAt });
 
     // Build reset link â uses hash routing
-    const baseUrl = process.env.APP_URL || "https://spliiit.klarityit.ca";
+    const baseUrl = reqBaseUrl(req);
     const resetLink = `${baseUrl}/#/reset-password?token=${token}`;
 
     sendResetPasswordEmail(cleanEmail, user.name, resetLink);
@@ -3542,146 +3340,6 @@ setInterval(loadAll,30000);
     }
   });
 
-  // Money: a user tapped "Connect your bank account" (no Plaid flow yet).
-  // Fires an admin notification email so we know to follow up. Best-effort —
-  // the client shows its confirmation regardless of whether the email sends.
-  app.post("/api/money/connect-request", requireAuth, feedbackLimiter, async (req, res) => {
-    const userId = (req.session as any).userId;
-    const user = await storage.getUser(userId);
-    if (!user) return res.status(401).json({ error: "Unauthorized" });
-    try {
-      await sendSupportEmail({
-        fromName: sanitize(user.name, 100),
-        fromEmail: sanitize(user.email, 200),
-        subject: "Bank connection request (Money)",
-        message:
-          `${user.name} (${user.email}) tapped "Connect your bank account" in the Money tab.\n` +
-          `Premium: ${user.isPremium ? "yes" : "no"} · User ID: ${userId}\n\n` +
-          `No bank data was collected — follow up to activate their connection.`,
-        userId,
-      });
-    } catch (err) {
-      // Never fail the user's flow over a notification email — just log it.
-      console.error("Bank connect-request email failed:", err);
-    }
-    res.json({ ok: true });
-  });
-
-  // ─── Personal Finance (freemium) ───────────────────────────────────────
-  // User-private money tracking, separate from group expenses & the locked
-  // split math. Anyone can use it; non-Premium users are capped at
-  // FREE_PERSONAL_LIMIT lifetime transactions (enforced on create), Premium
-  // is unlimited. Every query is scoped to the session user's id.
-  const FREE_PERSONAL_LIMIT = 10;
-  async function requireUser(req: any, res: any) {
-    const user = await storage.getUser(req.session.userId);
-    if (!user) { res.status(401).json({ error: "unauthorized" }); return null; }
-    return user;
-  }
-
-  app.get("/api/personal/categories", requireAuth, async (req: any, res) => {
-    const user = await requireUser(req, res);
-    if (!user) return;
-    const categories = await storage.getPersonalCategories(user.id);
-    res.json({ categories });
-  });
-
-  // Freemium usage — drives the "X of N free left" banner + upgrade gating.
-  app.get("/api/personal/usage", requireAuth, async (req: any, res) => {
-    const user = await requireUser(req, res);
-    if (!user) return;
-    const count = await storage.countPersonalTransactions(user.id);
-    res.json({
-      isPremium: !!user.isPremium,
-      count,
-      limit: FREE_PERSONAL_LIMIT,
-      remaining: Math.max(0, FREE_PERSONAL_LIMIT - count),
-    });
-  });
-
-  app.get("/api/personal/transactions", requireAuth, async (req: any, res) => {
-    const user = await requireUser(req, res);
-    if (!user) return;
-    const month = typeof req.query.month === "string" && /^\d{4}-\d{2}$/.test(req.query.month)
-      ? req.query.month : undefined;
-    const transactions = await storage.getPersonalTransactions(user.id, { month });
-    res.json({ transactions });
-  });
-
-  app.post("/api/personal/transactions", requireAuth, async (req: any, res) => {
-    const user = await requireUser(req, res);
-    if (!user) return;
-    // Freemium cap — non-Premium users get FREE_PERSONAL_LIMIT lifetime entries.
-    if (!user.isPremium) {
-      const count = await storage.countPersonalTransactions(user.id);
-      if (count >= FREE_PERSONAL_LIMIT) {
-        return res.status(402).json({ error: "free_limit_reached", limit: FREE_PERSONAL_LIMIT });
-      }
-    }
-    const b = req.body || {};
-    const type = b.type === "income" ? "income" : "expense";
-    const amount = Number(b.amount);
-    if (!Number.isFinite(amount) || amount <= 0) {
-      return res.status(400).json({ error: "amount must be a positive number" });
-    }
-    const description = typeof b.description === "string" ? sanitize(b.description, 200) : "";
-    if (!description.trim()) return res.status(400).json({ error: "description is required" });
-    const date = typeof b.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(b.date)
-      ? b.date : new Date().toISOString().slice(0, 10);
-    const categoryId = typeof b.categoryId === "string" && b.categoryId ? b.categoryId : null;
-    const notes = typeof b.notes === "string" ? sanitize(b.notes, 500) : null;
-    const source = typeof b.source === "string" && ["manual", "csv", "bank", "promoted"].includes(b.source)
-      ? b.source : "manual";
-
-    const transaction = await storage.createPersonalTransaction({
-      userId: user.id,
-      type,
-      amount: Math.round(amount * 100) / 100,
-      description,
-      categoryId,
-      date,
-      notes,
-      source,
-      linkedExpenseId: null,
-      createdAt: new Date().toISOString(),
-    });
-    res.json({ transaction });
-  });
-
-  app.patch("/api/personal/transactions/:id", requireAuth, async (req: any, res) => {
-    const user = await requireUser(req, res);
-    if (!user) return;
-    const b = req.body || {};
-    const patch: any = {};
-    if (b.type === "income" || b.type === "expense") patch.type = b.type;
-    if (b.amount !== undefined) {
-      const amount = Number(b.amount);
-      if (!Number.isFinite(amount) || amount <= 0) {
-        return res.status(400).json({ error: "amount must be a positive number" });
-      }
-      patch.amount = Math.round(amount * 100) / 100;
-    }
-    if (typeof b.description === "string") {
-      const d = sanitize(b.description, 200);
-      if (!d.trim()) return res.status(400).json({ error: "description cannot be empty" });
-      patch.description = d;
-    }
-    if (typeof b.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(b.date)) patch.date = b.date;
-    if ("categoryId" in b) patch.categoryId = b.categoryId || null;
-    if ("notes" in b) patch.notes = typeof b.notes === "string" ? sanitize(b.notes, 500) : null;
-
-    const updated = await storage.updatePersonalTransaction(user.id, req.params.id, patch);
-    if (!updated) return res.status(404).json({ error: "Transaction not found" });
-    res.json({ transaction: updated });
-  });
-
-  app.delete("/api/personal/transactions/:id", requireAuth, async (req: any, res) => {
-    const user = await requireUser(req, res);
-    if (!user) return;
-    const ok = await storage.deletePersonalTransaction(user.id, req.params.id);
-    if (!ok) return res.status(404).json({ error: "Transaction not found" });
-    res.status(204).send();
-  });
 
   // ========== AI Mode (conversational expense entry) ==========
   // All endpoints are Premium-gated. The AI proposes; users confirm via the
@@ -4982,7 +4640,7 @@ setInterval(loadAll,30000);
     const referer = String(req.headers.referer || "");
     if (referer.startsWith("android-app://")) {
       return res.status(403).json({
-        error: "Subscriptions are managed on the web. Please visit spliiit.klarityit.ca on a browser."
+        error: "Subscriptions are managed on the web. Please visit spliiit.ca on a browser."
       });
     }
     if (!STRIPE_ENABLED) return res.status(503).json({ error: "Payments not configured" });
@@ -4993,7 +4651,7 @@ setInterval(loadAll,30000);
     const { plan } = req.body; // "monthly" | "yearly"
     const priceId = plan === "yearly" ? STRIPE_PRICE_YEARLY : STRIPE_PRICE_MONTHLY;
 
-    const APP_URL = process.env.APP_URL || "https://spliiit.klarityit.ca";
+    const APP_URL = reqBaseUrl(req);
 
     const buildSession = (withCustomer: boolean) =>
       stripe.checkout.sessions.create({
@@ -5037,7 +4695,7 @@ setInterval(loadAll,30000);
     const user = await storage.getUser(userId);
     if (!user?.stripeCustomerId) return res.status(400).json({ error: "No active subscription found" });
 
-    const APP_URL = process.env.APP_URL || "https://spliiit.klarityit.ca";
+    const APP_URL = reqBaseUrl(req);
     try {
       const portalSession = await stripe.billingPortal.sessions.create({
         customer: user.stripeCustomerId,
@@ -5412,7 +5070,7 @@ setInterval(loadAll,30000);
     if (!recipient) return res.status(404).json({ error: "Recipient not found" });
     if (recipient.isGhost) return res.status(400).json({ error: "Cannot send email to a ghost user" });
 
-    const APP_URL = process.env.APP_URL || "https://spliiit.klarityit.ca";
+    const APP_URL = reqBaseUrl(req);
     const { sendReminderEmail } = await import("./email");
     await sendReminderEmail({
       to: recipient.email,

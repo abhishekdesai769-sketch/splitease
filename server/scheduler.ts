@@ -91,7 +91,7 @@ async function processWeeklyAnalyticsDigest() {
     }
 
     try {
-      await sendWeeklyAnalyticsDigest({ to: "spliiit@klarityit.ca", rows: digestRows, insight });
+      await sendWeeklyAnalyticsDigest({ to: "abhi@spliiit.ca", rows: digestRows, insight });
       console.log("[scheduler] weekly analytics digest sent for", weekKey);
     } catch (sendErr) {
       // Send failed AFTER we claimed the week — release the claim so the next
@@ -178,7 +178,7 @@ async function processRecurringExpenses() {
 // outstanding longer than the user's configured threshold (min 7 days).
 
 async function processAutoReminders() {
-  const APP_URL = process.env.APP_URL || "https://spliiit.klarityit.ca";
+  const APP_URL = process.env.APP_URL || "https://spliiit.ca";
   const today = new Date();
 
   try {

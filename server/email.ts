@@ -5,14 +5,14 @@ const resend = process.env.RESEND_API_KEY
   ? new Resend(process.env.RESEND_API_KEY)
   : null;
 
-const FROM_ADDRESS = "Spliiit <spliiit@klarityit.ca>";
+const FROM_ADDRESS = "Spliiit <no-reply@spliiit.ca>";
 
 // Inline logo for email templates — uses the hosted app icon (PNG) for consistent rendering.
 const EMAIL_LOGO = `
 <table cellpadding="0" cellspacing="0" border="0" style="margin-bottom:20px;">
   <tr>
     <td style="vertical-align:middle;padding-right:10px;">
-      <img src="https://spliiit.klarityit.ca/icon-192.png" width="36" height="36" alt="Spliiit" style="display:block;border-radius:8px;" />
+      <img src="https://spliiit.ca/icon-192.png" width="36" height="36" alt="Spliiit" style="display:block;border-radius:8px;" />
     </td>
     <td style="vertical-align:middle;">
       <span style="font-size:18px;font-weight:700;color:#1a1a1a;letter-spacing:-0.3px;">Spl</span><span style="font-size:18px;font-weight:700;color:#2dd4a8;letter-spacing:-0.3px;">iii</span><span style="font-size:18px;font-weight:700;color:#1a1a1a;letter-spacing:-0.3px;">t</span>
@@ -30,7 +30,7 @@ async function sendEmail(
   html: string,
   text: string,
   attachments?: { content: Buffer; filename: string }[],
-  replyTo: string = "noreply@klarityit.ca", // default: block replies on all automated emails
+  replyTo: string = "no-reply@spliiit.ca", // default: block replies on all automated emails
 ) {
   if (!resend) return;
   try {
@@ -210,7 +210,7 @@ export async function notifyExpenseCreated(opts: {
   // Uses hash routing (/#/...) because the SPA uses wouter's useHashLocation.
   // iOS / Android Universal Links pass the FULL URL (including hash) to the
   // app's deeplink handler, which routes the WebView to the right screen.
-  const APP_BASE = "https://spliiit.klarityit.ca";
+  const APP_BASE = "https://spliiit.ca";
   const viewUrl = groupId
     ? `${APP_BASE}/#/groups/${groupId}`
     : paidByUserId
@@ -313,7 +313,7 @@ export async function sendSupportEmail(opts: {
   if (!resend) return;
 
   const { fromName, fromEmail, subject, message, userId } = opts;
-  const SUPPORT_EMAIL = "spliiit@klarityit.ca";
+  const SUPPORT_EMAIL = "support@spliiit.ca";
 
   const html = `
 <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
@@ -363,7 +363,7 @@ export async function sendSupportEmail(opts: {
  * Notify the FOUNDER (not the customer) whenever someone upgrades to — or
  * churns from — Premium. The customer gets sendPremiumWelcomeEmail(); this is
  * the internal business-ops counterpart so you actually KNOW a paying customer
- * arrived. Goes to spliiit@klarityit.ca. Fire-and-forget: callers must never
+ * arrived. Goes to abhi@spliiit.ca. Fire-and-forget: callers must never
  * let it block or fail a payment webhook (always `.catch(() => {})`).
  */
 export async function sendFounderPremiumAlert(opts: {
@@ -376,7 +376,7 @@ export async function sendFounderPremiumAlert(opts: {
   userId?: string | null;
 }) {
   if (!resend) return;
-  const FOUNDER_EMAIL = "spliiit@klarityit.ca";
+  const FOUNDER_EMAIL = "abhi@spliiit.ca";
   const name = (opts.customerName || "").trim() || "A user";
   const emailAddr = opts.customerEmail || "unknown email";
   const until = opts.premiumUntil
@@ -486,7 +486,7 @@ export async function sendInviteToInviteeEmail(opts: {
 }) {
   if (!resend) return;
   const { inviteeName, inviteeEmail, inviterName, groupName } = opts;
-  const APP_URL = "https://spliiit.klarityit.ca";
+  const APP_URL = "https://spliiit.ca";
 
   const subject = `${inviterName} invited you to join ${groupName} on Spliiit`;
 
@@ -539,7 +539,7 @@ export async function sendInviteToAdminEmail(opts: {
 }) {
   if (!resend) return;
   const { adminName, adminEmail, inviterName, inviteeName, groupName } = opts;
-  const APP_URL = "https://spliiit.klarityit.ca";
+  const APP_URL = "https://spliiit.ca";
 
   const subject = `${inviterName} wants to add ${inviteeName} to ${groupName}`;
 
@@ -591,7 +591,7 @@ export async function sendGhostInviteEmail(opts: {
 }) {
   if (!resend) return;
   const { to, inviterName, ghostName, groupName } = opts;
-  const APP_URL = "https://spliiit.klarityit.ca";
+  const APP_URL = "https://spliiit.ca";
 
   const subject = `${inviterName} has been tracking expenses with you on Spliiit`;
 
@@ -819,7 +819,7 @@ export async function sendPremiumWelcomeEmail(
 ) {
   if (!resend) return;
 
-  const APP_URL = "https://spliiit.klarityit.ca";
+  const APP_URL = "https://spliiit.ca";
   const first = name.split(" ")[0];
 
   const planLabels = {

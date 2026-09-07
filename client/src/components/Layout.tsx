@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { UsersRound, Receipt, LayoutDashboard, Users2, Sun, Moon, LogOut, Shield, Wallet } from "lucide-react";
+import { UsersRound, Receipt, LayoutDashboard, Users2, Sun, Moon, LogOut, Shield } from "lucide-react";
 import { useTheme } from "@/lib/theme";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
@@ -7,7 +7,6 @@ import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { SupportDrawer } from "@/components/SupportDrawer";
 import { PushPermissionPrompt } from "@/components/PushPermissionPrompt";
-import { isInTWA } from "@/lib/platform";
 import { GetAppBanner } from "@/components/GetAppBanner";
 
 export function Layout({ children }: { children: React.ReactNode }) {
@@ -27,18 +26,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
   });
   const inviteCount = incomingInvites.length;
 
-  // Money tab — visible to every logged-in user EXCEPT Android TWA.
-  // Premium users see the early-access roadmap; non-Premium users see the
-  // upgrade teaser (FOMO + CTA). TWA stays hidden (Google Play payment-
-  // policy compliance — same rule we apply to /upgrade). Defense-in-depth:
-  // the /money page also gates internally so manual nav can't bypass.
-  const showMoneyTab = !!user && !isInTWA;
-
   const navItems = [
     { path: "/", icon: LayoutDashboard, label: "Dashboard" },
     { path: "/friends", icon: Users2, label: "Friends" },
     { path: "/groups", icon: UsersRound, label: "Groups" },
-    ...(showMoneyTab ? [{ path: "/money", icon: Wallet, label: "Money" }] : []),
     { path: "/expenses", icon: Receipt, label: "Expenses" },
     ...(user?.isAdmin ? [{ path: "/admin", icon: Shield, label: "Admin" }] : []),
   ];
