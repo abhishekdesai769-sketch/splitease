@@ -14,9 +14,10 @@ function getSystemTheme(): Theme {
   }
 }
 
-function resolveTheme(pref: ThemePref): Theme {
-  if (pref === "system") return getSystemTheme();
-  return pref;
+function resolveTheme(_pref: ThemePref): Theme {
+  // Dark mode removed — the app is light-only. Always resolve to light so the
+  // "dark" class is never applied to <html>, regardless of stored/DB preference.
+  return "light";
 }
 
 function loadStoredPref(): ThemePref {

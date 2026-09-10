@@ -1,6 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { UsersRound, Receipt, LayoutDashboard, Users2, Sun, Moon, LogOut, Shield } from "lucide-react";
-import { useTheme } from "@/lib/theme";
+import { UsersRound, Receipt, LayoutDashboard, Users2, LogOut, Shield } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
@@ -11,7 +10,6 @@ import { GetAppBanner } from "@/components/GetAppBanner";
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
-  const { theme, toggleTheme } = useTheme();
   const { user, logout } = useAuth();
 
   // Incoming invite count for notification badge
@@ -48,12 +46,16 @@ export function Layout({ children }: { children: React.ReactNode }) {
               data-testid="logo-menu-trigger"
             >
               <svg width="28" height="28" viewBox="0 0 32 32" fill="none" aria-label="Spliiit logo">
-                <rect width="32" height="32" rx="8" fill="hsl(172 63% 45%)" fillOpacity="0.15" />
-                <path d="M9 11h14M9 16h14M9 21h14" stroke="hsl(172 63% 45%)" strokeWidth="2" strokeLinecap="round" />
-                <path d="M16 8v16" stroke="hsl(172 63% 45%)" strokeWidth="2" strokeLinecap="round" />
+                <rect width="32" height="32" rx="8" fill="hsl(30 6% 15%)" fillOpacity="0.06" />
+                <circle cx="10" cy="9.5" r="1.7" fill="hsl(30 6% 15%)" />
+                <path d="M10 14v9" stroke="hsl(30 6% 15%)" strokeWidth="2.4" strokeLinecap="round" />
+                <circle cx="16" cy="9.5" r="1.7" fill="hsl(18 42% 50%)" />
+                <path d="M16 14v9" stroke="hsl(18 42% 50%)" strokeWidth="2.4" strokeLinecap="round" />
+                <circle cx="22" cy="9.5" r="1.7" fill="hsl(30 6% 15%)" />
+                <path d="M22 14v9" stroke="hsl(30 6% 15%)" strokeWidth="2.4" strokeLinecap="round" />
               </svg>
               <span className="text-base font-semibold tracking-tight text-foreground">
-                Spl<span className="text-primary">iii</span>t
+                Spl<span className="text-accent-foreground">iii</span>t
               </span>
             </button>
           </SupportDrawer>
@@ -63,15 +65,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 {user.name}
               </span>
             )}
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={toggleTheme}
-              aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
-              data-testid="theme-toggle"
-            >
-              {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-            </Button>
             <Button
               size="icon"
               variant="ghost"

@@ -726,8 +726,8 @@ export class PgStorage implements IStorage {
     const derived = scryptSync(randomBytes(32).toString("hex"), salt, 64).toString("hex");
     const placeholderPassword = `scrypt:${salt}:${derived}`;
     const AVATAR_COLORS = [
-      "#0d9488", "#0891b2", "#7c3aed", "#db2777", "#ea580c",
-      "#d97706", "#059669", "#4f46e5", "#be185d", "#2563eb",
+      "#7A3E32", "#8A6A32", "#4A5248", "#9A4A2A", "#B04A34",
+      "#6B5D4F", "#A67B5B", "#5C6B5A", "#8C5A3C", "#7C6A52",
     ];
     const [user] = await db.insert(users).values({
       name,
