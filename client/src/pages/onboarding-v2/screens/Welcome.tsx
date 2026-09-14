@@ -32,8 +32,12 @@ export function WelcomeScreen({ onContinue }: Props) {
       <div className="flex items-center justify-center">
         <div className="relative w-20 h-20 rounded-3xl bg-primary/10 flex items-center justify-center">
           <svg width="44" height="44" viewBox="0 0 32 32" fill="none">
-            <path d="M9 11h14M9 16h14M9 21h14" stroke="hsl(172 63% 45%)" strokeWidth="2.5" strokeLinecap="round" />
-            <path d="M16 8v16" stroke="hsl(172 63% 45%)" strokeWidth="2.5" strokeLinecap="round" />
+            <circle cx="10" cy="9.5" r="1.7" fill="hsl(30 6% 15%)" />
+            <path d="M10 14v9" stroke="hsl(30 6% 15%)" strokeWidth="2.5" strokeLinecap="round" />
+            <circle cx="16" cy="9.5" r="1.7" fill="hsl(18 42% 50%)" />
+            <path d="M16 14v9" stroke="hsl(18 42% 50%)" strokeWidth="2.5" strokeLinecap="round" />
+            <circle cx="22" cy="9.5" r="1.7" fill="hsl(30 6% 15%)" />
+            <path d="M22 14v9" stroke="hsl(30 6% 15%)" strokeWidth="2.5" strokeLinecap="round" />
           </svg>
         </div>
       </div>

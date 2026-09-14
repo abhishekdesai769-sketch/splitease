@@ -87,9 +87,13 @@ export function ForceUpdateGate({ children }: { children: React.ReactNode }) {
           {/* Logo */}
           <div className="w-20 h-20 rounded-3xl bg-primary/10 flex items-center justify-center mb-6">
             <svg width="40" height="40" viewBox="0 0 32 32" fill="none" aria-label="Spliiit logo">
-              <rect width="32" height="32" rx="8" fill="hsl(172 63% 45%)" fillOpacity="0.15" />
-              <path d="M9 11h14M9 16h14M9 21h14" stroke="hsl(172 63% 45%)" strokeWidth="2" strokeLinecap="round" />
-              <path d="M16 8v16" stroke="hsl(172 63% 45%)" strokeWidth="2" strokeLinecap="round" />
+              <rect width="32" height="32" rx="8" fill="hsl(30 6% 15%)" fillOpacity="0.06" />
+              <circle cx="10" cy="9.5" r="1.7" fill="hsl(30 6% 15%)" />
+              <path d="M10 14v9" stroke="hsl(30 6% 15%)" strokeWidth="2.4" strokeLinecap="round" />
+              <circle cx="16" cy="9.5" r="1.7" fill="hsl(18 42% 50%)" />
+              <path d="M16 14v9" stroke="hsl(18 42% 50%)" strokeWidth="2.4" strokeLinecap="round" />
+              <circle cx="22" cy="9.5" r="1.7" fill="hsl(30 6% 15%)" />
+              <path d="M22 14v9" stroke="hsl(30 6% 15%)" strokeWidth="2.4" strokeLinecap="round" />
             </svg>
           </div>
 

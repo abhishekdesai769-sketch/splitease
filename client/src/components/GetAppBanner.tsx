@@ -55,9 +55,13 @@ export function GetAppBanner() {
   return (
     <div className="mb-4 rounded-xl border border-primary/30 bg-primary/5 px-3 py-2.5 flex items-center gap-3">
       <svg viewBox="0 0 32 32" fill="none" className="w-9 h-9 shrink-0" aria-hidden="true">
-        <rect width="32" height="32" rx="8" fill="hsl(172 63% 45%)" fillOpacity="0.15" />
-        <path d="M9 11h14M9 16h14M9 21h14" stroke="hsl(172 63% 45%)" strokeWidth="2" strokeLinecap="round" />
-        <path d="M16 8v16" stroke="hsl(172 63% 45%)" strokeWidth="2" strokeLinecap="round" />
+        <rect width="32" height="32" rx="8" fill="hsl(30 6% 15%)" fillOpacity="0.06" />
+        <circle cx="10" cy="9.5" r="1.7" fill="hsl(30 6% 15%)" />
+        <path d="M10 14v9" stroke="hsl(30 6% 15%)" strokeWidth="2.4" strokeLinecap="round" />
+        <circle cx="16" cy="9.5" r="1.7" fill="hsl(18 42% 50%)" />
+        <path d="M16 14v9" stroke="hsl(18 42% 50%)" strokeWidth="2.4" strokeLinecap="round" />
+        <circle cx="22" cy="9.5" r="1.7" fill="hsl(30 6% 15%)" />
+        <path d="M22 14v9" stroke="hsl(30 6% 15%)" strokeWidth="2.4" strokeLinecap="round" />
       </svg>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-semibold leading-tight">Spliiit is better in the app</p>
