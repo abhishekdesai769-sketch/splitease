@@ -197,6 +197,13 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
       </SheetTrigger>
       <SheetContent
         side="left"
+        // On close, Radix restores focus to the trigger (the header logo
+        // button). On WebKit/iOS that paints a default blue focus outline
+        // that lingers around the logo until you tap elsewhere — looks like
+        // a stuck highlight even though nothing was clicked. Preventing the
+        // close-auto-focus stops the ring from ever landing there. Keyboard
+        // users still get focus-visible rings on the controls themselves.
+        onCloseAutoFocus={(e) => e.preventDefault()}
         className="w-[320px] sm:w-[360px] flex flex-col p-0"
         // Inline style because p-0 above zeros out the sheet variant's
         // padding (CSS shorthand vs longhand source-order resolution makes

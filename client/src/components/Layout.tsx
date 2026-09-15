@@ -41,7 +41,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <div className="max-w-3xl mx-auto px-4 h-14 flex items-center justify-between gap-2">
           <SupportDrawer>
             <button
-              className="flex items-center gap-2.5 hover:opacity-80 transition-opacity"
+              // No custom focus style here means the browser paints its
+              // default blue outline when Radix restores focus to this
+              // trigger after the menu closes — it then lingers around the
+              // logo. Suppress that default outline; the drawer's
+              // onCloseAutoFocus also keeps focus from landing here at all.
+              className="flex items-center gap-2.5 hover:opacity-80 transition-opacity focus:outline-none focus-visible:outline-none"
               aria-label="Open menu"
               data-testid="logo-menu-trigger"
             >
