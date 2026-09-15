@@ -21,8 +21,11 @@
 // The output of this module is STORED in ai_messages.attachment_context and
 // replayed verbatim in every subsequent Claude turn for the conversation.
 
-// @ts-ignore — pdf-parse ships without bundled types
-import pdfParse from "pdf-parse";
+// pdf-parse v2 is a class-based rewrite: `new PDFParse({ data }).getText()`
+// replaced the v1 default-export function `pdfParse(buffer)`. The old default
+// import silently no-ops the PDF fast path (v2 has no default export), so
+// every PDF receipt used to fall through to the paid Claude vision call.
+import { PDFParse } from "pdf-parse";
 import Anthropic from "@anthropic-ai/sdk";
 import type { AiAttachment } from "./ai.js";
 
@@ -73,14 +76,18 @@ FORMAT RULES:
 // Try pdf-parse on a PDF buffer. Returns null if pdf-parse fails or returns
 // too little text to be useful (likely an image-based scan).
 export async function tryPdfTextExtraction(buffer: Buffer): Promise<string | null> {
+  const parser = new PDFParse({ data: buffer });
   try {
-    const result = await pdfParse(buffer);
+    const result = await parser.getText();
     const text = (result.text || "").trim();
     if (text.length < MIN_PDF_TEXT_LENGTH) return null;
     return text;
   } catch (err) {
     console.warn("[receiptTranscription] pdf-parse failed:", (err as Error)?.message);
     return null;
+  } finally {
+    // Release the pdf.js worker/document held by this parser instance.
+    await parser.destroy().catch(() => {});
   }
 }
 
