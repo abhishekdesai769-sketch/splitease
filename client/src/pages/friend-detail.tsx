@@ -715,13 +715,13 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
                     <p className="text-sm text-muted-foreground">
                       {paidById === user?.id
                         ? <>{friend.name} pays you <span className="font-semibold text-foreground">${parseFloat(amount).toFixed(2)}</span></>
-                        : <>You pay {friend.name} <span className="font-semibold text-red-500">${parseFloat(amount).toFixed(2)}</span></>
+                        : <>You pay {friend.name} <span className="font-semibold text-destructive">${parseFloat(amount).toFixed(2)}</span></>
                       }
                     </p>
                   ) : (
                     <p className="text-sm text-muted-foreground">
                       {paidById === user?.id
-                        ? <>You pay {friend.name} <span className="font-semibold text-red-500">${parseFloat(amount).toFixed(2)}</span></>
+                        ? <>You pay {friend.name} <span className="font-semibold text-destructive">${parseFloat(amount).toFixed(2)}</span></>
                         : <>{friend.name} pays you <span className="font-semibold text-foreground">${parseFloat(amount).toFixed(2)}</span></>
                       }
                     </p>

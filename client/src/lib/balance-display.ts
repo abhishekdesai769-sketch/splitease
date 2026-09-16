@@ -27,7 +27,7 @@ export const SETTLED_THRESHOLD = 0.05;
 // is BLACK (the app's default ink text), money going OUT (you owe / will pay)
 // is RED. Black in, red out — nothing else signals amount direction.
 export const AMOUNT_IN_CLASS = "text-foreground";   // owed to you / you get paid (black)
-export const AMOUNT_OUT_CLASS = "text-red-500";     // you owe / you pay (red)
+export const AMOUNT_OUT_CLASS = "text-destructive"; // you owe / you pay (rust red — brand token)
 
 /** Returns the right color class for a signed balance amount.
  *  amount > 0 → black (incoming), amount < 0 → red (outgoing),

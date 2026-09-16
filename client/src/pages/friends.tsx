@@ -409,13 +409,13 @@ export default function Friends() {
                         <p className="text-sm text-muted-foreground">
                           {paidById === user?.id
                             ? <>{friendsList.find(f => f.id === splitWithId)?.name || "They"} pays you <span className="font-semibold text-foreground">${parseFloat(amount).toFixed(2)}</span></>
-                            : <>You pay {friendsList.find(f => f.id === paidById)?.name || "them"} <span className="font-semibold text-red-500">${parseFloat(amount).toFixed(2)}</span></>
+                            : <>You pay {friendsList.find(f => f.id === paidById)?.name || "them"} <span className="font-semibold text-destructive">${parseFloat(amount).toFixed(2)}</span></>
                           }
                         </p>
                       ) : (
                         <p className="text-sm text-muted-foreground">
                           {paidById === user?.id
-                            ? <>You pay {friendsList.find(f => f.id === splitWithId)?.name || "them"} <span className="font-semibold text-red-500">${parseFloat(amount).toFixed(2)}</span></>
+                            ? <>You pay {friendsList.find(f => f.id === splitWithId)?.name || "them"} <span className="font-semibold text-destructive">${parseFloat(amount).toFixed(2)}</span></>
                             : <>{friendsList.find(f => f.id === paidById)?.name || "They"} pays you <span className="font-semibold text-foreground">${parseFloat(amount).toFixed(2)}</span></>
                           }
                         </p>
