@@ -26,7 +26,7 @@ import { apiRequest, apiFormRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Sparkles, ArrowLeft, Send, Loader2, Crown, Check, X, Paperclip, FileText, Image as ImageIcon, Mic, Keyboard, MicOff } from "lucide-react";
+import { Sparkles, ArrowLeft, Send, Loader2, Crown, Check, X, Paperclip, Plus, ArrowUp, FileText, Image as ImageIcon, Mic, Keyboard, MicOff } from "lucide-react";
 import { useVoiceMode } from "@/hooks/useVoiceMode";
 import { isIosNative } from "@/lib/iap";
 import ReactMarkdown from "react-markdown";
@@ -486,7 +486,7 @@ export default function AiMode() {
           offset = nav height (4rem) + nav's safe-area inset, so it lifts
           above the home-indicator zone consistently. */}
       <div
-        className="fixed left-0 right-0 z-30 border-t border-border bg-background/95 backdrop-blur-md px-4 pt-3 pb-2"
+        className="fixed left-0 right-0 z-30 bg-gradient-to-t from-background via-background to-transparent px-4 pt-6 pb-3"
         style={{ bottom: "calc(4rem + env(safe-area-inset-bottom))" }}
       >
         <div className="max-w-3xl mx-auto">
@@ -534,55 +534,9 @@ export default function AiMode() {
             </div>
           )}
 
-          <div className="flex items-end gap-2">
-            {/* Left stack: Paperclip (attach) + Mic (voice) */}
-            <div className="flex flex-col gap-1 shrink-0">
-              <Button
-                type="button"
-                size="icon"
-                variant="outline"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={sendMutation.isPending || attachments.length >= MAX_ATTACHMENTS}
-                className="h-[32px] w-11"
-                title="Attach PDF, screenshot, or photo"
-                data-testid="ai-mode-attach"
-                aria-label="Attach file"
-              >
-                <Paperclip className="w-4 h-4" />
-              </Button>
-              <Button
-                type="button"
-                size="icon"
-                variant={isListening ? "default" : "outline"}
-                onClick={handleMicTap}
-                disabled={sendMutation.isPending || isVoiceProcessing}
-                className={`h-[32px] w-11 ${
-                  isListening
-                    ? "bg-red-500 hover:bg-red-600 text-white border-red-500"
-                    : ""
-                }`}
-                title={
-                  isListening
-                    ? "Tap to stop"
-                    : voiceSupported
-                    ? "Talk to AI"
-                    : "Voice needs the iOS app"
-                }
-                data-testid="ai-mode-voice"
-                aria-label={isListening ? "Stop listening" : "Start voice input"}
-              >
-                {isVoiceProcessing ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : isListening ? (
-                  <Mic className="w-4 h-4" />
-                ) : voiceSupported ? (
-                  <Mic className="w-4 h-4" />
-                ) : (
-                  <MicOff className="w-4 h-4 opacity-50" />
-                )}
-              </Button>
-            </div>
-
+          {/* Premium composer — roomy box, inline icons: + attach (left),
+              mic + terracotta send (right). */}
+          <div className="rounded-[28px] border border-border bg-card px-4 pt-4 pb-3 shadow-[0_18px_40px_-22px_rgba(40,26,16,0.28)]">
             <Textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -591,10 +545,10 @@ export default function AiMode() {
                   ? "Listening — keep going…"
                   : attachments.length > 0
                   ? "Add context (optional)… e.g. 'split equally with Krish'"
-                  : "Type, talk, or attach a receipt PDF / screenshot"
+                  : "Split a bill, scan a receipt, or just say it…"
               }
               rows={2}
-              className="resize-none text-sm"
+              className="resize-none border-0 bg-transparent px-1 py-0 text-base leading-relaxed shadow-none focus-visible:ring-0 min-h-[46px]"
               disabled={sendMutation.isPending}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
@@ -604,16 +558,58 @@ export default function AiMode() {
               }}
               data-testid="ai-mode-input"
             />
-            <Button
-              type="button"
-              size="icon"
-              onClick={handleSend}
-              disabled={sendMutation.isPending || (!input.trim() && attachments.length === 0)}
-              className="shrink-0 h-[68px] w-12"
-              data-testid="ai-mode-send"
-            >
-              {sendMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-            </Button>
+            <div className="flex items-center justify-between mt-1.5">
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={sendMutation.isPending || attachments.length >= MAX_ATTACHMENTS}
+                className="h-11 w-11 rounded-full border border-border text-muted-foreground"
+                title="Attach PDF, screenshot, or photo"
+                data-testid="ai-mode-attach"
+                aria-label="Attach file"
+              >
+                <Plus className="w-5 h-5" />
+              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  onClick={handleMicTap}
+                  disabled={sendMutation.isPending || isVoiceProcessing}
+                  className={`h-11 w-11 rounded-full border ${
+                    isListening
+                      ? "bg-red-500 hover:bg-red-600 text-white border-red-500"
+                      : "border-border text-muted-foreground"
+                  }`}
+                  title={
+                    isListening ? "Tap to stop" : voiceSupported ? "Talk to AI" : "Voice needs the iOS app"
+                  }
+                  data-testid="ai-mode-voice"
+                  aria-label={isListening ? "Stop listening" : "Start voice input"}
+                >
+                  {isVoiceProcessing ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : voiceSupported || isListening ? (
+                    <Mic className="w-5 h-5" />
+                  ) : (
+                    <MicOff className="w-5 h-5 opacity-50" />
+                  )}
+                </Button>
+                <Button
+                  type="button"
+                  size="icon"
+                  onClick={handleSend}
+                  disabled={sendMutation.isPending || (!input.trim() && attachments.length === 0)}
+                  className="h-12 w-12 rounded-full bg-accent-foreground text-white hover:bg-accent-foreground/90 disabled:opacity-40"
+                  data-testid="ai-mode-send"
+                >
+                  {sendMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin" /> : <ArrowUp className="w-5 h-5" />}
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -639,14 +635,9 @@ function PageHeader({ onBack }: { onBack: () => void }) {
 
 function EmptyState() {
   return (
-    <div className="flex flex-col items-center justify-center text-center px-6 pt-24 pb-10">
-      <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-foreground text-background mb-6">
-        <Sparkles className="w-8 h-8" />
-      </div>
-      <h2 className="text-4xl font-serif tracking-tight leading-none text-foreground">What's the split?</h2>
-      <p className="text-[15px] text-muted-foreground mt-3 max-w-[22ch]">
-        Talk, type, or drop a receipt — Spliiit does the rest.
-      </p>
+    <div className="flex flex-col items-center justify-center text-center px-6 min-h-[54vh]">
+      <h2 className="font-serif tracking-tight leading-[0.98] text-foreground text-[52px]">What's the split?</h2>
+      <p className="text-[15.5px] text-muted-foreground mt-3">Tell Spliiit like you'd tell a friend.</p>
     </div>
   );
 }
