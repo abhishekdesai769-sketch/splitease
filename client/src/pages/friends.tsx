@@ -21,11 +21,21 @@ import { useAuth } from "@/lib/auth";
 import { calculateGroupBalances, calculatePairwiseBalances } from "@/lib/simplify";
 import { displayBalance, isEffectivelySettled, AMOUNT_IN_CLASS, AMOUNT_OUT_CLASS } from "@/lib/balance-display";
 
+// Clamp friend avatars to the warm cream/terracotta palette (DB colours can be
+// off-brand teal/blue). Deterministic per person — matches the Dashboard.
+const WARM_AVATARS = ["#7A3E32", "#8C5A3C", "#9A4A2A", "#A6674A", "#8A6A32", "#B04A34", "#6B4A3A", "#B5794A"];
+function warmAvatar(id: string): string {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return WARM_AVATARS[h % WARM_AVATARS.length];
+}
+
 export default function Friends() {
   const { user } = useAuth();
   const { toast } = useToast();
   const userCurrency = user?.defaultCurrency;
   const [addFriendOpen, setAddFriendOpen] = useState(false);
+  const [settledExpanded, setSettledExpanded] = useState(false);
   const [inviteLinkCopied, setInviteLinkCopied] = useState(false);
   const [addExpenseOpen, setAddExpenseOpen] = useState(false);
   const [settleUpOpen, setSettleUpOpen] = useState(false);
@@ -253,25 +263,57 @@ export default function Friends() {
     setSettleUpOpen(true);
   };
 
+  // Group friends by balance direction. balance > 0 = they owe you (money in),
+  // balance < 0 = you owe them (money out), 0 = settled / nothing owed.
+  const withBalance = friendsList.map((f) => ({ f, balance: getFriendBalance(f.id) }));
+  const youOwe = withBalance.filter((x) => x.balance < 0).sort((a, b) => a.balance - b.balance);
+  const owesYou = withBalance.filter((x) => x.balance > 0).sort((a, b) => b.balance - a.balance);
+  const settledFriends = withBalance.filter((x) => x.balance === 0);
+  // Show a handle only to disambiguate duplicate display names (declutter).
+  const nameCounts = friendsList.reduce((m, f) => { m[f.name] = (m[f.name] || 0) + 1; return m; }, {} as Record<string, number>);
+  const friendHandle = (f: SafeUser) => (nameCounts[f.name] > 1 ? f.email.split("@")[0] : null);
+
+  const renderRow = (f: SafeUser, balance: number) => (
+    <Link key={f.id} href={`/friends/${f.id}`}>
+      <Card className="p-4 flex items-center gap-3 hover-elevate cursor-pointer" data-testid={`friend-card-${f.id}`}>
+        <div
+          className="w-11 h-11 rounded-full flex items-center justify-center text-white text-base font-semibold shrink-0"
+          style={{ backgroundColor: warmAvatar(f.id) }}
+        >
+          {f.name[0]?.toUpperCase()}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold tracking-tight truncate">{f.name}</p>
+          {friendHandle(f) && <p className="text-xs text-muted-foreground truncate font-mono">{friendHandle(f)}</p>}
+        </div>
+        {balance !== 0 ? (
+          <span className={`font-mono font-semibold shrink-0 ${balance > 0 ? AMOUNT_IN_CLASS : AMOUNT_OUT_CLASS}`}>
+            {formatMoney(Math.abs(balance), userCurrency)}
+          </span>
+        ) : (
+          <span className="text-xs text-muted-foreground shrink-0 font-mono">settled</span>
+        )}
+        <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+      </Card>
+    </Link>
+  );
+
   return (
     <div className="space-y-5">
       {/* Header */}
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight font-serif"><em className="italic text-accent-foreground">Friends</em></h1>
-          <p className="text-sm text-muted-foreground mt-0.5 font-mono">
-            {friendsList.length} friend{friendsList.length !== 1 ? "s" : ""} · Direct splits
+          <h1 className="font-serif text-4xl tracking-tight leading-none">Friends</h1>
+          <p className="text-sm text-muted-foreground mt-1.5 font-mono">
+            {friendsList.length} {friendsList.length === 1 ? "person" : "people"}
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {/* Add-expense dialog kept mounted (opens from the Personal Finance
+              "Split this" bridge); the visible button is intentionally removed —
+              expenses are added from inside a friend or group. */}
           {friendsList.length > 0 && (
             <Dialog open={addExpenseOpen} onOpenChange={setAddExpenseOpen}>
-              <DialogTrigger asChild>
-                <Button size="sm" data-testid="add-direct-expense-btn">
-                  <Plus className="w-4 h-4 mr-1.5" />
-                  Expense
-                </Button>
-              </DialogTrigger>
               <DialogContent className="max-h-[85vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>Split with a Friend</DialogTitle>
@@ -597,9 +639,8 @@ export default function Friends() {
           )}
           <Dialog open={addFriendOpen} onOpenChange={setAddFriendOpen}>
             <DialogTrigger asChild>
-              <Button size="sm" variant="secondary" data-testid="add-friend-btn">
-                <UserPlus className="w-4 h-4 mr-1.5" />
-                Add Friend
+              <Button size="icon" variant="outline" className="rounded-full w-11 h-11 shrink-0" data-testid="add-friend-btn" aria-label="Add friend">
+                <UserPlus className="w-5 h-5" />
               </Button>
             </DialogTrigger>
             <DialogContent>
@@ -709,62 +750,56 @@ export default function Friends() {
         </DialogContent>
       </Dialog>
 
-      {/* Friends list with balances */}
+      {/* Friends grouped by balance — scan who owes whom at a glance. Settle by
+          tapping a person (settle-up lives in their detail). */}
       {friendsList.length > 0 ? (
-        <div className="space-y-2">
-          <h2 className="text-sm font-medium text-muted-foreground font-serif">Your Friends</h2>
-          {friendsList.map((friend) => {
-            const balance = getFriendBalance(friend.id);
-            const hasExpenses = directExpenses.some(
-              (e) =>
-                (e.paidById === user?.id && e.splitAmongIds.includes(friend.id)) ||
-                (e.paidById === friend.id && e.splitAmongIds.includes(user?.id || ""))
-            );
-            return (
-              <Link key={friend.id} href={`/friends/${friend.id}`}>
-                <Card
-                  className="p-3 flex items-center gap-3 hover-elevate cursor-pointer"
-                  data-testid={`friend-card-${friend.id}`}
-                >
-                  <div
-                    className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-semibold shrink-0"
-                    style={{ backgroundColor: friend.avatarColor }}
-                  >
-                    {friend.name[0]?.toUpperCase()}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{friend.name}</p>
-                    <p className="text-xs text-muted-foreground truncate">{friend.email}</p>
-                  </div>
-                  {balance !== 0 && (
-                    <span
-                      className={`text-sm font-semibold shrink-0 font-mono ${
-                        balance > 0 ? AMOUNT_IN_CLASS : AMOUNT_OUT_CLASS
-                      }`}
+        <div className="space-y-6">
+          {youOwe.length > 0 && (
+            <div className="space-y-2">
+              <h2 className="text-xs font-mono uppercase tracking-wider text-muted-foreground">You owe</h2>
+              {youOwe.map(({ f, balance }) => renderRow(f, balance))}
+            </div>
+          )}
+
+          {owesYou.length > 0 && (
+            <div className="space-y-2">
+              <h2 className="text-xs font-mono uppercase tracking-wider text-muted-foreground">Owes you</h2>
+              {owesYou.map(({ f, balance }) => renderRow(f, balance))}
+            </div>
+          )}
+
+          {settledFriends.length > 0 && (
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={() => setSettledExpanded((v) => !v)}
+                className="w-full flex items-center gap-3 rounded-xl border border-dashed border-border p-3.5 text-left hover-elevate"
+                data-testid="settled-toggle"
+              >
+                <div className="flex -space-x-2.5 shrink-0">
+                  {settledFriends.slice(0, 3).map(({ f }) => (
+                    <div
+                      key={f.id}
+                      className="w-7 h-7 rounded-full border-2 border-background flex items-center justify-center text-white text-[11px] font-semibold"
+                      style={{ backgroundColor: warmAvatar(f.id) }}
                     >
-                      {balance > 0 ? `+${formatMoney(balance, userCurrency)}` : `-${formatMoney(Math.abs(balance), userCurrency)}`}
-                    </span>
-                  )}
-                  {balance === 0 && hasExpenses && (
-                    <span className="text-xs text-muted-foreground shrink-0">settled</span>
-                  )}
-                  {balance !== 0 && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="shrink-0 text-xs"
-                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleSettleUp(friend); }}
-                      data-testid={`settle-up-${friend.id}`}
-                    >
-                      <HandCoins className="w-3.5 h-3.5 mr-1" />
-                      Settle Up
-                    </Button>
-                  )}
-                  <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
-                </Card>
-              </Link>
-            );
-          })}
+                      {f.name[0]?.toUpperCase()}
+                    </div>
+                  ))}
+                </div>
+                <span className="flex-1 text-sm text-muted-foreground min-w-0 truncate">
+                  <span className="font-semibold text-foreground">{settledFriends.length} settled</span>
+                  {settledFriends.length <= 3 && ` · ${settledFriends.map(({ f }) => f.name.split(" ")[0]).join(", ")}`}
+                </span>
+                <ChevronRight className={`w-4 h-4 text-muted-foreground shrink-0 transition-transform ${settledExpanded ? "rotate-90" : ""}`} />
+              </button>
+              {settledExpanded && (
+                <div className="space-y-2">
+                  {settledFriends.map(({ f, balance }) => renderRow(f, balance))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       ) : (
         !isLoading && (
@@ -780,45 +815,6 @@ export default function Friends() {
         )
       )}
 
-      {/* Settlements summary */}
-      {settlements.length > 0 && (
-        <div>
-          <h2 className="text-sm font-medium text-muted-foreground mb-2 font-serif">Settlements</h2>
-          <div className="space-y-2">
-            {settlements.map((s, i) => (
-              <Card key={i} className="p-3 flex items-center gap-2">
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm">
-                    {s.from === user?.id ? (
-                      <>
-                        <span className="font-medium">You</span>
-                        {" pay "}
-                        <span className="font-medium">{getPersonName(s.to)}</span>
-                      </>
-                    ) : (
-                      <>
-                        <span className="font-medium">{getPersonName(s.from)}</span>
-                        {" pays "}
-                        <span className="font-medium">you</span>
-                      </>
-                    )}
-                  </p>
-                </div>
-                <span className="text-sm font-semibold text-primary shrink-0 font-mono">
-                  {formatMoney(s.amount, userCurrency)}
-                </span>
-              </Card>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Hint to click friends */}
-      {friendsList.length > 0 && (
-        <p className="text-xs text-muted-foreground text-center">
-          Tap a friend to see all expenses and settle up
-        </p>
-      )}
     </div>
   );
 }
