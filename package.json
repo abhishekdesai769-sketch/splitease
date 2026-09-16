@@ -66,6 +66,7 @@
     "@types/react": "^18.3.11",
     "@types/react-dom": "^18.3.1",
     "@types/ws": "^8.5.13",
+    "@vapi-ai/web": "^2.7.0",
     "@vitejs/plugin-react": "^4.7.0",
     "apns2": "^12.2.0",
     "apple-signin-auth": "^1.7.6",

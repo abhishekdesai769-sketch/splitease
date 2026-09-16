@@ -3476,7 +3476,8 @@ setInterval(loadAll,30000);
       { id: user.id, isPremium: !!user.isPremium },
       { clientClaimsIosNative },
     );
-    res.json({ ...access, configured: true });
+    // voiceEnabled drives whether the client shows the Speak/Chat toggle.
+    res.json({ ...access, configured: true, voiceEnabled: voice.VOICE_ENABLED() });
   });
 
   // 3. Get a conversation + all its messages

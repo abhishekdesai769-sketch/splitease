@@ -28,6 +28,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Sparkles, ArrowLeft, Send, Loader2, Crown, Check, X, Paperclip, FileText, Image as ImageIcon, Mic, Keyboard, MicOff } from "lucide-react";
 import { useVoiceMode } from "@/hooks/useVoiceMode";
+import { SpeakPanel } from "@/components/SpeakPanel";
 import { isIosNative } from "@/lib/iap";
 import ReactMarkdown from "react-markdown";
 
@@ -77,6 +78,8 @@ export default function AiMode() {
   const [conversationId, setConversationId] = useState<string | null>(routeConvId ?? null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
+  // Chat vs hands-free Speak (Vapi). Toggle only shown when voice is configured.
+  const [mode, setMode] = useState<"chat" | "speak">("chat");
   // Attachments selected for the NEXT send. Cleared on send + on error.
   // These are File objects held in browser memory only — never persisted
   // client-side, never written to disk server-side, only forwarded to the
@@ -109,6 +112,7 @@ export default function AiMode() {
     freeTurnsRemaining?: number;
     freeTurnsLimit?: number;
     configured?: boolean;
+    voiceEnabled?: boolean;
   }
   const [access, setAccess] = useState<AccessState | null>(null);
   useEffect(() => {
@@ -455,11 +459,42 @@ export default function AiMode() {
       <div className="flex flex-col">
         <PageHeader onBack={() => setLocation("/")} />
 
+        {/* Chat / Speak toggle — only when a Vapi voice agent is configured. */}
+        {access?.voiceEnabled && (
+          <div className="flex items-center gap-1 p-1 rounded-full border border-border bg-muted/40 w-fit mx-auto mt-1 mb-3">
+            {(["chat", "speak"] as const).map((m) => (
+              <button
+                key={m}
+                onClick={() => setMode(m)}
+                className={[
+                  "px-4 py-1.5 rounded-full text-xs font-semibold capitalize transition-colors focus:outline-none focus-visible:outline-none",
+                  mode === m ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
+                ].join(" ")}
+                data-testid={`ai-mode-tab-${m}`}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Speak (Vapi voice) — hands-free; reuses the same backend brain. */}
+        {mode === "speak" && (
+          <SpeakPanel
+            iosQs={IOS_QS}
+            onExpenseCreated={() => {
+              queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
+              queryClient.invalidateQueries({ queryKey: ["/api/friends/expenses"] });
+            }}
+          />
+        )}
+
         {/* Messages — padded at bottom to clear the fixed input bar
             (~150px including the bar's height + bottom nav + safe area). */}
         <div
           ref={scrollRef}
           className="space-y-3"
+          hidden={mode === "speak"}
           style={{ paddingBottom: "calc(170px + env(safe-area-inset-bottom))" }}
         >
           {messages.length === 0 && <EmptyState />}
@@ -486,6 +521,7 @@ export default function AiMode() {
           offset = nav height (4rem) + nav's safe-area inset, so it lifts
           above the home-indicator zone consistently. */}
       <div
+        hidden={mode === "speak"}
         className="fixed left-0 right-0 z-30 border-t border-border bg-background/95 backdrop-blur-md px-4 pt-3 pb-2"
         style={{ bottom: "calc(4rem + env(safe-area-inset-bottom))" }}
       >
