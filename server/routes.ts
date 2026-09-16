@@ -20,6 +20,7 @@ import { aiConversations, aiMessages } from "@shared/schema";
 import * as ai from "./ai";
 import { buildAttachmentContext } from "./receiptTranscription";
 import * as aiQuota from "./aiQuota";
+import * as voice from "./voiceAgent";
 import * as campaigns from "./campaigns";
 import * as authThrottle from "./auth-throttle";
 import { clientErrors as clientErrorsTable, expenses as expensesTable } from "@shared/schema";
@@ -3800,6 +3801,99 @@ setInterval(loadAll,30000);
       .where(eq(aiMessages.id, msg.id));
 
     res.json({ created, failed });
+  });
+
+  // ── AI Mode "Speak" (Vapi voice front-end over runAiTurn) ────────────────
+  //
+  // Two endpoints:
+  //   POST /api/ai/voice/token  — authed browser asks for a short-lived token
+  //     + the public Vapi ids so it can start an in-browser voice call.
+  //   POST /api/ai/voice-tool   — Vapi's server-to-server tool webhook. Not
+  //     session-authed; trust comes from (a) the shared Vapi secret and (b) the
+  //     per-user token minted above. Runs the SAME runAiTurn / createExpense
+  //     path as chat, so voice inherits the split logic + the payer lock.
+
+  app.post("/api/ai/voice/token", requireAuth, async (req: any, res) => {
+    const guard = await aiGuard(req, res); if (!guard) return;      // premium/quota gate reused
+    if (!voice.VOICE_ENABLED()) return res.status(503).json({ error: "voice_not_configured" });
+    res.json({
+      token: voice.mintVoiceToken(guard.user.id),
+      publicKey: process.env.VAPI_PUBLIC_KEY,
+      assistantId: process.env.VAPI_ASSISTANT_ID,
+    });
+  });
+
+  app.post("/api/ai/voice-tool", async (req: any, res) => {
+    // 1. Authenticity: shared Vapi secret, then the per-user signed token.
+    if (!voice.VOICE_ENABLED() || !voice.verifyVapiSecret(req)) {
+      return res.status(401).json({ error: "unauthorized" });
+    }
+    const parsed = voice.parseVapiToolCall(req.body);
+    if (!parsed) return res.status(400).json({ error: "bad_tool_call" });
+    const userId = voice.verifyVoiceToken(parsed.token);
+    if (!userId) return res.status(401).json({ error: "bad_token" });
+
+    const user = await storage.getUser(userId);
+    if (!user) return res.status(404).json({ error: "user_not_found" });
+
+    // Reuse the exact same context + name lookup the chat path builds.
+    const ctx = await buildAiContextForUser(user);
+    const names: Record<string, string> = { [ctx.userId]: ctx.userName };
+    for (const f of ctx.friends) names[f.id] = f.name;
+    for (const g of ctx.groups) Object.assign(names, g.memberNames || {});
+    const nameOf = (id: string) => names[id] || "someone";
+
+    try {
+      if (parsed.name === "propose_split") {
+        const utterance = String(parsed.args.utterance || parsed.args.text || "").trim();
+        if (!utterance) return res.json(voice.vapiToolResult(parsed.toolCallId, "What should I split?"));
+        const result = await ai.runAiTurn({ ctx, history: [], newUserMessage: utterance });
+        const list = result.kind === "multi_proposal" ? (result.multiProposal || [])
+                   : result.proposal ? [result.proposal] : [];
+        if (list.length === 0) {
+          // clarification / refusal / chit-chat — just voice the model's words back.
+          return res.json(voice.vapiToolResult(parsed.toolCallId, result.assistantText || "Could you say that another way?"));
+        }
+        voice.stashProposal(parsed.callId, userId, list.length === 1 ? list[0] : list);
+        const readback = list.length === 1
+          ? voice.speakProposal(list[0], nameOf)
+          : `${list.length} expenses: ` + list.map((p) => voice.speakProposal(p, nameOf)).join(" ");
+        return res.json(voice.vapiToolResult(parsed.toolCallId, readback));
+      }
+
+      if (parsed.name === "create_split") {
+        const proposals = voice.takeProposal(parsed.callId, userId);
+        if (!proposals) return res.json(voice.vapiToolResult(parsed.toolCallId, "I don't have a split ready — tell me the expense first."));
+        // CURRENT-USER-PAID LOCK — same server backstop as the chat /confirm route.
+        if (proposals.some((p) => p.paidByUserId !== userId)) {
+          return res.json(voice.vapiToolResult(parsed.toolCallId, "I can only log expenses you paid for. Add that one from the manual form."));
+        }
+        let created = 0;
+        for (const p of proposals) {
+          await storage.createExpense({
+            description: sanitize(p.description, 200),
+            amount: Number(p.amount),
+            paidById: p.paidByUserId,
+            splitAmongIds: p.splitAmongUserIds,
+            groupId: p.groupId || null,
+            date: new Date().toISOString(),
+            addedById: userId,
+            isSettlement: false,
+            notes: null,
+            splitAmounts: p.splitAmounts ? JSON.stringify(p.splitAmounts) : null,
+            currency: p.currency && p.currency !== "CAD" ? p.currency : null,
+            originalAmount: null,
+          });
+          created++;
+        }
+        return res.json(voice.vapiToolResult(parsed.toolCallId, created === 1 ? "Done — saved it." : `Done — saved ${created} expenses.`));
+      }
+
+      return res.json(voice.vapiToolResult(parsed.toolCallId, "I'm not sure what to do with that."));
+    } catch (err: any) {
+      console.error("[voice-tool] error:", err?.message);
+      return res.json(voice.vapiToolResult(parsed.toolCallId, "Something went wrong saving that — try again in a moment."));
+    }
   });
 
   // 6. Archive (soft-delete) a conversation
