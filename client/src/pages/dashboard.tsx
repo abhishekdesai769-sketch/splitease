@@ -336,7 +336,7 @@ export default function Dashboard() {
                       </>
                     )}
                     {" "}
-                    <span className={`font-semibold ${theyOweMe ? AMOUNT_IN_CLASS : AMOUNT_OUT_CLASS}`}>{formatMoney(s.amount, userCurrency)}</span>
+                    <span className={`font-semibold font-mono tabular-nums ${theyOweMe ? AMOUNT_IN_CLASS : AMOUNT_OUT_CLASS}`}>{formatMoney(s.amount, userCurrency)}</span>
                   </p>
                 </Card>
               );

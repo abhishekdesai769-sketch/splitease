@@ -264,8 +264,8 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
               className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-muted/50 transition-colors text-left group"
               data-testid="menu-invite-friend"
             >
-              <div className="w-9 h-9 rounded-lg bg-emerald-500/10 flex items-center justify-center flex-shrink-0">
-                <UserPlus className="w-4.5 h-4.5 text-emerald-500" />
+              <div className="w-9 h-9 rounded-lg bg-foreground/5 flex items-center justify-center flex-shrink-0">
+                <UserPlus className="w-4.5 h-4.5 text-foreground" />
               </div>
               <div>
                 <p className="text-sm font-medium">Invite a Friend</p>
@@ -279,8 +279,8 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
               className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-muted/50 transition-colors text-left group"
               data-testid="menu-leave-review"
             >
-              <div className="w-9 h-9 rounded-lg bg-amber-500/10 flex items-center justify-center flex-shrink-0">
-                <Star className="w-4.5 h-4.5 text-amber-500 fill-amber-500" />
+              <div className="w-9 h-9 rounded-lg bg-foreground/5 flex items-center justify-center flex-shrink-0">
+                <Star className="w-4.5 h-4.5 text-foreground fill-foreground" />
               </div>
               <div>
                 <p className="text-sm font-medium">Leave a Review ⭐</p>
@@ -294,8 +294,8 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
               className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-muted/50 transition-colors text-left group"
               data-testid="menu-import-splitwise"
             >
-              <div className="w-9 h-9 rounded-lg bg-blue-500/10 flex items-center justify-center flex-shrink-0">
-                <Upload className="w-4.5 h-4.5 text-blue-500" />
+              <div className="w-9 h-9 rounded-lg bg-foreground/5 flex items-center justify-center flex-shrink-0">
+                <Upload className="w-4.5 h-4.5 text-foreground" />
               </div>
               <div>
                 <p className="text-sm font-medium">Import from Splitwise</p>
@@ -312,14 +312,14 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
               className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-muted/50 transition-colors text-left group"
               data-testid="menu-auto-reminders"
             >
-              <div className="w-9 h-9 rounded-lg bg-amber-500/10 flex items-center justify-center flex-shrink-0">
-                <Bell className="w-4.5 h-4.5 text-amber-500" />
+              <div className="w-9 h-9 rounded-lg bg-foreground/5 flex items-center justify-center flex-shrink-0">
+                <Bell className="w-4.5 h-4.5 text-foreground" />
               </div>
               <div className="flex-1">
                 <div className="flex items-center gap-1.5">
                   <p className="text-sm font-medium">Auto Reminders</p>
                   {!user?.isPremium && (
-                    <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded-full">
+                    <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-foreground bg-foreground/5 px-1.5 py-0.5 rounded-full">
                       <Crown className="w-2.5 h-2.5" /> Premium
                     </span>
                   )}
@@ -335,8 +335,8 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
               className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-muted/50 transition-colors text-left group"
               data-testid="menu-payment"
             >
-              <div className="w-9 h-9 rounded-lg bg-emerald-500/10 flex items-center justify-center flex-shrink-0">
-                <Wallet className="w-4.5 h-4.5 text-emerald-500" />
+              <div className="w-9 h-9 rounded-lg bg-foreground/5 flex items-center justify-center flex-shrink-0">
+                <Wallet className="w-4.5 h-4.5 text-foreground" />
               </div>
               <div>
                 <p className="text-sm font-medium">How I get paid</p>
@@ -350,8 +350,8 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
               className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-muted/50 transition-colors text-left group"
               data-testid="menu-preferences"
             >
-              <div className="w-9 h-9 rounded-lg bg-indigo-500/10 flex items-center justify-center flex-shrink-0">
-                <Settings className="w-4.5 h-4.5 text-indigo-500" />
+              <div className="w-9 h-9 rounded-lg bg-foreground/5 flex items-center justify-center flex-shrink-0">
+                <Settings className="w-4.5 h-4.5 text-foreground" />
               </div>
               <div>
                 <p className="text-sm font-medium">Preferences</p>
@@ -365,8 +365,8 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
               className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-muted/50 transition-colors text-left group"
               data-testid="menu-faq"
             >
-              <div className="w-9 h-9 rounded-lg bg-violet-500/10 flex items-center justify-center flex-shrink-0">
-                <HelpCircle className="w-4.5 h-4.5 text-violet-500" />
+              <div className="w-9 h-9 rounded-lg bg-foreground/5 flex items-center justify-center flex-shrink-0">
+                <HelpCircle className="w-4.5 h-4.5 text-foreground" />
               </div>
               <div>
                 <p className="text-sm font-medium">FAQs</p>
@@ -379,14 +379,14 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
             {!isInTWA && !user?.isPremium && (
               <button
                 onClick={() => { setOpen(false); setLocation("/upgrade"); }}
-                className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-amber-500/5 transition-colors text-left group"
+                className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-foreground/5 transition-colors text-left group"
                 data-testid="menu-upgrade"
               >
-                <div className="w-9 h-9 rounded-lg bg-amber-500/10 flex items-center justify-center flex-shrink-0">
-                  <Crown className="w-4.5 h-4.5 text-amber-500" />
+                <div className="w-9 h-9 rounded-lg bg-foreground/5 flex items-center justify-center flex-shrink-0">
+                  <Crown className="w-4.5 h-4.5 text-foreground" />
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-amber-500">Upgrade to Premium</p>
+                  <p className="text-sm font-medium text-foreground">Upgrade to Premium</p>
                   <p className="text-xs text-muted-foreground">Unlock all features</p>
                 </div>
               </button>
@@ -552,8 +552,8 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
               className="flex items-center gap-3 px-3 py-3 rounded-lg border border-border hover:bg-muted/50 transition-colors text-left mb-3"
               data-testid="invite-sms"
             >
-              <div className="w-9 h-9 rounded-lg bg-blue-500/10 flex items-center justify-center flex-shrink-0">
-                <Send className="w-4 h-4 text-blue-500" />
+              <div className="w-9 h-9 rounded-lg bg-foreground/5 flex items-center justify-center flex-shrink-0">
+                <Send className="w-4 h-4 text-foreground" />
               </div>
               <div>
                 <p className="text-sm font-medium">Text Message</p>
@@ -567,8 +567,8 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
               className="flex items-center gap-3 px-3 py-3 rounded-lg border border-border hover:bg-muted/50 transition-colors text-left mb-3"
               data-testid="invite-email"
             >
-              <div className="w-9 h-9 rounded-lg bg-amber-500/10 flex items-center justify-center flex-shrink-0">
-                <Mail className="w-4 h-4 text-amber-500" />
+              <div className="w-9 h-9 rounded-lg bg-foreground/5 flex items-center justify-center flex-shrink-0">
+                <Mail className="w-4 h-4 text-foreground" />
               </div>
               <div>
                 <p className="text-sm font-medium">Email</p>
@@ -683,12 +683,12 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
                   (Google Play policy: no upgrade CTA / pricing). Defense-in-
                   depth; the menu entrypoint above is also hidden in TWA. */}
               {!isPremium && !isInTWA && (
-                <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 mb-4 flex items-start gap-2 flex-shrink-0">
-                  <Crown className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                <div className="rounded-lg border border-accent-foreground/30 bg-accent-foreground/5 p-3 mb-4 flex items-start gap-2 flex-shrink-0">
+                  <Crown className="w-4 h-4 text-foreground shrink-0 mt-0.5" />
                   <div>
-                    <p className="text-xs font-semibold text-amber-500 mb-0.5">Premium feature</p>
+                    <p className="text-xs font-semibold text-foreground mb-0.5">Premium feature</p>
                     <p className="text-xs text-muted-foreground mb-1">Upgrade to turn on auto reminders. Preview the emails below for free.</p>
-                    <button onClick={() => setUpgradeSheetOpen(true)} className="text-xs text-amber-500 font-semibold">
+                    <button onClick={() => setUpgradeSheetOpen(true)} className="text-xs text-foreground font-semibold">
                       Get Premium →
                     </button>
                   </div>
@@ -706,7 +706,7 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
                 ) : (
                   <button
                     onClick={() => setUpgradeSheetOpen(true)}
-                    className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-500 bg-amber-500/10 px-2 py-1 rounded-full"
+                    className="inline-flex items-center gap-1 text-[10px] font-semibold text-foreground bg-foreground/5 px-2 py-1 rounded-full"
                   >
                     <Crown className="w-3 h-3" /> Premium
                   </button>
@@ -792,7 +792,7 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
               </Button>
               {!isPremium && (
                 <p className="text-xs text-center text-muted-foreground mt-2">
-                  <button onClick={() => setUpgradeSheetOpen(true)} className="text-amber-500 font-semibold">Get Premium</button> to save &amp; activate
+                  <button onClick={() => setUpgradeSheetOpen(true)} className="text-foreground font-semibold">Get Premium</button> to save &amp; activate
                 </p>
               )}
             </div>
