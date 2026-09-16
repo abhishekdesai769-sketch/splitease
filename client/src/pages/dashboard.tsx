@@ -14,6 +14,16 @@ import { CelebrationBanner } from "@/components/CelebrationBanner";
 import { WhatsNewModal } from "@/components/WhatsNewModal";
 import { formatMoney } from "@/components/CurrencySelector";
 
+// Warm, on-brand avatar colour derived from a person's id — ignores any stale
+// teal/blue values still stored on legacy accounts from the old theme, so
+// avatars are always in the cream/terracotta palette. Deterministic per person.
+const WARM_AVATARS = ["#7A3E32", "#8C5A3C", "#9A4A2A", "#A6674A", "#8A6A32", "#B04A34", "#6B4A3A", "#B5794A"];
+function warmAvatar(id: string): string {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return WARM_AVATARS[h % WARM_AVATARS.length];
+}
+
 function StatCard({ label, value, href, variant = "count", accent }: { label: string; value: string; href?: string; variant?: "count" | "money"; accent?: boolean }) {
   const money = variant === "money";
   const inner = (
@@ -324,7 +334,7 @@ export default function Dashboard() {
                   <div className="flex items-center gap-3 min-w-0">
                     <div
                       className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-serif shrink-0"
-                      style={{ backgroundColor: other?.avatarColor || "#8C5A3C" }}
+                      style={{ backgroundColor: warmAvatar(otherId) }}
                     >{initial}</div>
                     <div className="min-w-0">
                       <p className="text-[15px] font-medium truncate">{getPersonName(otherId)}</p>
