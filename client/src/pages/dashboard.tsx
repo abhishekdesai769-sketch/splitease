@@ -14,19 +14,16 @@ import { CelebrationBanner } from "@/components/CelebrationBanner";
 import { WhatsNewModal } from "@/components/WhatsNewModal";
 import { formatMoney } from "@/components/CurrencySelector";
 
-function StatCard({ icon: Icon, label, value, href, color }: { icon: any; label: string; value: string; href?: string; color?: string }) {
+function StatCard({ label, value, href, variant = "count", accent }: { label: string; value: string; href?: string; variant?: "count" | "money"; accent?: boolean }) {
+  const money = variant === "money";
   const inner = (
-    <Card className={`p-4 ${href ? "hover-elevate cursor-pointer" : ""}`}>
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-          <Icon className={`w-5 h-5 ${color || "text-primary"}`} />
-        </div>
-        <div>
-          <p className="text-xl font-semibold text-foreground font-mono" data-testid={`stat-${label.toLowerCase().replace(/\s/g, "-")}`}>{value}</p>
-          <p className="text-sm text-muted-foreground">{label}</p>
-        </div>
-      </div>
-    </Card>
+    <div className={`rounded-2xl p-4 border ${money ? "bg-foreground border-foreground" : `bg-card border-border ${href ? "hover-elevate cursor-pointer" : ""}`}`}>
+      <p className={`text-xs font-medium ${money ? "text-background/70" : "text-muted-foreground"}`}>{label}</p>
+      <p
+        className={`mt-1.5 ${money ? `text-[26px] leading-none font-mono tabular-nums ${accent ? "text-[#E8B98C]" : "text-background"}` : "text-3xl font-serif text-foreground"}`}
+        data-testid={`stat-${label.toLowerCase().replace(/\s/g, "-")}`}
+      >{value}</p>
+    </div>
   );
   if (href) return <Link href={href}>{inner}</Link>;
   return inner;
@@ -264,22 +261,22 @@ export default function Dashboard() {
       )}
 
       <div>
-        <h1 className="text-xl font-semibold tracking-tight font-serif">
+        <h1 className="text-4xl font-serif tracking-tight leading-none">
           Hey, <em className="italic text-accent-foreground">{user?.name?.split(" ")[0] || "there"}</em>
         </h1>
-        <p className="text-sm text-muted-foreground mt-1">Here's your expense overview</p>
+        <p className="text-[15px] text-muted-foreground mt-2">Here's your expense overview</p>
       </div>
 
-      {/* Always show the 4-stat-card grid — the Friends/Groups tiles are
-          themselves tappable nav, so even when everything is zero they give a
-          new user something to do without nagging. Users who skipped the
-          first-run wizard explicitly opted out of being walked through; we
-          respect that and don't show a second "Create your first group" CTA. */}
-      <div className="grid grid-cols-2 gap-3">
-        <StatCard icon={Users2} label="Friends" value={String(friendsList.length)} href="/friends" />
-        <StatCard icon={UsersRound} label="Groups" value={String(groups.length)} href="/groups" />
-        <StatCard icon={TrendingDown} label="You Owe" value={formatMoney(youOwe, userCurrency)} color={AMOUNT_OUT_CLASS} />
-        <StatCard icon={TrendingUp} label="You're Owed" value={formatMoney(youAreOwed, userCurrency)} color={AMOUNT_IN_CLASS} />
+      {/* Overview — money cards weighted (dark) so the balance you care about
+          is the focal point; Friends/Groups stay quiet tappable nav tiles. */}
+      <div>
+        <p className="text-[11px] font-mono uppercase tracking-[0.14em] text-muted-foreground mb-2">Overview</p>
+        <div className="grid grid-cols-2 gap-3">
+          <StatCard label="You're Owed" value={formatMoney(youAreOwed, userCurrency)} variant="money" accent />
+          <StatCard label="You Owe" value={formatMoney(youOwe, userCurrency)} variant="money" />
+          <StatCard label="Friends" value={String(friendsList.length)} href="/friends" />
+          <StatCard label="Groups" value={String(groups.length)} href="/groups" />
+        </div>
       </div>
 
       {/* AI Mode tile — full-width, gradient, dashboard-prominent. Visible
@@ -289,17 +286,17 @@ export default function Dashboard() {
       <Link href="/ai">
         <button
           type="button"
-          className="w-full group relative overflow-hidden rounded-xl border border-primary/30 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent p-4 text-left transition-all active:scale-[0.99] hover:border-primary/50"
+          className="w-full group rounded-2xl border border-border bg-card p-4 text-left transition-all active:scale-[0.99] hover:border-foreground/25"
           data-testid="dashboard-ai-mode-tile"
         >
           <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-xl bg-primary/15 flex items-center justify-center shrink-0">
-              <Sparkles className="w-5 h-5 text-primary" />
+            <div className="w-11 h-11 rounded-xl bg-foreground flex items-center justify-center shrink-0">
+              <Sparkles className="w-5 h-5 text-background" />
             </div>
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-1.5">
-                <h3 className="text-base font-semibold">AI Mode</h3>
-                <span className="text-[9px] uppercase tracking-wider font-mono font-semibold text-primary/70 bg-primary/10 px-1.5 py-0.5 rounded">
+              <div className="flex items-center gap-2">
+                <h3 className="text-lg font-serif">AI Mode</h3>
+                <span className="text-[9px] uppercase tracking-wider font-mono font-semibold text-background bg-accent-foreground px-1.5 py-0.5 rounded">
                   New
                 </span>
               </div>
@@ -312,33 +309,30 @@ export default function Dashboard() {
         </button>
       </Link>
 
-      {/* Your settlements */}
+      {/* Your settlements — two-column rows: person left, amount right (tabular). */}
       {mySettlements.length > 0 && (
         <div>
-          <h2 className="text-base font-semibold mb-3 font-serif">Your Balances</h2>
-          <div className="space-y-2">
+          <p className="text-[11px] font-mono uppercase tracking-[0.14em] text-muted-foreground mb-1">Your Balances</p>
+          <div>
             {mySettlements.map((s, i) => {
               const theyOweMe = s.to === user?.id;
+              const otherId = theyOweMe ? s.from : s.to;
+              const other = allMembers.find((m) => m.id === otherId);
+              const initial = (other?.name || "?").charAt(0).toUpperCase();
               return (
-                <Card key={i} className="p-3">
-                  <p className="text-sm">
-                    {s.from === user?.id ? (
-                      <>
-                        <span className="font-medium">You</span>
-                        {" pay "}
-                        <span className="font-medium">{getPersonName(s.to)}</span>
-                      </>
-                    ) : (
-                      <>
-                        <span className="font-medium">{getPersonName(s.from)}</span>
-                        {" pays "}
-                        <span className="font-medium">you</span>
-                      </>
-                    )}
-                    {" "}
-                    <span className={`font-semibold font-mono tabular-nums ${theyOweMe ? AMOUNT_IN_CLASS : AMOUNT_OUT_CLASS}`}>{formatMoney(s.amount, userCurrency)}</span>
-                  </p>
-                </Card>
+                <div key={i} className="flex items-center justify-between gap-3 py-3 border-b border-border last:border-b-0">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div
+                      className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-serif shrink-0"
+                      style={{ backgroundColor: other?.avatarColor || "#8C5A3C" }}
+                    >{initial}</div>
+                    <div className="min-w-0">
+                      <p className="text-[15px] font-medium truncate">{getPersonName(otherId)}</p>
+                      <p className="text-xs text-muted-foreground">{theyOweMe ? "owes you" : "you pay"}</p>
+                    </div>
+                  </div>
+                  <span className={`font-mono tabular-nums text-base font-semibold shrink-0 ${theyOweMe ? AMOUNT_IN_CLASS : AMOUNT_OUT_CLASS}`}>{formatMoney(s.amount, userCurrency)}</span>
+                </div>
               );
             })}
           </div>
@@ -380,7 +374,7 @@ export default function Dashboard() {
       {/* Recent expenses */}
       {recentExpenses.length > 0 && (
         <div>
-          <h2 className="text-base font-semibold mb-3 font-serif">Recent Expenses</h2>
+          <p className="text-[11px] font-mono uppercase tracking-[0.14em] text-muted-foreground mb-2">Recent Expenses</p>
           <div className="space-y-2">
             {recentExpenses.map((expense) => (
               <Card key={expense.id} className="p-4 flex items-center justify-between gap-2">
