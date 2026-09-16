@@ -122,8 +122,11 @@ export function formatMoney(
   expenseCurrency?: string | null,
   originalAmount?: number | null,
 ): string {
+  // Group thousands with commas (e.g. $3,171.64) for a cleaner, more premium
+  // read on larger balances. Display-only; always 2 decimal places.
+  const grp = (n: number) => n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   if (expenseCurrency && expenseCurrency !== "CAD" && originalAmount != null) {
-    return `${currencySymbol(expenseCurrency)}${originalAmount.toFixed(2)} → ${currencySymbol("CAD")}${amount.toFixed(2)}`;
+    return `${currencySymbol(expenseCurrency)}${grp(originalAmount)} → ${currencySymbol("CAD")}${grp(amount)}`;
   }
-  return `${currencySymbol(viewerCurrency)}${amount.toFixed(2)}`;
+  return `${currencySymbol(viewerCurrency)}${grp(amount)}`;
 }

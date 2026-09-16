@@ -27,10 +27,10 @@ function warmAvatar(id: string): string {
 function StatCard({ label, value, href, variant = "count", accent }: { label: string; value: string; href?: string; variant?: "count" | "money"; accent?: boolean }) {
   const money = variant === "money";
   const inner = (
-    <div className={`rounded-2xl p-4 border ${money ? "bg-foreground border-foreground" : `bg-card border-border ${href ? "hover-elevate cursor-pointer" : ""}`}`}>
-      <p className={`text-xs font-medium ${money ? "text-background/70" : "text-muted-foreground"}`}>{label}</p>
+    <div className={`rounded-2xl p-5 border ${money ? "bg-foreground border-foreground" : `bg-card border-border ${href ? "hover-elevate cursor-pointer" : ""}`}`}>
+      <p className={`text-[13px] font-medium ${money ? "text-background/70" : "text-muted-foreground"}`}>{label}</p>
       <p
-        className={`mt-1.5 ${money ? `text-[26px] leading-none font-mono tabular-nums ${accent ? "text-[#E8B98C]" : "text-background"}` : "text-3xl font-serif text-foreground"}`}
+        className={`mt-2 ${money ? `text-[28px] leading-none font-mono tabular-nums ${accent ? "text-[#E8B98C]" : "text-background"}` : "text-[32px] leading-none font-serif text-foreground"}`}
         data-testid={`stat-${label.toLowerCase().replace(/\s/g, "-")}`}
       >{value}</p>
     </div>
@@ -212,7 +212,7 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-7">
       {/* One-time "what's new" feature carousel — shown once per user, ever. */}
       <WhatsNewModal />
 
@@ -274,14 +274,14 @@ export default function Dashboard() {
         <h1 className="text-4xl font-serif tracking-tight leading-none">
           Hey, <em className="italic text-accent-foreground">{user?.name?.split(" ")[0] || "there"}</em>
         </h1>
-        <p className="text-[15px] text-muted-foreground mt-2">Here's your expense overview</p>
+        <p className="text-[15px] text-muted-foreground mt-2">Here's where everyone stands.</p>
       </div>
 
       {/* Overview — money cards weighted (dark) so the balance you care about
           is the focal point; Friends/Groups stay quiet tappable nav tiles. */}
       <div>
-        <p className="text-[11px] font-mono uppercase tracking-[0.14em] text-muted-foreground mb-2">Overview</p>
-        <div className="grid grid-cols-2 gap-3">
+        <p className="text-[11px] font-mono uppercase tracking-[0.14em] text-muted-foreground mb-3">Overview</p>
+        <div className="grid grid-cols-2 gap-4">
           <StatCard label="You're Owed" value={formatMoney(youAreOwed, userCurrency)} variant="money" accent />
           <StatCard label="You Owe" value={formatMoney(youOwe, userCurrency)} variant="money" />
           <StatCard label="Friends" value={String(friendsList.length)} href="/friends" />
@@ -296,7 +296,7 @@ export default function Dashboard() {
       <Link href="/ai">
         <button
           type="button"
-          className="w-full group rounded-2xl border border-border bg-card p-4 text-left transition-all active:scale-[0.99] hover:border-foreground/25"
+          className="w-full group rounded-2xl border border-border bg-card p-5 text-left transition-all active:scale-[0.99] hover:border-foreground/25"
           data-testid="dashboard-ai-mode-tile"
         >
           <div className="flex items-center gap-3">
@@ -305,7 +305,7 @@ export default function Dashboard() {
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
-                <h3 className="text-lg font-serif">AI Mode</h3>
+                <h3 className="text-lg font-serif">Split it by just saying it</h3>
                 <span className="text-[9px] uppercase tracking-wider font-mono font-semibold text-background bg-accent-foreground px-1.5 py-0.5 rounded">
                   New
                 </span>
@@ -322,7 +322,7 @@ export default function Dashboard() {
       {/* Your settlements — two-column rows: person left, amount right (tabular). */}
       {mySettlements.length > 0 && (
         <div>
-          <p className="text-[11px] font-mono uppercase tracking-[0.14em] text-muted-foreground mb-1">Your Balances</p>
+          <p className="text-[11px] font-mono uppercase tracking-[0.14em] text-muted-foreground mb-3">Your Balances</p>
           <div>
             {mySettlements.map((s, i) => {
               const theyOweMe = s.to === user?.id;
@@ -330,7 +330,7 @@ export default function Dashboard() {
               const other = allMembers.find((m) => m.id === otherId);
               const initial = (other?.name || "?").charAt(0).toUpperCase();
               return (
-                <div key={i} className="flex items-center justify-between gap-3 py-3 border-b border-border last:border-b-0">
+                <div key={i} className="flex items-center justify-between gap-3 py-4 border-b border-border last:border-b-0">
                   <div className="flex items-center gap-3 min-w-0">
                     <div
                       className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-serif shrink-0"
@@ -338,7 +338,7 @@ export default function Dashboard() {
                     >{initial}</div>
                     <div className="min-w-0">
                       <p className="text-[15px] font-medium truncate">{getPersonName(otherId)}</p>
-                      <p className="text-xs text-muted-foreground">{theyOweMe ? "owes you" : "you pay"}</p>
+                      <p className="text-xs text-muted-foreground">{theyOweMe ? "pays you" : "you pay"}</p>
                     </div>
                   </div>
                   <span className={`font-mono tabular-nums text-base font-semibold shrink-0 ${theyOweMe ? AMOUNT_IN_CLASS : AMOUNT_OUT_CLASS}`}>{formatMoney(s.amount, userCurrency)}</span>
