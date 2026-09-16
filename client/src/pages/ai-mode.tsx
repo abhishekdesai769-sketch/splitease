@@ -615,9 +615,6 @@ export default function AiMode() {
               {sendMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
             </Button>
           </div>
-          <p className="text-[10px] text-muted-foreground/70 mt-1.5 text-center">
-            🎙️ Talk · 📎 Attach · ⌨️ Type — AI proposes, you confirm. Receipts parsed then discarded, never stored.
-          </p>
         </div>
       </div>
     </>
@@ -633,8 +630,8 @@ function PageHeader({ onBack }: { onBack: () => void }) {
         <ArrowLeft className="w-5 h-5" />
       </Button>
       <div className="flex items-center gap-2">
-        <Sparkles className="w-5 h-5 text-primary" />
-        <h1 className="text-lg font-semibold">AI Mode</h1>
+        <Sparkles className="w-5 h-5 text-accent-foreground" />
+        <h1 className="text-xl font-serif">AI Mode</h1>
       </div>
     </div>
   );
@@ -642,43 +639,14 @@ function PageHeader({ onBack }: { onBack: () => void }) {
 
 function EmptyState() {
   return (
-    <div className="text-center py-8 px-4 space-y-5">
-      <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-primary/10 mx-auto">
-        <Sparkles className="w-7 h-7 text-primary" />
+    <div className="flex flex-col items-center justify-center text-center px-6 pt-24 pb-10">
+      <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-foreground text-background mb-6">
+        <Sparkles className="w-8 h-8" />
       </div>
-      <div className="space-y-1.5">
-        <h2 className="text-base font-semibold">What's the split?</h2>
-        <p className="text-xs text-muted-foreground max-w-sm mx-auto">
-          Talk to me, drop a receipt, or just type. I'll do the rest.
-        </p>
-      </div>
-
-      {/* THE differentiator — pain point → "wow no other app does that". */}
-      <div className="mx-auto max-w-sm rounded-xl border border-primary/30 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent p-3.5 text-left">
-        <div className="flex items-start gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center shrink-0">
-            <FileText className="w-4 h-4 text-primary" />
-          </div>
-          <div className="min-w-0">
-            <p className="text-[13px] font-semibold leading-tight">
-              The receipts other apps can't read.
-            </p>
-            <p className="text-[11px] text-muted-foreground mt-1 leading-relaxed">
-              Uber Eats. DoorDash. Amazon. Your subscriptions. They all email <span className="font-medium text-foreground">PDFs</span> now — not paper. Other splitting apps can only scan photos, so those receipts have nowhere to go.
-            </p>
-            <p className="text-[11px] mt-1.5 leading-relaxed">
-              <span className="font-semibold text-primary">Drop yours here.</span> <span className="text-muted-foreground">I'll read every item, every tax, every tip — and split it the way you would.</span>
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Three input modes, called out as examples */}
-      <div className="space-y-2 max-w-sm mx-auto pt-1">
-        <ModeExample icon="mic" text='"Split groceries $45 with Krish"' />
-        <ModeExample icon="type" text='"Dinner with my Halifax group, $200, I paid"' />
-        <ModeExample icon="paperclip" text="Drop a PDF or screenshot — I'll do the rest" />
-      </div>
+      <h2 className="text-4xl font-serif tracking-tight leading-none text-foreground">What's the split?</h2>
+      <p className="text-[15px] text-muted-foreground mt-3 max-w-[22ch]">
+        Talk, type, or drop a receipt — Spliiit does the rest.
+      </p>
     </div>
   );
 }
