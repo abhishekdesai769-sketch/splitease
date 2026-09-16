@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Plus, Trash2, Receipt, CheckCircle2, HandCoins, AlertTriangle, UserMinus, Camera, X, Mail, Loader2, FileText, Upload, MoreVertical, Download, Repeat, Crown } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Receipt, CheckCircle2, HandCoins, Bell, AlertTriangle, UserMinus, Camera, X, Mail, Loader2, FileText, Upload, MoreVertical, Download, Repeat, Crown } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { UpgradePromptSheet } from "@/components/UpgradePromptSheet";
 import { isInTWA } from "@/lib/platform";
@@ -22,6 +22,16 @@ import { calculateGroupBalances } from "@/lib/simplify";
 import { displayBalance, AMOUNT_IN_CLASS, AMOUNT_OUT_CLASS } from "@/lib/balance-display";
 import { PaymentMethodsView } from "@/components/PaymentMethods";
 import { recordExpenseAndCheck, triggerReview } from "@/lib/reviewPrompt";
+import { ReminderSheet } from "@/components/ReminderSheet";
+
+// Clamp friend avatars to the warm cream/terracotta palette (matches the
+// Dashboard + Friends list). Deterministic per person.
+const WARM_AVATARS = ["#7A3E32", "#8C5A3C", "#9A4A2A", "#A6674A", "#8A6A32", "#B04A34", "#6B4A3A", "#B5794A"];
+function warmAvatar(id: string): string {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return WARM_AVATARS[h % WARM_AVATARS.length];
+}
 
 /**
  * Derive one participant's share of an expense from the STORED values only —
@@ -79,6 +89,7 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
   const [receiptData, setReceiptData] = useState<any>(null);
   const [receiptLoading, setReceiptLoading] = useState(false);
   const [detailExpense, setDetailExpense] = useState<Expense | null>(null);
+  const [remindOpen, setRemindOpen] = useState(false);
 
   const handleViewReceipt = async (expenseId: string) => {
     setReceiptExpenseId(expenseId);
@@ -396,14 +407,14 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
           </Button>
         </Link>
         <div
-          className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-semibold shrink-0"
-          style={{ backgroundColor: friend.avatarColor }}
+          className="w-11 h-11 rounded-full flex items-center justify-center text-white text-base font-semibold shrink-0"
+          style={{ backgroundColor: warmAvatar(friend.id) }}
         >
           {friend.name[0]?.toUpperCase()}
         </div>
         <div className="flex-1 min-w-0">
-          <h1 className="text-xl font-semibold tracking-tight truncate font-serif"><em className="italic text-accent-foreground">{friend.name}</em></h1>
-          <p className="text-sm text-muted-foreground truncate">{friend.email}</p>
+          <h1 className="font-serif text-2xl tracking-tight truncate">{friend.name}</h1>
+          <p className="text-xs text-muted-foreground truncate font-mono">{friend.email}</p>
         </div>
         {/* ⋮ Three-dot menu: Import + Remove Friend */}
         <DropdownMenu>
@@ -939,42 +950,56 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
         </Dialog>
       </div>
 
-      {/* Balance summary */}
-      <Card className="p-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm text-muted-foreground">Balance</p>
-            {myBalance === 0 ? (
-              <p className="text-lg font-semibold text-muted-foreground">All settled up</p>
-            ) : myBalance > 0 ? (
-              <p className={`text-lg font-semibold font-mono ${AMOUNT_IN_CLASS}`}>
-                {friend.name} pays you {formatMoney(myBalance, userCurrency)}
-              </p>
-            ) : (
-              <p className={`text-lg font-semibold font-mono ${AMOUNT_OUT_CLASS}`}>
-                You pay {friend.name} {formatMoney(Math.abs(myBalance), userCurrency)}
-              </p>
-            )}
-          </div>
-          {myBalance !== 0 && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setSettleUpOpen(true)}
-              data-testid="friend-detail-settle-up"
-            >
-              <HandCoins className="w-4 h-4 mr-1.5" />
-              Settle Up
+      {/* Balance hero */}
+      {myBalance === 0 ? (
+        <p className="font-serif text-4xl text-muted-foreground tracking-tight">All settled up</p>
+      ) : (
+        <div>
+          <p className="text-sm text-muted-foreground mb-1">
+            {myBalance > 0
+              ? <><span className="font-medium text-foreground">{friend.name}</span> owes you</>
+              : <>You owe <span className="font-medium text-foreground">{friend.name}</span></>}
+          </p>
+          <p className={`font-serif text-6xl leading-none tracking-tight ${myBalance > 0 ? AMOUNT_IN_CLASS : AMOUNT_OUT_CLASS}`}>
+            {formatMoney(Math.abs(myBalance), userCurrency)}
+          </p>
+        </div>
+      )}
+
+      {/* Actions — Settle up always; Remind only when they owe you */}
+      {myBalance !== 0 && (
+        <div className="flex gap-2">
+          <Button className="flex-1 rounded-full" onClick={() => setSettleUpOpen(true)} data-testid="friend-detail-settle-up">
+            <CheckCircle2 className="w-4 h-4 mr-1.5" />
+            Settle up
+          </Button>
+          {myBalance > 0 && (
+            <Button variant="outline" className="flex-1 rounded-full" onClick={() => setRemindOpen(true)} data-testid="friend-detail-remind">
+              <Bell className="w-4 h-4 mr-1.5" />
+              Remind
             </Button>
           )}
         </div>
-      </Card>
+      )}
 
-      {/* How this friend gets paid — always visible, so you can see it
-          anytime (not only inside the Settle Up dialog). */}
-      <Card className="p-4">
-        <PaymentMethodsView userId={friend.id} name={friend.name} />
-      </Card>
+      {/* How this friend gets paid — shown when YOU owe them (you need where to
+          send the money). Hidden when they owe you. */}
+      {myBalance < 0 && (
+        <Card className="p-4">
+          <PaymentMethodsView userId={friend.id} name={friend.name} />
+        </Card>
+      )}
+
+      {/* Reminder sheet — only relevant when they owe you */}
+      {myBalance > 0 && (
+        <ReminderSheet
+          open={remindOpen}
+          onClose={() => setRemindOpen(false)}
+          recipientId={friend.id}
+          recipientName={friend.name}
+          amount={myBalance}
+        />
+      )}
 
       {/* Settle Up Dialog */}
       <Dialog open={settleUpOpen} onOpenChange={setSettleUpOpen}>
@@ -1142,6 +1167,16 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
                     <FileText className="w-4 h-4 mr-2" /> View receipt items
                   </Button>
                 )}
+                {canDeleteExpense(exp) && (
+                  <Button
+                    variant="outline"
+                    className="w-full text-destructive hover:text-destructive"
+                    onClick={() => { setDetailExpense(null); setDeleteExpenseId(exp.id); }}
+                    data-testid="delete-expense-from-detail"
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" /> Delete expense
+                  </Button>
+                )}
               </div>
             );
           })()}
@@ -1253,87 +1288,62 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
         </DialogContent>
       </Dialog>
 
-      {/* Expenses list */}
+      {/* Expenses — grouped by month, one clean row each. Tap a row to open its
+          detail (edit/receipt/delete live there). */}
       {sortedExpenses.length > 0 ? (
         <div>
-          <h2 className="text-sm font-medium text-muted-foreground mb-2 font-serif">
-            Expenses with {friend.name}
-          </h2>
-          <div className="space-y-2">
-            {sortedExpenses.map((expense) => {
-              const paidByName = expense.paidById === user?.id ? "You" : friend.name;
-              const yourShare = participantShare(expense, user?.id || "");
-              const friendShare = participantShare(expense, friendId);
-              return (
-                <Card
-                  key={expense.id}
-                  className={`p-4 ${expense.isSettlement ? "border-primary/30 bg-primary/5" : ""}`}
-                  data-testid={`friend-expense-${expense.id}`}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${expense.isSettlement ? "bg-primary/20" : "bg-primary/10"}`}>
-                      {expense.isSettlement ? (
-                        <CheckCircle2 className="w-5 h-5 text-primary" />
-                      ) : (
-                        <Receipt className="w-5 h-5 text-primary" />
-                      )}
-                    </div>
+          {(() => {
+            const groups: { label: string; items: typeof sortedExpenses }[] = [];
+            for (const e of sortedExpenses) {
+              const label = new Date(e.date).toLocaleDateString(undefined, { month: "long", year: "numeric" });
+              const last = groups[groups.length - 1];
+              if (last && last.label === label) last.items.push(e);
+              else groups.push({ label, items: [e] });
+            }
+            return groups.map((g) => (
+              <div key={g.label}>
+                <h2 className="text-xs font-mono uppercase tracking-wider text-muted-foreground mt-4 mb-1">{g.label}</h2>
+                {g.items.map((expense) => {
+                  const d = new Date(expense.date);
+                  const paidByName = expense.paidById === user?.id ? "You" : friend.name;
+                  const iPaid = expense.paidById === user?.id;
+                  const share = iPaid
+                    ? participantShare(expense, friendId)
+                    : participantShare(expense, user?.id || "");
+                  return (
                     <div
-                      className="flex-1 min-w-0 cursor-pointer"
+                      key={expense.id}
+                      className="flex items-center gap-4 py-4 border-b border-border cursor-pointer"
                       onClick={() => setDetailExpense(expense)}
+                      data-testid={`friend-expense-${expense.id}`}
                     >
-                      <p className="text-base font-medium truncate">
-                        {expense.isSettlement ? "Settlement" : expense.description}
-                        {(expense as any).receiptData && (
-                          <FileText className="w-3.5 h-3.5 text-primary inline ml-1.5 -mt-0.5" />
-                        )}
-                      </p>
-                      <p className="text-sm text-muted-foreground font-mono mt-0.5">
-                        {paidByName} paid · {new Date(expense.date).toLocaleDateString()}
-                      </p>
-                      {!expense.isSettlement && (
-                        <p className="text-xs font-mono mt-1">
-                          {expense.paidById === user?.id ? (
-                            <span className={AMOUNT_IN_CLASS}>
-                              {friend.name} owes you {formatMoney(friendShare, userCurrency)}
-                            </span>
-                          ) : (
-                            <span className={AMOUNT_OUT_CLASS}>
-                              You owe {formatMoney(yourShare, userCurrency)}
-                            </span>
-                          )}
-                          <span className="text-muted-foreground">
-                            {" · "}{expense.splitAmounts ? "unequal split" : "split equally"}
-                          </span>
+                      <div className="w-11 text-center shrink-0">
+                        <div className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
+                          {d.toLocaleDateString(undefined, { month: "short" })}
+                        </div>
+                        <div className="font-serif text-2xl leading-none">{d.getDate()}</div>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold tracking-tight truncate">
+                          {expense.isSettlement ? "Settlement" : expense.description}
                         </p>
-                      )}
+                        <p className="font-mono text-xs text-muted-foreground truncate mt-0.5">
+                          {expense.isSettlement
+                            ? "Payment"
+                            : `${paidByName} paid · ${expense.splitAmounts ? "unequal split" : "split equally"}`}
+                        </p>
+                      </div>
+                      <span className={`font-mono font-semibold shrink-0 ${expense.isSettlement ? "text-muted-foreground" : (iPaid ? AMOUNT_IN_CLASS : AMOUNT_OUT_CLASS)}`}>
+                        {expense.currency && expense.currency !== "CAD" && expense.originalAmount && expense.isSettlement
+                          ? formatExpenseAmount(expense.amount, expense.currency, expense.originalAmount)
+                          : formatMoney(expense.isSettlement ? expense.amount : share, userCurrency)}
+                      </span>
                     </div>
-                    <span className="text-right shrink-0 font-mono">
-                      {expense.currency && expense.currency !== "CAD" && expense.originalAmount ? (
-                        <span className="text-base font-semibold text-foreground block">
-                          {formatExpenseAmount(expense.amount, expense.currency, expense.originalAmount)}
-                        </span>
-                      ) : (
-                        <span className="text-base font-semibold text-foreground">
-                          {formatMoney(expense.amount, userCurrency)}
-                        </span>
-                      )}
-                    </span>
-                    {canDeleteExpense(expense) && (
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => setDeleteExpenseId(expense.id)}
-                        data-testid={`delete-expense-${expense.id}`}
-                      >
-                        <Trash2 className="w-4 h-4 text-muted-foreground" />
-                      </Button>
-                    )}
-                  </div>
-                </Card>
-              );
-            })}
-          </div>
+                  );
+                })}
+              </div>
+            ));
+          })()}
         </div>
       ) : (
         <Card className="p-8 text-center">
