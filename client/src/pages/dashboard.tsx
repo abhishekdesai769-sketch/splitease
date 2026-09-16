@@ -287,18 +287,15 @@ export default function Dashboard() {
           <StatCard label="Friends" value={String(friendsList.length)} href="/friends" />
           <StatCard label="Groups" value={String(groups.length)} href="/groups" />
         </div>
-      </div>
 
-      {/* AI Mode tile — full-width, gradient, dashboard-prominent. Visible
-          to all users; the page itself shows a Premium-gate teaser for
-          non-Premium users (same psychology as Money tab). TWA users get
-          it too — the page handles gating internally. */}
-      <Link href="/ai">
-        <button
-          type="button"
-          className="w-full group rounded-2xl border border-border bg-card p-5 text-left transition-all active:scale-[0.99] hover:border-foreground/25"
-          data-testid="dashboard-ai-mode-tile"
-        >
+        {/* AI Mode tile — grouped tightly under the overview cards (matches mockup). */}
+        <div className="mt-3">
+        <Link href="/ai">
+          <button
+            type="button"
+            className="w-full group rounded-2xl border border-[#E4D8C6] bg-gradient-to-b from-[#F6EFE4] to-[#F1E7D8] p-5 text-left transition-all active:scale-[0.99] hover:border-foreground/20"
+            data-testid="dashboard-ai-mode-tile"
+          >
           <div className="flex items-center gap-3">
             <div className="w-11 h-11 rounded-xl bg-foreground flex items-center justify-center shrink-0">
               <Sparkles className="w-5 h-5 text-background" />
@@ -316,8 +313,10 @@ export default function Dashboard() {
             </div>
             <ArrowRight className="w-4 h-4 text-muted-foreground shrink-0 group-hover:translate-x-0.5 transition-transform" />
           </div>
-        </button>
-      </Link>
+          </button>
+        </Link>
+        </div>
+      </div>
 
       {/* Your settlements — two-column rows: person left, amount right (tabular). */}
       {mySettlements.length > 0 && (
