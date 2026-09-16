@@ -23,17 +23,14 @@
 export const SETTLED_THRESHOLD = 0.05;
 
 // ── Directional amount colors ──────────────────────────────────────────────
-// Terracotta = money coming TO you (you're owed / will receive).
-// Red        = money going OUT (you owe / will pay).
-// Brand is zero-green (cream + terracotta + ink), so "owed to you" uses the
-// terracotta accent — matching the marketing site's "owes you" colour —
-// instead of the old green. Direction stays unmistakable: terracotta in,
-// red out.
-export const AMOUNT_IN_CLASS = "text-accent-foreground";   // owed to you (terracotta)
-export const AMOUNT_OUT_CLASS = "text-destructive";        // you owe
+// The one rule, everywhere: money coming TO you (you're owed / will receive)
+// is BLACK (the app's default ink text), money going OUT (you owe / will pay)
+// is RED. Black in, red out — nothing else signals amount direction.
+export const AMOUNT_IN_CLASS = "text-foreground";   // owed to you / you get paid (black)
+export const AMOUNT_OUT_CLASS = "text-red-500";     // you owe / you pay (red)
 
 /** Returns the right color class for a signed balance amount.
- *  amount > 0 → green (incoming), amount < 0 → red (outgoing),
+ *  amount > 0 → black (incoming), amount < 0 → red (outgoing),
  *  amount === 0 → muted. */
 export function amountColorClass(amount: number): string {
   if (amount > 0) return AMOUNT_IN_CLASS;

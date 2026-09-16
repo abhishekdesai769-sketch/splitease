@@ -198,7 +198,7 @@ export function DemoGroupScreen({ persona, onMagicActionComplete }: Props) {
       <div>
         <p className="text-base font-semibold mb-3">
           {group.balanceRibbonTone === "owed" ? "You are owed " : "You owe "}
-          <span className={group.balanceRibbonTone === "owed" ? "text-primary" : "text-destructive"}>
+          <span className={group.balanceRibbonTone === "owed" ? "text-foreground" : "text-red-500"}>
             ${(() => {
               // pull the dollars-and-cents from the pre-baked ribbon text
               const m = group.balanceRibbonText.match(/\$([\d,]+(?:\.\d{2})?)/);
@@ -225,20 +225,20 @@ export function DemoGroupScreen({ persona, onMagicActionComplete }: Props) {
                   <p className="text-base">
                     {p.youOwe ? (
                       <>
-                        <span className="text-destructive font-medium">You owe</span>{" "}
+                        <span className="text-red-500 font-medium">You owe</span>{" "}
                         <span className="font-medium">{p.otherName}</span>
                       </>
                     ) : (
                       <>
                         <span className="font-medium">{p.otherName}</span>{" "}
-                        <span className="text-primary font-medium">owes you</span>
+                        <span className="text-foreground font-medium">owes you</span>
                       </>
                     )}
                   </p>
                 </div>
                 <span
                   className={`text-base font-semibold shrink-0 font-mono ${
-                    p.youOwe ? "text-destructive" : "text-primary"
+                    p.youOwe ? "text-red-500" : "text-foreground"
                   }`}
                 >
                   {formatCurrency(p.amount)}

@@ -1333,9 +1333,9 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                 <div className="rounded-lg bg-muted/50 p-3 text-center">
                   <p className="text-sm text-muted-foreground">
                     {groupSplitType === "they_pay" ? (
-                      <>Selected members pay {paidById === user?.id ? "you" : getPersonName(paidById)} the full <span className="font-semibold text-primary">${finalAmount.toFixed(2)}</span></>
+                      <>Selected members pay {paidById === user?.id ? "you" : getPersonName(paidById)} the full <span className="font-semibold text-foreground">${finalAmount.toFixed(2)}</span></>
                     ) : (
-                      <>{paidById === user?.id ? "You" : getPersonName(paidById)} pay{paidById === user?.id ? "" : "s"} selected member <span className="font-semibold text-destructive">${finalAmount.toFixed(2)}</span></>
+                      <>{paidById === user?.id ? "You" : getPersonName(paidById)} pay{paidById === user?.id ? "" : "s"} selected member <span className="font-semibold text-red-500">${finalAmount.toFixed(2)}</span></>
                     )}
                   </p>
                 </div>
@@ -1792,7 +1792,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                         <p className="text-base">
                           {youOwe ? (
                             <>
-                              <span className="text-destructive font-medium">You owe</span>
+                              <span className="text-red-500 font-medium">You owe</span>
                               {" "}<span className="font-medium">{getPersonName(otherPerson)}</span>
                             </>
                           ) : (

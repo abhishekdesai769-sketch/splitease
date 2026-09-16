@@ -24,13 +24,16 @@ function warmAvatar(id: string): string {
   return WARM_AVATARS[h % WARM_AVATARS.length];
 }
 
-function StatCard({ label, value, href, variant = "count", accent }: { label: string; value: string; href?: string; variant?: "count" | "money"; accent?: boolean }) {
+function StatCard({ label, value, href, variant = "count", tone }: { label: string; value: string; href?: string; variant?: "count" | "money"; tone?: "in" | "out" }) {
   const money = variant === "money";
+  // On these dark ink cards, "black" (neutral) money-in reads as the card's
+  // default cream text; money-out ("You Owe") is red. Black in, red out.
+  const moneyColor = tone === "out" ? "text-red-400" : "text-background";
   const inner = (
     <div className={`rounded-2xl p-5 border ${money ? "bg-foreground border-foreground" : `bg-card border-border ${href ? "hover-elevate cursor-pointer" : ""}`}`}>
       <p className={`text-[13px] font-medium ${money ? "text-background/70" : "text-muted-foreground"}`}>{label}</p>
       <p
-        className={`mt-2 ${money ? `text-[28px] leading-none font-mono tabular-nums ${accent ? "text-[#E8B98C]" : "text-background"}` : "text-[32px] leading-none font-serif text-foreground"}`}
+        className={`mt-2 ${money ? `text-[28px] leading-none font-mono tabular-nums ${moneyColor}` : "text-[32px] leading-none font-serif text-foreground"}`}
         data-testid={`stat-${label.toLowerCase().replace(/\s/g, "-")}`}
       >{value}</p>
     </div>
@@ -282,8 +285,8 @@ export default function Dashboard() {
       <div>
         <p className="text-[11px] font-mono uppercase tracking-[0.14em] text-muted-foreground mb-3">Overview</p>
         <div className="grid grid-cols-2 gap-4">
-          <StatCard label="You're Owed" value={formatMoney(youAreOwed, userCurrency)} variant="money" accent />
-          <StatCard label="You Owe" value={formatMoney(youOwe, userCurrency)} variant="money" />
+          <StatCard label="You're Owed" value={formatMoney(youAreOwed, userCurrency)} variant="money" tone="in" />
+          <StatCard label="You Owe" value={formatMoney(youOwe, userCurrency)} variant="money" tone="out" />
           <StatCard label="Friends" value={String(friendsList.length)} href="/friends" />
           <StatCard label="Groups" value={String(groups.length)} href="/groups" />
         </div>
