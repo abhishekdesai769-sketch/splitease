@@ -26,9 +26,9 @@ function warmAvatar(id: string): string {
 
 function StatCard({ label, value, href, variant = "count", tone }: { label: string; value: string; href?: string; variant?: "count" | "money"; tone?: "in" | "out" }) {
   const money = variant === "money";
-  // On these dark ink cards, "black" (neutral) money-in reads as the card's
-  // default cream text; money-out ("You Owe") is red. Black in, red out.
-  const moneyColor = tone === "out" ? "text-destructive" : "text-background";
+  // On these dark ink cards: money-in ("You're Owed") is green, money-out
+  // ("You Owe") is red. Green in, red out.
+  const moneyColor = tone === "out" ? "text-destructive" : "text-green-500";
   const inner = (
     <div className={`rounded-2xl p-5 border ${money ? "bg-foreground border-foreground" : `bg-card border-border ${href ? "hover-elevate cursor-pointer" : ""}`}`}>
       <p className={`text-[13px] font-medium ${money ? "text-background/70" : "text-muted-foreground"}`}>{label}</p>

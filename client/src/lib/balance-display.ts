@@ -23,10 +23,10 @@
 export const SETTLED_THRESHOLD = 0.05;
 
 // ── Directional amount colors ──────────────────────────────────────────────
-// The one rule, everywhere: money coming TO you (you're owed / will receive)
-// is BLACK (the app's default ink text), money going OUT (you owe / will pay)
-// is RED. Black in, red out — nothing else signals amount direction.
-export const AMOUNT_IN_CLASS = "text-foreground";   // owed to you / you get paid (black)
+// The rule, everywhere: money coming TO you (you're owed / you get paid) is
+// GREEN; money going OUT (you owe / you pay) is RED; anything you're NOT part
+// of stays BLACK (the default ink text, applied at the call site).
+export const AMOUNT_IN_CLASS = "text-green-500";    // owed to you / you get paid (green)
 export const AMOUNT_OUT_CLASS = "text-destructive"; // you owe / you pay (rust red — brand token)
 
 /** Returns the right color class for a signed balance amount.
