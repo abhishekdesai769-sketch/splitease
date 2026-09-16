@@ -272,15 +272,15 @@ export default function Friends() {
 
   const renderRow = (f: SafeUser, balance: number) => (
     <Link key={f.id} href={`/friends/${f.id}`}>
-      <Card className="p-4 flex items-center gap-3 hover-elevate cursor-pointer" data-testid={`friend-card-${f.id}`}>
+      <Card className="p-[18px] rounded-[26px] flex items-center gap-4 hover-elevate cursor-pointer" data-testid={`friend-card-${f.id}`}>
         <div
-          className="w-11 h-11 rounded-full flex items-center justify-center text-white text-base font-semibold shrink-0"
+          className="w-12 h-12 rounded-full flex items-center justify-center text-white text-lg font-semibold shrink-0"
           style={{ backgroundColor: warmAvatar(f.id) }}
         >
           {f.name[0]?.toUpperCase()}
         </div>
         <div className="flex-1 min-w-0">
-          <p className="font-semibold tracking-tight truncate">{f.name}</p>
+          <p className="text-[17px] font-semibold tracking-tight truncate">{f.name}</p>
         </div>
         {balance !== 0 ? (
           <span className={`font-mono font-semibold shrink-0 ${balance > 0 ? AMOUNT_IN_CLASS : AMOUNT_OUT_CLASS}`}>
@@ -299,7 +299,7 @@ export default function Friends() {
       {/* Header */}
       <div className="flex items-end justify-between gap-3">
         <div>
-          <h1 className="font-serif text-4xl tracking-tight leading-none">Friends</h1>
+          <h1 className="font-serif text-5xl tracking-tight leading-none">Friends</h1>
           <p className="text-sm text-muted-foreground mt-1.5 font-mono">
             {friendsList.length} {friendsList.length === 1 ? "person" : "people"}
           </p>
@@ -746,21 +746,28 @@ export default function Friends() {
         </DialogContent>
       </Dialog>
 
+      {/* Hairline separates the page header from the sections below. */}
+      {friendsList.length > 0 && <div className="h-px bg-border" />}
+
       {/* Friends grouped by balance — scan who owes whom at a glance. Settle by
           tapping a person (settle-up lives in their detail). */}
       {friendsList.length > 0 ? (
-        <div className="space-y-6">
+        <div className="space-y-8">
           {youOwe.length > 0 && (
-            <div className="space-y-2">
-              <h2 className="text-xs font-mono uppercase tracking-wider text-muted-foreground">You owe</h2>
-              {youOwe.map(({ f, balance }) => renderRow(f, balance))}
+            <div>
+              <h2 className="font-serif text-3xl tracking-tight leading-none border-b border-border pb-3 mb-4">You owe</h2>
+              <div className="space-y-3">
+                {youOwe.map(({ f, balance }) => renderRow(f, balance))}
+              </div>
             </div>
           )}
 
           {owesYou.length > 0 && (
-            <div className="space-y-2">
-              <h2 className="text-xs font-mono uppercase tracking-wider text-muted-foreground">Owes you</h2>
-              {owesYou.map(({ f, balance }) => renderRow(f, balance))}
+            <div>
+              <h2 className="font-serif text-3xl tracking-tight leading-none border-b border-border pb-3 mb-4">Owes you</h2>
+              <div className="space-y-3">
+                {owesYou.map(({ f, balance }) => renderRow(f, balance))}
+              </div>
             </div>
           )}
 
@@ -769,14 +776,14 @@ export default function Friends() {
               <button
                 type="button"
                 onClick={() => setSettledExpanded((v) => !v)}
-                className="w-full flex items-center gap-3 rounded-xl border border-dashed border-border p-3.5 text-left hover-elevate"
+                className="w-full flex items-center gap-3.5 rounded-[24px] border border-dashed border-border p-4 text-left hover-elevate"
                 data-testid="settled-toggle"
               >
                 <div className="flex -space-x-2.5 shrink-0">
                   {settledFriends.slice(0, 3).map(({ f }) => (
                     <div
                       key={f.id}
-                      className="w-7 h-7 rounded-full border-2 border-background flex items-center justify-center text-white text-[11px] font-semibold"
+                      className="w-8 h-8 rounded-full border-2 border-background flex items-center justify-center text-white text-xs font-semibold"
                       style={{ backgroundColor: warmAvatar(f.id) }}
                     >
                       {f.name[0]?.toUpperCase()}
@@ -790,7 +797,7 @@ export default function Friends() {
                 <ChevronRight className={`w-4 h-4 text-muted-foreground shrink-0 transition-transform ${settledExpanded ? "rotate-90" : ""}`} />
               </button>
               {settledExpanded && (
-                <div className="space-y-2">
+                <div className="space-y-3">
                   {settledFriends.map(({ f, balance }) => renderRow(f, balance))}
                 </div>
               )}
