@@ -269,9 +269,6 @@ export default function Friends() {
   const youOwe = withBalance.filter((x) => x.balance < 0).sort((a, b) => a.balance - b.balance);
   const owesYou = withBalance.filter((x) => x.balance > 0).sort((a, b) => b.balance - a.balance);
   const settledFriends = withBalance.filter((x) => x.balance === 0);
-  // Show a handle only to disambiguate duplicate display names (declutter).
-  const nameCounts = friendsList.reduce((m, f) => { m[f.name] = (m[f.name] || 0) + 1; return m; }, {} as Record<string, number>);
-  const friendHandle = (f: SafeUser) => (nameCounts[f.name] > 1 ? f.email.split("@")[0] : null);
 
   const renderRow = (f: SafeUser, balance: number) => (
     <Link key={f.id} href={`/friends/${f.id}`}>
@@ -284,7 +281,6 @@ export default function Friends() {
         </div>
         <div className="flex-1 min-w-0">
           <p className="font-semibold tracking-tight truncate">{f.name}</p>
-          {friendHandle(f) && <p className="text-xs text-muted-foreground truncate font-mono">{friendHandle(f)}</p>}
         </div>
         {balance !== 0 ? (
           <span className={`font-mono font-semibold shrink-0 ${balance > 0 ? AMOUNT_IN_CLASS : AMOUNT_OUT_CLASS}`}>
