@@ -408,7 +408,7 @@ export default function Friends() {
                       ) : splitType === "they_pay" ? (
                         <p className="text-sm text-muted-foreground">
                           {paidById === user?.id
-                            ? <>{friendsList.find(f => f.id === splitWithId)?.name || "They"} pays you <span className="font-semibold text-green-500">${parseFloat(amount).toFixed(2)}</span></>
+                            ? <>{friendsList.find(f => f.id === splitWithId)?.name || "They"} pays you <span className="font-semibold text-foreground">${parseFloat(amount).toFixed(2)}</span></>
                             : <>You pay {friendsList.find(f => f.id === paidById)?.name || "them"} <span className="font-semibold text-destructive">${parseFloat(amount).toFixed(2)}</span></>
                           }
                         </p>
@@ -416,7 +416,7 @@ export default function Friends() {
                         <p className="text-sm text-muted-foreground">
                           {paidById === user?.id
                             ? <>You pay {friendsList.find(f => f.id === splitWithId)?.name || "them"} <span className="font-semibold text-destructive">${parseFloat(amount).toFixed(2)}</span></>
-                            : <>{friendsList.find(f => f.id === paidById)?.name || "They"} pays you <span className="font-semibold text-green-500">${parseFloat(amount).toFixed(2)}</span></>
+                            : <>{friendsList.find(f => f.id === paidById)?.name || "They"} pays you <span className="font-semibold text-foreground">${parseFloat(amount).toFixed(2)}</span></>
                           }
                         </p>
                       )}
@@ -653,7 +653,7 @@ export default function Friends() {
                       rel="noopener noreferrer"
                       className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md border border-border bg-muted/30 hover:bg-muted/60 transition-colors"
                     >
-                      <MessageCircle className="w-3.5 h-3.5 text-green-500" />
+                      <MessageCircle className="w-3.5 h-3.5 text-foreground" />
                       WhatsApp
                     </a>
                   </div>

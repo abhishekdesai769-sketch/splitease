@@ -23,10 +23,13 @@
 export const SETTLED_THRESHOLD = 0.05;
 
 // ── Directional amount colors ──────────────────────────────────────────────
-// The rule, everywhere: money coming TO you (you're owed / you get paid) is
-// GREEN; money going OUT (you owe / you pay) is RED; anything you're NOT part
-// of stays BLACK (the default ink text, applied at the call site).
-export const AMOUNT_IN_CLASS = "text-green-500";    // owed to you / you get paid (green)
+// Signalled with hierarchy inside the brand's 3-color palette (no new hue):
+//   money coming TO you (you're owed / you get paid) → prominent INK
+//   money going OUT (you owe / you pay)              → rust RED (attention)
+//   anything you're not part of / no money moves     → muted GREY (recedes)
+// Making "not involved" recede is what makes the ink "money in" stand out —
+// no green needed.
+export const AMOUNT_IN_CLASS = "text-foreground";   // owed to you / you get paid (ink)
 export const AMOUNT_OUT_CLASS = "text-destructive"; // you owe / you pay (rust red — brand token)
 
 /** Returns the right color class for a signed balance amount.

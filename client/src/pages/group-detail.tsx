@@ -745,21 +745,21 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
   //   - not involved / personal      → neutral (default text)
   const expenseAmountColor = (expense: any): string => {
     const uid = user?.id;
-    if (!uid) return "text-foreground";
+    if (!uid) return "text-muted-foreground";
     const inSplit = Array.isArray(expense.splitAmongIds) && expense.splitAmongIds.includes(uid);
     const iPaid = expense.paidById === uid;
     if (expense.isSettlement) {
-      if (iPaid) return AMOUNT_OUT_CLASS;   // you handed money over
-      if (inSplit) return AMOUNT_IN_CLASS;  // you received money
-      return "text-foreground";
+      if (iPaid) return AMOUNT_OUT_CLASS;   // you handed money over → red
+      if (inSplit) return AMOUNT_IN_CLASS;  // you received money → ink
+      return "text-muted-foreground";       // not your settlement → recede
     }
     if (iPaid) {
-      // Personal expense (only you in the split) = no money moves → neutral.
-      if (inSplit && expense.splitAmongIds.length === 1) return "text-foreground";
-      return AMOUNT_IN_CLASS;               // others owe you
+      // Personal expense (only you in the split) = no money moves → recede.
+      if (inSplit && expense.splitAmongIds.length === 1) return "text-muted-foreground";
+      return AMOUNT_IN_CLASS;               // others owe you → ink
     }
-    if (inSplit) return AMOUNT_OUT_CLASS;    // you owe your share
-    return "text-foreground";               // not involved
+    if (inSplit) return AMOUNT_OUT_CLASS;    // you owe your share → red
+    return "text-muted-foreground";          // not involved → recede
   };
 
   // Role helpers
@@ -1333,7 +1333,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                 <div className="rounded-lg bg-muted/50 p-3 text-center">
                   <p className="text-sm text-muted-foreground">
                     {groupSplitType === "they_pay" ? (
-                      <>Selected members pay {paidById === user?.id ? "you" : getPersonName(paidById)} the full <span className="font-semibold text-green-500">${finalAmount.toFixed(2)}</span></>
+                      <>Selected members pay {paidById === user?.id ? "you" : getPersonName(paidById)} the full <span className="font-semibold text-foreground">${finalAmount.toFixed(2)}</span></>
                     ) : (
                       <>{paidById === user?.id ? "You" : getPersonName(paidById)} pay{paidById === user?.id ? "" : "s"} selected member <span className="font-semibold text-destructive">${finalAmount.toFixed(2)}</span></>
                     )}
@@ -1654,7 +1654,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                     rel="noopener noreferrer"
                     className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md border border-border bg-muted/30 hover:bg-muted/60 transition-colors"
                   >
-                    <MessageCircle className="w-3.5 h-3.5 text-green-500" />
+                    <MessageCircle className="w-3.5 h-3.5 text-foreground" />
                     WhatsApp
                   </a>
                 </div>
@@ -1717,7 +1717,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                       <Button
                         size="sm"
                         variant="ghost"
-                        className="h-7 w-7 p-0 text-green-500 hover:text-green-400 hover:bg-green-500/10"
+                        className="h-7 w-7 p-0 text-foreground hover:text-green-400 hover:bg-green-500/10"
                         onClick={() => approveInviteMutation.mutate(invite.id)}
                         disabled={approveInviteMutation.isPending}
                         data-testid={`approve-invite-${invite.id}`}
