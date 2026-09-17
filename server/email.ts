@@ -12,10 +12,10 @@ const EMAIL_LOGO = `
 <table cellpadding="0" cellspacing="0" border="0" style="margin-bottom:20px;">
   <tr>
     <td style="vertical-align:middle;padding-right:10px;">
-      <img src="https://spliiit.ca/icon-192.png" width="36" height="36" alt="Spliiit" style="display:block;border-radius:8px;" />
+      <img src="https://spliiit.ca/icon-192.png?v=2" width="36" height="36" alt="Spliiit" style="display:block;border-radius:8px;" />
     </td>
     <td style="vertical-align:middle;">
-      <span style="font-size:18px;font-weight:700;color:#1a1a1a;letter-spacing:-0.3px;">Spl</span><span style="font-size:18px;font-weight:700;color:#2dd4a8;letter-spacing:-0.3px;">iii</span><span style="font-size:18px;font-weight:700;color:#1a1a1a;letter-spacing:-0.3px;">t</span>
+      <span style="font-size:18px;font-weight:700;color:#1a1a1a;letter-spacing:-0.3px;">Spl</span><span style="font-size:18px;font-weight:700;color:#B5674A;letter-spacing:-0.3px;">iii</span><span style="font-size:18px;font-weight:700;color:#1a1a1a;letter-spacing:-0.3px;">t</span>
     </td>
   </tr>
 </table>
@@ -118,7 +118,7 @@ export async function sendResetPasswordEmail(to: string, name: string, resetLink
         We received a request to reset your password. Click the link below to set a new one:
       </td></tr>
       <tr><td style="padding-bottom:16px;">
-        <a href="${resetLink}" style="font-size:14px;color:#2dd4a8;text-decoration:none;font-weight:500;">${resetLink}</a>
+        <a href="${resetLink}" style="font-size:14px;color:#B5674A;text-decoration:none;font-weight:500;">${resetLink}</a>
       </td></tr>
       <tr><td style="font-size:14px;color:#6b7280;padding-bottom:24px;">
         This link expires in 1 hour. If you didn't request a password reset, you can safely ignore this email.
@@ -265,7 +265,7 @@ export async function notifyExpenseCreated(opts: {
                 <td style="font-size:14px;color:#374151;">
                   ${isSettlement
                     ? `<strong>${paidByName}</strong> settled up with you.`
-                    : `Paid by <strong>${paidByName}</strong> &middot; Your share: <strong style="color:#2dd4a8;">$${person.share.toFixed(2)}</strong>`
+                    : `Paid by <strong>${paidByName}</strong> &middot; Your share: <strong style="color:#B5674A;">$${person.share.toFixed(2)}</strong>`
                   }
                 </td>
               </tr>
@@ -276,7 +276,7 @@ export async function notifyExpenseCreated(opts: {
       </td></tr>
       <!-- Link -->
       <tr><td style="padding-bottom:24px;">
-        <a href="${viewUrl}" style="font-size:14px;color:#2dd4a8;text-decoration:none;font-weight:500;">View on Spliiit &rarr;</a>
+        <a href="${viewUrl}" style="font-size:14px;color:#B5674A;text-decoration:none;font-weight:500;">View on Spliiit &rarr;</a>
       </td></tr>
       <!-- Footer -->
       <tr><td style="border-top:1px solid #f3f4f6;padding-top:16px;font-size:12px;color:#9ca3af;">
@@ -385,7 +385,7 @@ export async function sendFounderPremiumAlert(opts: {
 
   const isNew = opts.event === "new";
   const headline = isNew ? `🎉 New Premium customer: ${name}` : `⚠️ Premium cancelled: ${name}`;
-  const banner = isNew ? "#2dd4a8" : "#f59e0b";
+  const banner = isNew ? "#B5674A" : "#f59e0b";
 
   const rows: [string, string][] = [];
   rows.push(["Customer", `${name} &lt;${emailAddr}&gt;`]);
@@ -513,7 +513,7 @@ export async function sendInviteToInviteeEmail(opts: {
         </table>
       </td></tr>
       <tr><td style="padding-bottom:24px;">
-        <a href="${APP_URL}" style="font-size:14px;color:#2dd4a8;text-decoration:none;font-weight:500;">View on Spliiit &rarr;</a>
+        <a href="${APP_URL}" style="font-size:14px;color:#B5674A;text-decoration:none;font-weight:500;">View on Spliiit &rarr;</a>
       </td></tr>
       <tr><td style="border-top:1px solid #f3f4f6;padding-top:16px;font-size:12px;color:#9ca3af;">
         ${EMAIL_FOOTER}
@@ -566,7 +566,7 @@ export async function sendInviteToAdminEmail(opts: {
         </table>
       </td></tr>
       <tr><td style="padding-bottom:24px;">
-        <a href="${APP_URL}" style="font-size:14px;color:#2dd4a8;text-decoration:none;font-weight:500;">View on Spliiit &rarr;</a>
+        <a href="${APP_URL}" style="font-size:14px;color:#B5674A;text-decoration:none;font-weight:500;">View on Spliiit &rarr;</a>
       </td></tr>
       <tr><td style="border-top:1px solid #f3f4f6;padding-top:16px;font-size:12px;color:#9ca3af;">
         ${EMAIL_FOOTER}
@@ -618,7 +618,7 @@ export async function sendGhostInviteEmail(opts: {
         </table>
       </td></tr>
       <tr><td style="padding-bottom:24px;">
-        <a href="${APP_URL}" style="font-size:14px;color:#2dd4a8;text-decoration:none;font-weight:500;">Sign up on Spliiit &rarr;</a>
+        <a href="${APP_URL}" style="font-size:14px;color:#B5674A;text-decoration:none;font-weight:500;">Sign up on Spliiit &rarr;</a>
       </td></tr>
       <tr><td style="border-top:1px solid #f3f4f6;padding-top:16px;font-size:12px;color:#9ca3af;">
         ${EMAIL_FOOTER}
@@ -857,7 +857,7 @@ export async function sendPremiumWelcomeEmail(
 
       <!-- Plan card -->
       <tr><td style="padding-bottom:24px;">
-        <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="border:1px solid #2dd4a8;border-radius:10px;background-color:#f0fdf9;">
+        <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="border:1px solid #B5674A;border-radius:10px;background-color:#f0fdf9;">
           <tr><td style="padding:16px;">
             <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
               <tr>
