@@ -732,7 +732,10 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
     if (id === user?.id) return "You";
     return members.find((m) => m.id === id)?.name || "Someone";
   };
-  const getPersonColor = (id: string) => members.find((m) => m.id === id)?.avatarColor || "#666";
+  // Clamp all avatars to the warm cream/terracotta palette (matches the rest of the app).
+  const WARM_AVATARS = ["#7A3E32", "#8C5A3C", "#9A4A2A", "#A6674A", "#8A6A32", "#B04A34", "#6B4A3A", "#B5794A"];
+  const warmAvatar = (id: string) => { let h = 0; for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0; return WARM_AVATARS[h % WARM_AVATARS.length]; };
+  const getPersonColor = (id: string) => warmAvatar(id);
 
   // DISPLAY-ONLY: pick a color class for an expense row's amount based on the
   // current user's direction on it. Does NOT touch any balance/expense
@@ -830,7 +833,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
             </form>
           ) : (
             <h1
-              className={`text-xl font-semibold tracking-tight truncate font-serif ${(isMeOwner || isMeAdmin || isMeGlobalAdmin) ? "cursor-pointer hover:text-primary transition-colors" : ""}`}
+              className={`text-3xl leading-none tracking-tight truncate font-serif ${(isMeOwner || isMeAdmin || isMeGlobalAdmin) ? "cursor-pointer" : ""}`}
               onClick={() => {
                 if (isMeOwner || isMeAdmin || isMeGlobalAdmin) {
                   setNewGroupName(group.name);
@@ -838,15 +841,12 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                 }
               }}
             >
-              <em className="italic text-accent-foreground not-italic-on-hover">{group.name}</em>
+              {group.name}
               {(isMeOwner || isMeAdmin || isMeGlobalAdmin) && (
-                <Pencil className="w-3 h-3 inline ml-1.5 text-muted-foreground" />
+                <Pencil className="w-3.5 h-3.5 inline ml-2 text-muted-foreground align-middle" />
               )}
             </h1>
           )}
-          <p className="text-sm text-muted-foreground font-mono">
-            {members.length} members · {formatMoney(totalGroupSpend, userCurrency)} total
-          </p>
         </div>
         {/* Three-dots group actions menu */}
         <DropdownMenu>
@@ -1546,63 +1546,57 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
         </Dialog>
       </div>
 
-      {/* Members bar with invite button */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1">
-        {members.map((m) => {
-          const role = getMemberRole(m.id);
-          const canAct = canActOnMember(m.id);
-          const isGhost = (m as any).isGhost;
-          return (
-            <div
-              key={m.id}
-              className={`flex flex-col items-center gap-1 shrink-0 relative ${isGhost || canAct || m.id !== user?.id ? "cursor-pointer" : ""}`}
-              onClick={() => {
-                if (isGhost) { setGhostInviteMember(m); setGhostInviteEmail(""); }
-                else if (canAct) setMemberActionMember(m);
-                else if (m.id !== user?.id) setMemberInfoMember(m);  // non-admin tap → payment info
-              }}
-              data-testid={`member-avatar-${m.id}`}
-            >
-              <div className="relative">
+      {/* Members — compact overlapping cluster; tap a member for actions / payment info. */}
+      <div className="flex items-center gap-3 mb-1">
+        <div className="flex shrink-0">
+          {members.map((m) => {
+            const role = getMemberRole(m.id);
+            const canAct = canActOnMember(m.id);
+            const isGhost = (m as any).isGhost;
+            return (
+              <button
+                type="button"
+                key={m.id}
+                className={`relative -ml-2.5 first:ml-0 ${isGhost || canAct || m.id !== user?.id ? "cursor-pointer" : "cursor-default"}`}
+                onClick={() => {
+                  if (isGhost) { setGhostInviteMember(m); setGhostInviteEmail(""); }
+                  else if (canAct) setMemberActionMember(m);
+                  else if (m.id !== user?.id) setMemberInfoMember(m);
+                }}
+                data-testid={`member-avatar-${m.id}`}
+              >
                 <div
-                  className={`w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-semibold ${isGhost ? "border-2 border-dashed border-amber-500/50" : ""}`}
-                  style={{ backgroundColor: isGhost ? "transparent" : m.avatarColor, color: isGhost ? "hsl(var(--muted-foreground))" : undefined }}
+                  className={`w-10 h-10 rounded-full border-2 border-background flex items-center justify-center text-white text-sm font-semibold ${isGhost ? "border-dashed !border-amber-500/50" : ""}`}
+                  style={{ backgroundColor: isGhost ? "transparent" : warmAvatar(m.id) }}
                 >
                   {isGhost ? <Ghost className="w-4 h-4 text-amber-500" /> : m.name[0]?.toUpperCase()}
                 </div>
                 {!isGhost && role === "owner" && (
-                  <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-yellow-500 flex items-center justify-center" title="Owner">
-                    <Crown className="w-2.5 h-2.5 text-white" />
+                  <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-yellow-500 border-2 border-background flex items-center justify-center" title="Owner">
+                    <Crown className="w-2 h-2 text-white" />
                   </span>
                 )}
                 {!isGhost && role === "admin" && (
-                  <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-primary flex items-center justify-center" title="Admin">
-                    <Shield className="w-2.5 h-2.5 text-white" />
+                  <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-primary border-2 border-background flex items-center justify-center" title="Admin">
+                    <Shield className="w-2 h-2 text-white" />
                   </span>
                 )}
                 {isGhost && (
-                  <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-amber-500 flex items-center justify-center" title="Ghost — tap to invite">
-                    <Mail className="w-2.5 h-2.5 text-white" />
+                  <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-amber-500 border-2 border-background flex items-center justify-center" title="Ghost — tap to invite">
+                    <Mail className="w-2 h-2 text-white" />
                   </span>
                 )}
-              </div>
-              <span className={`text-xs truncate max-w-[48px] ${isGhost ? "text-amber-500" : "text-muted-foreground"}`}>
-                {m.id === user?.id ? "You" : m.name.split(" ")[0]}
-              </span>
-            </div>
-          );
-        })}
-        {/* Invite avatar — opens the shareable invite-link dialog (same as three-dots → "Invite link").
-            Previously opened an email-invite dialog; that flow is kept inert below for now. */}
+              </button>
+            );
+          })}
+        </div>
+        <span className="flex-1 font-mono text-xs text-muted-foreground">{members.length} members</span>
         <button
-          className="flex flex-col items-center gap-1 shrink-0"
+          className="flex items-center gap-1.5 text-sm font-medium text-accent-foreground shrink-0"
           data-testid="invite-member-btn"
           onClick={() => setShareLinkOpen(true)}
         >
-          <div className="w-9 h-9 rounded-full border-2 border-dashed border-muted-foreground/30 flex items-center justify-center">
-            <UserPlus className="w-4 h-4 text-muted-foreground" />
-          </div>
-          <span className="text-xs text-muted-foreground">Invite</span>
+          <UserPlus className="w-4 h-4" /> Invite
         </button>
         <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
           <DialogContent>
@@ -1746,85 +1740,70 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
       })()}
 
       {/* Your Balances + Settle Up */}
-      {expenses.length > 0 && (
-        <div>
-          {/* Net total heading — sub-5¢ residuals are hidden as "settled".
-              See lib/balance-display.ts for the rationale. */}
-          {(() => {
-            const myBal = balances.find(b => b.personId === user?.id);
-            const net = myBal ? Math.round(myBal.amount * 100) / 100 : 0;
-            if (isEffectivelySettled(net)) return (
-              <p className="text-base font-semibold text-muted-foreground text-center py-2">You're all settled up!</p>
-            );
-            return (
-              <p className="text-base font-semibold mb-3">
-                {net > 0 ? "You are owed " : "You owe "}
-                <span className={net > 0 ? AMOUNT_IN_CLASS : AMOUNT_OUT_CLASS}>{formatMoney(Math.abs(net), userCurrency)}</span>
-                {" in total"}
-              </p>
-            );
-          })()}
-
-          {/* Personal balance view — phantom-cent settlements (< $0.05) are
-              filtered out so the user doesn't see "You owe Krish $0.01"
-              rows after settling. */}
-          {(() => {
-            const mySettlements = (group.simplifyDebts ? mySimplified : myPairwise)
-              .filter((s) => !isEffectivelySettled(s.amount));
-            if (mySettlements.length === 0) return null;
-            return (
-              <div className="space-y-2 mb-3">
-                <h3 className="text-sm font-medium text-muted-foreground font-serif">
-                  {group.simplifyDebts ? "Your simplified settlements:" : "Your balances:"}
-                </h3>
-                {mySettlements.map((s, i) => {
-                  const youOwe = s.from === user?.id;
-                  const otherPerson = youOwe ? s.to : s.from;
-                  return (
-                    <Card key={i} className="p-4 flex items-center gap-3">
-                      <div
-                        className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-semibold shrink-0"
-                        style={{ backgroundColor: getPersonColor(otherPerson) }}
-                      >
-                        {getPersonName(otherPerson)[0]?.toUpperCase()}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-base">
-                          {youOwe ? (
-                            <>
-                              <span className="text-destructive font-medium">You owe</span>
-                              {" "}<span className="font-medium">{getPersonName(otherPerson)}</span>
-                            </>
-                          ) : (
-                            <>
-                              <span className="font-medium">{getPersonName(otherPerson)}</span>
-                              {" "}<span className={`${AMOUNT_IN_CLASS} font-medium`}>owes you</span>
-                            </>
-                          )}
-                        </p>
-                      </div>
-                      <span className={`text-base font-semibold shrink-0 font-mono ${youOwe ? AMOUNT_OUT_CLASS : AMOUNT_IN_CLASS}`}>
-                        {formatMoney(s.amount, userCurrency)}
-                      </span>
-                    </Card>
-                  );
-                })}
+      {expenses.length > 0 && (() => {
+        const myBal = balances.find(b => b.personId === user?.id);
+        const net = myBal ? Math.round(myBal.amount * 100) / 100 : 0;
+        const settledUp = isEffectivelySettled(net);
+        // Phantom-cent settlements (< $0.05) are filtered so we don't show "$0.01" rows.
+        const mySettlements = (group.simplifyDebts ? mySimplified : myPairwise)
+          .filter((s) => !isEffectivelySettled(s.amount));
+        return (
+          <div>
+            {/* Balance hero */}
+            {settledUp ? (
+              <p className="font-serif text-4xl text-muted-foreground tracking-tight mb-5">All settled up</p>
+            ) : (
+              <div className="mb-5">
+                <p className="text-sm text-muted-foreground mb-1">{net > 0 ? "You're owed in this group" : "You owe in this group"}</p>
+                <p className={`font-serif text-5xl leading-none tracking-tight ${net > 0 ? AMOUNT_IN_CLASS : AMOUNT_OUT_CLASS}`}>
+                  {formatMoney(Math.abs(net), userCurrency)}
+                </p>
               </div>
-            );
-          })()}
+            )}
 
-          <Button
-            variant="outline"
-            size="sm"
-            className="w-full"
-            onClick={() => setSettleUpOpen(true)}
-            data-testid="group-settle-up-btn"
-          >
-            <HandCoins className="w-4 h-4 mr-1.5" />
-            Settle Up
-          </Button>
-        </div>
-      )}
+            {/* Settle up */}
+            {!settledUp && (
+              <Button
+                className="w-full rounded-full mb-6"
+                onClick={() => setSettleUpOpen(true)}
+                data-testid="group-settle-up-btn"
+              >
+                <CheckCircle2 className="w-4 h-4 mr-1.5" />
+                Settle up
+              </Button>
+            )}
+
+            {/* Your balances — per person (amount colour carries the direction) */}
+            {mySettlements.length > 0 && (
+              <div className="mb-6">
+                <h2 className="font-serif text-2xl tracking-tight mb-3">
+                  {group.simplifyDebts ? "Simplified" : "Your balances"}
+                </h2>
+                <div className="flex flex-col gap-3">
+                  {mySettlements.map((s, i) => {
+                    const youOwe = s.from === user?.id;
+                    const otherPerson = youOwe ? s.to : s.from;
+                    return (
+                      <Card key={i} className="p-[18px] rounded-[22px] flex items-center gap-3">
+                        <div
+                          className="w-11 h-11 rounded-full flex items-center justify-center text-white text-base font-semibold shrink-0"
+                          style={{ backgroundColor: warmAvatar(otherPerson) }}
+                        >
+                          {getPersonName(otherPerson)[0]?.toUpperCase()}
+                        </div>
+                        <span className="flex-1 min-w-0 text-[16px] font-semibold truncate">{getPersonName(otherPerson)}</span>
+                        <span className={`text-base font-semibold shrink-0 font-mono ${youOwe ? AMOUNT_OUT_CLASS : AMOUNT_IN_CLASS}`}>
+                          {formatMoney(s.amount, userCurrency)}
+                        </span>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Member Balances — collapsible. Default hidden so the group view
           stays tidy on large groups (e.g., 10-person trips). The user's
@@ -2002,67 +1981,68 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
         </DialogContent>
       </Dialog>
 
-      {/* Expense list */}
+      {/* Expenses — month-grouped clean rows. Tap a row for its detail. */}
       {expenses.length > 0 ? (
-        <div className="space-y-2">
-          <h3 className="text-sm font-medium text-muted-foreground font-serif">Expenses</h3>
-          {[...expenses]
-            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-            .map((expense) => (
-              <Card
-                key={expense.id}
-                className={`p-4 cursor-pointer ${expense.isSettlement ? "border-primary/30 bg-primary/5" : ""}`}
-                data-testid={`expense-card-${expense.id}`}
-                onClick={() => setDetailExpense(expense)}
-              >
-                <div className="flex items-center gap-3">
-                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${expense.isSettlement ? "bg-primary/20" : "bg-primary/10"}`}>
-                    {expense.isSettlement ? (
-                      <CheckCircle2 className="w-5 h-5 text-primary" />
-                    ) : (
-                      <Receipt className="w-5 h-5 text-primary" />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-base font-medium truncate">
-                      {expense.isSettlement ? "Settlement" : expense.description}
-                      {(expense as any).receiptData && (
-                        <FileText className="w-3.5 h-3.5 text-primary inline ml-1.5 -mt-0.5" />
-                      )}
-                    </p>
-                    <p className="text-sm text-muted-foreground font-mono mt-0.5">
-                      {expense.isSettlement
-                        ? `${getPersonName(expense.paidById)} paid ${getPersonName(expense.splitAmongIds[0])} · ${new Date(expense.date).toLocaleDateString()}`
-                        : `${getPersonName(expense.paidById)} paid · split ${expense.splitAmongIds.length} ways`
-                      }
-                    </p>
-                  </div>
-                  <span className="text-right shrink-0 font-mono">
-                    {expense.currency && expense.currency !== "CAD" && expense.originalAmount ? (
-                      <>
-                        <span className={`text-base font-semibold block ${expenseAmountColor(expense)}`}>
-                          {formatExpenseAmount(expense.amount, expense.currency, expense.originalAmount)}
-                        </span>
-                      </>
-                    ) : (
-                      <span className={`text-base font-semibold ${expenseAmountColor(expense)}`}>
-                        {formatMoney(expense.amount, userCurrency)}
-                      </span>
-                    )}
-                  </span>
-                  {canDeleteExpense(expense) && (
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={(e) => { e.stopPropagation(); setDeleteExpenseId(expense.id); }}
-                      data-testid={`delete-group-expense-${expense.id}`}
+        <div>
+          <h2 className="font-serif text-2xl tracking-tight mb-3">Expenses</h2>
+          {(() => {
+            const sorted = [...expenses].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+            const monthGroups: { label: string; items: typeof sorted }[] = [];
+            for (const e of sorted) {
+              const label = new Date(e.date).toLocaleDateString(undefined, { month: "long", year: "numeric" });
+              const last = monthGroups[monthGroups.length - 1];
+              if (last && last.label === label) last.items.push(e);
+              else monthGroups.push({ label, items: [e] });
+            }
+            return monthGroups.map((g) => (
+              <div key={g.label}>
+                <h3 className="text-xs font-mono uppercase tracking-wider text-muted-foreground mt-4 mb-1">{g.label}</h3>
+                {g.items.map((expense) => {
+                  const d = new Date(expense.date);
+                  return (
+                    <div
+                      key={expense.id}
+                      className="flex items-center gap-4 py-4 border-b border-border cursor-pointer"
+                      onClick={() => setDetailExpense(expense)}
+                      data-testid={`expense-card-${expense.id}`}
                     >
-                      <Trash2 className="w-4 h-4 text-muted-foreground" />
-                    </Button>
-                  )}
-                </div>
-              </Card>
-            ))}
+                      <div className="w-11 text-center shrink-0">
+                        <div className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
+                          {d.toLocaleDateString(undefined, { month: "short" })}
+                        </div>
+                        <div className="font-serif text-2xl leading-none">{d.getDate()}</div>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold tracking-tight truncate">
+                          {expense.isSettlement ? "Settlement" : expense.description}
+                        </p>
+                        <p className="font-mono text-xs text-muted-foreground truncate mt-0.5">
+                          {expense.isSettlement
+                            ? `${getPersonName(expense.paidById)} paid ${getPersonName(expense.splitAmongIds[0])}`
+                            : `${getPersonName(expense.paidById)} paid · split ${expense.splitAmongIds.length} ways`}
+                        </p>
+                      </div>
+                      <span className={`font-mono text-base font-semibold shrink-0 ${expenseAmountColor(expense)}`}>
+                        {expense.currency && expense.currency !== "CAD" && expense.originalAmount
+                          ? formatExpenseAmount(expense.amount, expense.currency, expense.originalAmount)
+                          : formatMoney(expense.amount, userCurrency)}
+                      </span>
+                      {canDeleteExpense(expense) && (
+                        <button
+                          className="text-muted-foreground shrink-0 p-1 opacity-60"
+                          onClick={(e) => { e.stopPropagation(); setDeleteExpenseId(expense.id); }}
+                          data-testid={`delete-group-expense-${expense.id}`}
+                          aria-label="Delete expense"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ));
+          })()}
         </div>
       ) : (
         <Card className="p-8 text-center">
