@@ -128,7 +128,7 @@ export default function Groups() {
           </p>
         </Card>
       ) : (
-        <div className="space-y-5">
+        <div className="flex flex-col gap-5">
           {[...groups]
             .sort((a, b) => (getMyNetBalance(a.id) !== 0 ? 0 : 1) - (getMyNetBalance(b.id) !== 0 ? 0 : 1))
             .map((group) => {
