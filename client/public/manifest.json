@@ -4,8 +4,8 @@
   "description": "Split expenses effortlessly with friends and groups",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0a1a1a",
-  "theme_color": "#0a1a1a",
+  "background_color": "#EAE0D2",
+  "theme_color": "#EAE0D2",
   "orientation": "portrait",
   "icons": [
     {
