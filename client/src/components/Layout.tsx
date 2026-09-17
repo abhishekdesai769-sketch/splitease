@@ -32,6 +32,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
     ...(user?.isAdmin ? [{ path: "/admin", icon: Shield, label: "Admin" }] : []),
   ];
 
+  // AI Mode is a focused, full-screen chat — hide the bottom nav there so the
+  // composer docks flush to the bottom and nothing competes while typing.
+  const hideNav = location === "/ai" || location.startsWith("/ai/");
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Top header — pt-[env(safe-area-inset-top)] pushes the header content
@@ -104,6 +108,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       {/* Bottom navigation — pb-[env(safe-area-inset-bottom)] lifts the nav
           content above the home-indicator zone. The nav bg fills the safe
           area so the home-indicator area looks intentional, not like a gap. */}
+      {!hideNav && (
       <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-background/90 backdrop-blur-md pb-[env(safe-area-inset-bottom)]">
         <div className="max-w-3xl mx-auto flex items-center justify-around h-16">
           {navItems.map((item) => {
@@ -136,6 +141,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           })}
         </div>
       </nav>
+      )}
     </div>
   );
 }

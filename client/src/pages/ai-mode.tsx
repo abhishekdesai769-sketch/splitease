@@ -460,7 +460,7 @@ export default function AiMode() {
         <div
           ref={scrollRef}
           className="space-y-3"
-          style={{ paddingBottom: "calc(170px + env(safe-area-inset-bottom))" }}
+          style={{ paddingBottom: "calc(140px + env(safe-area-inset-bottom))" }}
         >
           {messages.length === 0 && <EmptyState />}
           {messages.map((m) => (
@@ -487,7 +487,7 @@ export default function AiMode() {
           above the home-indicator zone consistently. */}
       <div
         className="fixed left-0 right-0 z-30 bg-gradient-to-t from-background via-background to-transparent px-4 pt-6 pb-3"
-        style={{ bottom: "calc(4rem + env(safe-area-inset-bottom))" }}
+        style={{ bottom: "env(safe-area-inset-bottom)" }}
       >
         <div className="max-w-3xl mx-auto">
           {/* Free-trial indicator — only shown to non-Premium iOS users on
@@ -534,9 +534,22 @@ export default function AiMode() {
             </div>
           )}
 
-          {/* Premium composer — roomy box, inline icons: + attach (left),
-              mic + terracotta send (right). */}
-          <div className="rounded-[28px] border border-border bg-card px-4 pt-4 pb-3 shadow-[0_18px_40px_-22px_rgba(40,26,16,0.28)]">
+          {/* Slim composer (B) — one rounded bar: + attach · input · mic ·
+              terracotta send. Docks flush above the keyboard. */}
+          <div className="flex items-end gap-1.5 rounded-[26px] border border-border bg-card pl-2 pr-2 py-1.5 shadow-[0_18px_40px_-22px_rgba(40,26,16,0.28)]">
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={sendMutation.isPending || attachments.length >= MAX_ATTACHMENTS}
+              className="h-10 w-10 shrink-0 rounded-full border border-border text-muted-foreground"
+              title="Attach PDF, screenshot, or photo"
+              data-testid="ai-mode-attach"
+              aria-label="Attach file"
+            >
+              <Plus className="w-5 h-5" />
+            </Button>
             <Textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -544,11 +557,11 @@ export default function AiMode() {
                 isListening
                   ? "Listening — keep going…"
                   : attachments.length > 0
-                  ? "Add context (optional)… e.g. 'split equally with Krish'"
+                  ? "Add context (optional)…"
                   : "Split a bill, scan a receipt, or just say it…"
               }
-              rows={2}
-              className="resize-none border-0 bg-transparent px-1 py-0 text-base leading-relaxed shadow-none focus-visible:ring-0 min-h-[46px]"
+              rows={1}
+              className="flex-1 resize-none border-0 bg-transparent px-1 py-2 text-base leading-relaxed shadow-none focus-visible:ring-0 min-h-[40px] max-h-[120px]"
               disabled={sendMutation.isPending}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
@@ -558,58 +571,41 @@ export default function AiMode() {
               }}
               data-testid="ai-mode-input"
             />
-            <div className="flex items-center justify-between mt-1.5">
-              <Button
-                type="button"
-                size="icon"
-                variant="ghost"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={sendMutation.isPending || attachments.length >= MAX_ATTACHMENTS}
-                className="h-11 w-11 rounded-full border border-border text-muted-foreground"
-                title="Attach PDF, screenshot, or photo"
-                data-testid="ai-mode-attach"
-                aria-label="Attach file"
-              >
-                <Plus className="w-5 h-5" />
-              </Button>
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  size="icon"
-                  variant="ghost"
-                  onClick={handleMicTap}
-                  disabled={sendMutation.isPending || isVoiceProcessing}
-                  className={`h-11 w-11 rounded-full border ${
-                    isListening
-                      ? "bg-red-500 hover:bg-red-600 text-white border-red-500"
-                      : "border-border text-muted-foreground"
-                  }`}
-                  title={
-                    isListening ? "Tap to stop" : voiceSupported ? "Talk to AI" : "Voice needs the iOS app"
-                  }
-                  data-testid="ai-mode-voice"
-                  aria-label={isListening ? "Stop listening" : "Start voice input"}
-                >
-                  {isVoiceProcessing ? (
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                  ) : voiceSupported || isListening ? (
-                    <Mic className="w-5 h-5" />
-                  ) : (
-                    <MicOff className="w-5 h-5 opacity-50" />
-                  )}
-                </Button>
-                <Button
-                  type="button"
-                  size="icon"
-                  onClick={handleSend}
-                  disabled={sendMutation.isPending || (!input.trim() && attachments.length === 0)}
-                  className="h-12 w-12 rounded-full bg-accent-foreground text-white hover:bg-accent-foreground/90 disabled:opacity-40"
-                  data-testid="ai-mode-send"
-                >
-                  {sendMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin" /> : <ArrowUp className="w-5 h-5" />}
-                </Button>
-              </div>
-            </div>
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              onClick={handleMicTap}
+              disabled={sendMutation.isPending || isVoiceProcessing}
+              className={`h-10 w-10 shrink-0 rounded-full border ${
+                isListening
+                  ? "bg-red-500 hover:bg-red-600 text-white border-red-500"
+                  : "border-border text-muted-foreground"
+              }`}
+              title={
+                isListening ? "Tap to stop" : voiceSupported ? "Talk to AI" : "Voice needs the iOS app"
+              }
+              data-testid="ai-mode-voice"
+              aria-label={isListening ? "Stop listening" : "Start voice input"}
+            >
+              {isVoiceProcessing ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : voiceSupported || isListening ? (
+                <Mic className="w-5 h-5" />
+              ) : (
+                <MicOff className="w-5 h-5 opacity-50" />
+              )}
+            </Button>
+            <Button
+              type="button"
+              size="icon"
+              onClick={handleSend}
+              disabled={sendMutation.isPending || (!input.trim() && attachments.length === 0)}
+              className="h-10 w-10 shrink-0 rounded-full bg-accent-foreground text-white hover:bg-accent-foreground/90 disabled:opacity-40"
+              data-testid="ai-mode-send"
+            >
+              {sendMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin" /> : <ArrowUp className="w-5 h-5" />}
+            </Button>
           </div>
         </div>
       </div>
