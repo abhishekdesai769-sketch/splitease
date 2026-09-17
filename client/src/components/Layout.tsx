@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { UsersRound, Receipt, LayoutDashboard, Users2, LogOut, Shield } from "lucide-react";
 import { useAuth } from "@/lib/auth";
@@ -32,9 +33,23 @@ export function Layout({ children }: { children: React.ReactNode }) {
     ...(user?.isAdmin ? [{ path: "/admin", icon: Shield, label: "Admin" }] : []),
   ];
 
-  // AI Mode is a focused, full-screen chat — hide the bottom nav there so the
-  // composer docks flush to the bottom and nothing competes while typing.
-  const hideNav = location === "/ai" || location.startsWith("/ai/");
+  // Hide the bottom nav whenever the on-screen keyboard is open (renaming a
+  // group, adding an expense, AI Mode, …) — a floating Dashboard/Friends bar
+  // over the keyboard is clutter and you can't navigate mid-edit anyway. We
+  // detect the keyboard via the visual viewport shrinking on mobile.
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const onResize = () => setKeyboardOpen(window.innerHeight - vv.height > 120);
+    vv.addEventListener("resize", onResize);
+    onResize();
+    return () => vv.removeEventListener("resize", onResize);
+  }, []);
+
+  // AI Mode is always a focused, full-screen chat, so hide the nav there
+  // regardless of keyboard state too.
+  const hideNav = keyboardOpen || location === "/ai" || location.startsWith("/ai/");
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
