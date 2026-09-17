@@ -1595,22 +1595,18 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                 const isGhost = (m as any).isGhost;
                 const email = (m as any).email as string | undefined;
                 const tappable = isGhost || canAct || m.id !== user?.id;
-                const bal = balances.find((b) => b.personId === m.id);
-                const net = bal ? displayBalance(bal.amount) : 0;
-                const settled = isEffectivelySettled(net);
+                // The kebab opens the same per-member popup the row tap used to:
+                // ghost → invite, actionable → manage (remove / promote), else info.
+                const openActions = () => {
+                  setMembersSheetOpen(false);
+                  if (isGhost) { setGhostInviteMember(m); setGhostInviteEmail(""); }
+                  else if (canAct) setMemberActionMember(m);
+                  else if (m.id !== user?.id) setMemberInfoMember(m);
+                };
                 return (
-                  <button
-                    type="button"
+                  <div
                     key={m.id}
-                    disabled={!tappable}
-                    className={`flex items-center gap-3 py-2.5 border-b border-border last:border-b-0 text-left ${tappable ? "cursor-pointer hover-elevate" : "cursor-default"}`}
-                    onClick={() => {
-                      if (!tappable) return;
-                      setMembersSheetOpen(false);
-                      if (isGhost) { setGhostInviteMember(m); setGhostInviteEmail(""); }
-                      else if (canAct) setMemberActionMember(m);
-                      else if (m.id !== user?.id) setMemberInfoMember(m);
-                    }}
+                    className="flex items-center gap-3 py-2.5 border-b border-border last:border-b-0"
                     data-testid={`member-row-${m.id}`}
                   >
                     <div className="relative shrink-0">
@@ -1643,19 +1639,23 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                         {role === "admin" && <span className="text-muted-foreground font-medium"> · admin</span>}
                       </p>
                       {isGhost ? (
-                        <p className="font-mono text-[11px] text-amber-600 mt-0.5">Ghost · tap to invite</p>
+                        <p className="font-mono text-[11px] text-amber-600 mt-0.5">Ghost · not joined yet</p>
                       ) : email ? (
                         <p className="font-mono text-[11px] text-muted-foreground mt-0.5 truncate">{email}</p>
                       ) : null}
                     </div>
-                    {!isGhost && (settled ? (
-                      <span className="font-mono text-[11px] text-muted-foreground shrink-0">settled</span>
-                    ) : (
-                      <span className={`font-mono text-xs font-semibold shrink-0 ${net > 0 ? AMOUNT_IN_CLASS : AMOUNT_OUT_CLASS}`}>
-                        {formatMoney(Math.abs(net), userCurrency)}
-                      </span>
-                    ))}
-                  </button>
+                    {tappable && (
+                      <button
+                        type="button"
+                        onClick={openActions}
+                        className="shrink-0 h-9 w-9 -mr-1.5 rounded-full flex items-center justify-center text-muted-foreground hover-elevate"
+                        aria-label={`Options for ${m.id === user?.id ? "you" : m.name}`}
+                        data-testid={`member-menu-${m.id}`}
+                      >
+                        <MoreVertical className="w-5 h-5" />
+                      </button>
+                    )}
+                  </div>
                 );
               })}
             </div>
