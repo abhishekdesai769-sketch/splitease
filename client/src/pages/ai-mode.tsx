@@ -84,6 +84,7 @@ export default function AiMode() {
   const [attachments, setAttachments] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
   // Lookup tables (id → name) so we can render proposal cards readably
   // without hitting another endpoint per render.
@@ -175,6 +176,15 @@ export default function AiMode() {
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages.length]);
+
+  // Auto-grow the composer as the user types — up to ~4 lines, then it scrolls
+  // internally. Keeps recent lines visible instead of only the current one.
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 132)}px`;
+  }, [input]);
 
   // ── Send message mutation ─────────────────────────────────────────────
   const sendMutation = useMutation({
@@ -543,14 +553,15 @@ export default function AiMode() {
               variant="ghost"
               onClick={() => fileInputRef.current?.click()}
               disabled={sendMutation.isPending || attachments.length >= MAX_ATTACHMENTS}
-              className="h-10 w-10 shrink-0 rounded-full border border-border text-muted-foreground"
+              className="h-10 w-10 shrink-0 rounded-full bg-muted border border-border text-foreground hover:bg-muted/70"
               title="Attach PDF, screenshot, or photo"
               data-testid="ai-mode-attach"
               aria-label="Attach file"
             >
-              <Plus className="w-5 h-5" />
+              <Plus className="w-[22px] h-[22px]" strokeWidth={2.4} />
             </Button>
             <Textarea
+              ref={inputRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder={
@@ -561,7 +572,7 @@ export default function AiMode() {
                   : "Split a bill, scan a receipt, or just say it…"
               }
               rows={1}
-              className="flex-1 resize-none border-0 bg-transparent px-1 py-2 text-base leading-relaxed shadow-none focus-visible:ring-0 min-h-[40px] max-h-[120px]"
+              className="flex-1 resize-none !border-0 bg-transparent px-1 py-2 text-base leading-relaxed shadow-none outline-none focus-visible:outline-none focus-visible:!ring-0 focus-visible:!ring-offset-0 min-h-[40px] max-h-[132px] overflow-y-auto"
               disabled={sendMutation.isPending}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
@@ -580,7 +591,7 @@ export default function AiMode() {
               className={`h-10 w-10 shrink-0 rounded-full border ${
                 isListening
                   ? "bg-red-500 hover:bg-red-600 text-white border-red-500"
-                  : "border-border text-muted-foreground"
+                  : "bg-muted border-border text-foreground hover:bg-muted/70"
               }`}
               title={
                 isListening ? "Tap to stop" : voiceSupported ? "Talk to AI" : "Voice needs the iOS app"
@@ -589,11 +600,11 @@ export default function AiMode() {
               aria-label={isListening ? "Stop listening" : "Start voice input"}
             >
               {isVoiceProcessing ? (
-                <Loader2 className="w-5 h-5 animate-spin" />
+                <Loader2 className="w-[22px] h-[22px] animate-spin" />
               ) : voiceSupported || isListening ? (
-                <Mic className="w-5 h-5" />
+                <Mic className="w-[22px] h-[22px]" strokeWidth={2.2} />
               ) : (
-                <MicOff className="w-5 h-5 opacity-50" />
+                <MicOff className="w-[22px] h-[22px] opacity-60" strokeWidth={2.2} />
               )}
             </Button>
             <Button
