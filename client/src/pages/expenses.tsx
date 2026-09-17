@@ -4,7 +4,7 @@ import { apiRequest } from "@/lib/queryClient";
 import type { Group, Expense, SafeUser } from "@shared/schema";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Receipt, Mail, Loader2 } from "lucide-react";
+import { Receipt, FileDown, Loader2 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
@@ -50,6 +50,11 @@ export default function Expenses() {
     if (id === user?.id) return "You";
     return allMembers.find((m) => m.id === id)?.name || "Someone";
   };
+  // "You paid" / "Nikhil paid" — first name keeps the subtitle to one line.
+  const getPayerLabel = (id: string) => {
+    const name = getPersonName(id);
+    return name === "You" ? "You paid" : `${name.split(" ")[0]} paid`;
+  };
   const getGroupName = (groupId: string | null) => {
     if (!groupId) return "Direct";
     return groups.find((g) => g.id === groupId)?.name || "Unknown Group";
@@ -58,6 +63,23 @@ export default function Expenses() {
   const sortedExpenses = [...expenses].sort(
     (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
   );
+
+  // Group the (already date-desc) expenses into months for clean scanning.
+  const monthGroups: { key: string; label: string; items: Expense[] }[] = [];
+  const monthIndex: Record<string, number> = {};
+  for (const e of sortedExpenses) {
+    const d = new Date(e.date);
+    const key = `${d.getFullYear()}-${d.getMonth()}`;
+    if (monthIndex[key] === undefined) {
+      monthIndex[key] = monthGroups.length;
+      monthGroups.push({
+        key,
+        label: d.toLocaleDateString("en-US", { month: "long", year: "numeric" }),
+        items: [],
+      });
+    }
+    monthGroups[monthIndex[key]].items.push(e);
+  }
 
   const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
 
@@ -78,30 +100,35 @@ export default function Expenses() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight font-serif">All <em className="italic text-accent-foreground">Expenses</em></h1>
-          <p className="text-sm text-muted-foreground mt-0.5 font-mono">
-            {expenses.length} expenses · {formatMoney(totalExpenses, userCurrency)} total
+          <h1 className="font-serif text-5xl tracking-tight leading-none">Expenses</h1>
+          <p className="text-sm text-muted-foreground mt-1.5 font-mono">
+            {expenses.length} · {formatMoney(totalExpenses, userCurrency)}
           </p>
         </div>
         {expenses.length > 0 && (
           <Button
-            size="sm"
+            size="icon"
             variant="outline"
             onClick={() => exportMutation.mutate()}
             disabled={exportMutation.isPending}
+            className="rounded-full h-11 w-11 shrink-0"
+            aria-label="Export expenses as CSV to your email"
+            title="Export CSV to email"
             data-testid="export-expenses-btn"
           >
             {exportMutation.isPending ? (
-              <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+              <Loader2 className="w-5 h-5 animate-spin" />
             ) : (
-              <Mail className="w-4 h-4 mr-1.5" />
+              <FileDown className="w-5 h-5" />
             )}
-            {exportMutation.isPending ? "Sending..." : "Export CSV"}
           </Button>
         )}
       </div>
+
+      {/* Hairline separates the page header from the list. */}
+      {sortedExpenses.length > 0 && <div className="h-px bg-border" />}
 
       {sortedExpenses.length === 0 ? (
         <Card className="p-8 text-center">
@@ -117,30 +144,42 @@ export default function Expenses() {
           </Link>
         </Card>
       ) : (
-        <div className="space-y-2">
-          {sortedExpenses.map((expense) => {
-            const href = expense.groupId ? `/groups/${expense.groupId}` : "/friends";
-            return (
-              <Link key={expense.id} href={href}>
-                <Card className="p-4 hover-elevate cursor-pointer" data-testid={`expense-item-${expense.id}`}>
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                      <Receipt className="w-5 h-5 text-primary" />
+        <div>
+          {monthGroups.map((mg) => (
+            <div key={mg.key} className="mt-6 first:mt-1">
+              <p className="font-mono text-[11px] tracking-[0.14em] uppercase text-muted-foreground mb-1 px-0.5">
+                {mg.label}
+              </p>
+              {mg.items.map((expense) => {
+                const href = expense.groupId ? `/groups/${expense.groupId}` : "/friends";
+                const d = new Date(expense.date);
+                const mo = d.toLocaleDateString("en-US", { month: "short" });
+                const dy = d.getDate();
+                return (
+                  <Link key={expense.id} href={href}>
+                    <div
+                      className="flex items-center gap-3.5 py-[15px] border-b border-border cursor-pointer transition-colors hover:bg-foreground/[0.025] active:bg-foreground/[0.05]"
+                      data-testid={`expense-item-${expense.id}`}
+                    >
+                      <div className="w-11 text-center shrink-0">
+                        <div className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">{mo}</div>
+                        <div className="font-serif text-[21px] leading-none">{dy}</div>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[15.5px] font-semibold tracking-tight truncate">{expense.description}</p>
+                        <p className="font-mono text-xs text-muted-foreground mt-0.5 truncate">
+                          {getPayerLabel(expense.paidById)} · {getGroupName(expense.groupId)}
+                        </p>
+                      </div>
+                      <span className="font-mono text-base font-semibold text-foreground shrink-0">
+                        {formatMoney(expense.amount, userCurrency, expense.currency, expense.originalAmount)}
+                      </span>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-base font-medium truncate">{expense.description}</p>
-                      <p className="text-sm text-muted-foreground font-mono mt-0.5">
-                        {getPersonName(expense.paidById)} · {getGroupName(expense.groupId)} · {new Date(expense.date).toLocaleDateString()}
-                      </p>
-                    </div>
-                    <span className="text-base font-semibold text-foreground shrink-0 font-mono">
-                      {formatMoney(expense.amount, userCurrency, expense.currency, expense.originalAmount)}
-                    </span>
-                  </div>
-                </Card>
-              </Link>
-            );
-          })}
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
         </div>
       )}
     </div>
