@@ -756,7 +756,7 @@ export default function Friends() {
           {youOwe.length > 0 && (
             <div>
               <h2 className="font-serif text-3xl tracking-tight leading-none mb-4">You owe</h2>
-              <div className="space-y-3">
+              <div className="space-y-4">
                 {youOwe.map(({ f, balance }) => renderRow(f, balance))}
               </div>
             </div>
@@ -765,7 +765,7 @@ export default function Friends() {
           {owesYou.length > 0 && (
             <div>
               <h2 className="font-serif text-3xl tracking-tight leading-none mb-4">Owes you</h2>
-              <div className="space-y-3">
+              <div className="space-y-4">
                 {owesYou.map(({ f, balance }) => renderRow(f, balance))}
               </div>
             </div>
@@ -797,7 +797,7 @@ export default function Friends() {
                 <ChevronRight className={`w-4 h-4 text-muted-foreground shrink-0 transition-transform ${settledExpanded ? "rotate-90" : ""}`} />
               </button>
               {settledExpanded && (
-                <div className="space-y-3">
+                <div className="space-y-4">
                   {settledFriends.map(({ f, balance }) => renderRow(f, balance))}
                 </div>
               )}
