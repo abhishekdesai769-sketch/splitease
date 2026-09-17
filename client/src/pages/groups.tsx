@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { FolderPlus, UsersRound, ChevronRight } from "lucide-react";
+import { UsersRound, ChevronRight, Plus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 import { useAuth } from "@/lib/auth";
@@ -65,15 +65,15 @@ export default function Groups() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex items-end justify-between gap-2">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight font-serif"><em className="italic text-accent-foreground">Groups</em></h1>
-          <p className="text-sm text-muted-foreground mt-0.5 font-mono">{groups.length} groups</p>
+          <h1 className="font-serif text-5xl tracking-tight leading-none">Groups</h1>
+          <p className="text-sm text-muted-foreground mt-1.5 font-mono">{groups.length} groups</p>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
-            <Button size="sm" data-testid="create-group-btn">
-              <FolderPlus className="w-4 h-4 mr-1.5" />
+            <Button size="sm" className="rounded-full px-4 shrink-0" data-testid="create-group-btn">
+              <Plus className="w-4 h-4 mr-1.5" />
               Create
             </Button>
           </DialogTrigger>
@@ -114,6 +114,9 @@ export default function Groups() {
         </Dialog>
       </div>
 
+      {/* Hairline separates the page header from the list. */}
+      {groups.length > 0 && <div className="h-px bg-border" />}
+
       {groups.length === 0 ? (
         <Card className="p-8 text-center">
           <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
@@ -125,33 +128,29 @@ export default function Groups() {
           </p>
         </Card>
       ) : (
-        <div className="space-y-2">
-          {groups.map((group) => {
+        <div className="space-y-3">
+          {[...groups]
+            .sort((a, b) => (getMyNetBalance(a.id) !== 0 ? 0 : 1) - (getMyNetBalance(b.id) !== 0 ? 0 : 1))
+            .map((group) => {
             const expenseCount = getGroupExpenseCount(group.id);
             const netBalance = getMyNetBalance(group.id);
             return (
               <Link key={group.id} href={`/groups/${group.id}`}>
-                <Card className="p-4 flex items-center gap-3 hover-elevate cursor-pointer" data-testid={`group-card-${group.id}`}>
-                  <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                    <UsersRound className="w-5 h-5 text-primary" />
-                  </div>
+                <Card className="p-[18px] rounded-[26px] flex items-center gap-3 hover-elevate cursor-pointer" data-testid={`group-card-${group.id}`}>
                   <div className="flex-1 min-w-0">
-                    <p className="text-base font-medium truncate">{group.name}</p>
-                    <p className="text-sm text-muted-foreground font-mono mt-0.5">
+                    <p className="text-[17px] font-semibold tracking-tight leading-tight">{group.name}</p>
+                    <p className="text-xs text-muted-foreground font-mono mt-1.5 truncate">
                       {group.memberIds.length} members · {expenseCount} expenses
                     </p>
                   </div>
-                  {netBalance !== 0 && (
+                  {netBalance !== 0 ? (
                     <span className={`text-base font-semibold shrink-0 font-mono ${netBalance > 0 ? AMOUNT_IN_CLASS : AMOUNT_OUT_CLASS}`}>
-                      {netBalance > 0 ? "+" : "-"}{formatMoney(Math.abs(netBalance), userCurrency)}
+                      {formatMoney(Math.abs(netBalance), userCurrency)}
                     </span>
-                  )}
-                  {netBalance === 0 && expenseCount > 0 && (
-                    <span className="text-sm text-muted-foreground shrink-0">settled</span>
-                  )}
-                  <div className="flex items-center gap-1">
-                    <ChevronRight className="w-4 h-4 text-muted-foreground" />
-                  </div>
+                  ) : expenseCount > 0 ? (
+                    <span className="text-sm text-muted-foreground shrink-0 font-mono">settled</span>
+                  ) : null}
+                  <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
                 </Card>
               </Link>
             );
