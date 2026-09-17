@@ -50,6 +50,18 @@ function participantShare(expense: Expense, userId: string): number {
   return ids.length > 0 ? expense.amount / ids.length : 0;
 }
 
+// Human label for how an expense is split — derived from the ACTUAL shares, not
+// just whether custom amounts were stored. "full amount" when only one person
+// actually owes (e.g. you fronted it and they pay it all back), "split equally"
+// when everyone who owes pays the same, otherwise "unequal split".
+function splitLabel(expense: Expense): string {
+  const ids = expense.splitAmongIds || [];
+  const shares = ids.map((id) => participantShare(expense, id)).filter((s) => s > 0.005);
+  if (shares.length <= 1) return "full amount";
+  const allEqual = shares.every((s) => Math.abs(s - shares[0]) < 0.01);
+  return allEqual ? "split equally" : "unequal split";
+}
+
 export default function FriendDetail({ friendId }: { friendId: string }) {
   const { user } = useAuth();
   const userCurrency = user?.defaultCurrency;
@@ -1132,7 +1144,7 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
                 {!exp.isSettlement && (
                   <div className="rounded-lg border p-3 space-y-2">
                     <p className="text-xs font-medium text-muted-foreground">
-                      {exp.splitAmounts ? "Unequal split" : "Split equally"}
+                      {splitLabel(exp)}
                       {ids.length > 0 ? ` · ${ids.length} ${ids.length === 1 ? "person" : "people"}` : ""}
                     </p>
                     <div className="flex items-center justify-between text-sm">
@@ -1330,7 +1342,7 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
                         <p className="font-mono text-xs text-muted-foreground truncate mt-0.5">
                           {expense.isSettlement
                             ? "Payment"
-                            : `${paidByName} paid · ${expense.splitAmounts ? "unequal split" : "split equally"}`}
+                            : `${paidByName} paid · ${splitLabel(expense)}`}
                         </p>
                       </div>
                       <span className={`font-mono font-semibold shrink-0 ${expense.isSettlement ? "text-muted-foreground" : (iPaid ? AMOUNT_IN_CLASS : AMOUNT_OUT_CLASS)}`}>
