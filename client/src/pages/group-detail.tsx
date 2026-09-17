@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Plus, ArrowLeft, Trash2, Shuffle, Receipt, UserPlus, X, HandCoins, CheckCircle2, AlertTriangle, Camera, Mail, Loader2, Crown, Shield, LogOut, UserMinus, Clock, Check, Ghost, FileText, Pencil, MoreVertical, Upload, Download, Repeat, ChevronDown, Copy, MessageCircle, Share2, Users2 } from "lucide-react";
+import { Plus, ArrowLeft, Trash2, Shuffle, Receipt, UserPlus, X, HandCoins, CheckCircle2, AlertTriangle, Camera, Mail, Loader2, Crown, Shield, LogOut, UserMinus, Clock, Check, Ghost, FileText, Pencil, MoreVertical, Upload, Download, Repeat, ChevronDown, ChevronRight, Copy, MessageCircle, Share2, Users2 } from "lucide-react";
 import { shareInviteLink, shareAppLink } from "@/lib/share";
 import { Switch } from "@/components/ui/switch";
 import { UpgradePromptSheet } from "@/components/UpgradePromptSheet";
@@ -32,6 +32,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
   const { toast } = useToast();
   const [addOpen, setAddOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [membersSheetOpen, setMembersSheetOpen] = useState(false);
   const [inviteLinkCopied, setInviteLinkCopied] = useState(false);
   // Shareable invite link (V1 — open join, one active link per group)
   const [shareLinkOpen, setShareLinkOpen] = useState(false);
@@ -1546,58 +1547,120 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
         </Dialog>
       </div>
 
-      {/* Members — compact overlapping cluster; tap a member for actions / payment info. */}
+      {/* Members — one fixed-width button (with a 3-face peek) so the row never overflows,
+          no matter how many members. Tap opens the full members sheet. */}
       <div className="flex items-center gap-3 mb-1">
-        <div className="flex shrink-0">
-          {members.map((m) => {
-            const role = getMemberRole(m.id);
-            const canAct = canActOnMember(m.id);
-            const isGhost = (m as any).isGhost;
-            return (
-              <button
-                type="button"
-                key={m.id}
-                className={`relative -ml-2.5 first:ml-0 ${isGhost || canAct || m.id !== user?.id ? "cursor-pointer" : "cursor-default"}`}
-                onClick={() => {
-                  if (isGhost) { setGhostInviteMember(m); setGhostInviteEmail(""); }
-                  else if (canAct) setMemberActionMember(m);
-                  else if (m.id !== user?.id) setMemberInfoMember(m);
-                }}
-                data-testid={`member-avatar-${m.id}`}
-              >
-                <div
-                  className={`w-10 h-10 rounded-full border-2 border-background flex items-center justify-center text-white text-sm font-semibold ${isGhost ? "border-dashed !border-amber-500/50" : ""}`}
-                  style={{ backgroundColor: isGhost ? "transparent" : warmAvatar(m.id) }}
-                >
-                  {isGhost ? <Ghost className="w-4 h-4 text-amber-500" /> : m.name[0]?.toUpperCase()}
-                </div>
-                {!isGhost && role === "owner" && (
-                  <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-yellow-500 border-2 border-background flex items-center justify-center" title="Owner">
-                    <Crown className="w-2 h-2 text-white" />
-                  </span>
-                )}
-                {!isGhost && role === "admin" && (
-                  <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-primary border-2 border-background flex items-center justify-center" title="Admin">
-                    <Shield className="w-2 h-2 text-white" />
-                  </span>
-                )}
-                {isGhost && (
-                  <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-amber-500 border-2 border-background flex items-center justify-center" title="Ghost — tap to invite">
-                    <Mail className="w-2 h-2 text-white" />
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-        <span className="flex-1 font-mono text-xs text-muted-foreground">{members.length} members</span>
         <button
-          className="flex items-center gap-1.5 text-sm font-medium text-accent-foreground shrink-0"
+          type="button"
+          onClick={() => setMembersSheetOpen(true)}
+          className="flex items-center gap-2.5 bg-foreground text-background rounded-full pl-2 pr-3.5 py-1.5 shrink-0 hover-elevate"
+          data-testid="members-button"
+        >
+          <div className="flex">
+            {members.slice(0, 3).map((m, i) => {
+              const isGhost = (m as any).isGhost;
+              return (
+                <div
+                  key={m.id}
+                  className="w-[26px] h-[26px] rounded-full border-2 border-foreground flex items-center justify-center text-white text-[11px] font-semibold"
+                  style={{ marginLeft: i === 0 ? 0 : -9, backgroundColor: isGhost ? "hsl(38 38% 45%)" : warmAvatar(m.id) }}
+                >
+                  {isGhost ? <Ghost className="w-3 h-3" /> : m.name[0]?.toUpperCase()}
+                </div>
+              );
+            })}
+          </div>
+          <span className="text-sm font-semibold whitespace-nowrap">{members.length} members</span>
+          <ChevronRight className="w-4 h-4 opacity-70" />
+        </button>
+        <button
+          className="flex items-center gap-1.5 text-sm font-medium text-accent-foreground shrink-0 ml-auto"
           data-testid="invite-member-btn"
           onClick={() => setShareLinkOpen(true)}
         >
           <UserPlus className="w-4 h-4" /> Invite
         </button>
+
+        {/* Full members sheet — a roster with email under each name (disambiguates duplicate
+            names), and preserves every per-member tap action (ghost invite / manage / info). */}
+        <Dialog open={membersSheetOpen} onOpenChange={setMembersSheetOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{members.length} members</DialogTitle>
+            </DialogHeader>
+            <div className="flex flex-col pt-1 max-h-[62vh] overflow-y-auto">
+              {members.map((m) => {
+                const role = getMemberRole(m.id);
+                const canAct = canActOnMember(m.id);
+                const isGhost = (m as any).isGhost;
+                const email = (m as any).email as string | undefined;
+                const tappable = isGhost || canAct || m.id !== user?.id;
+                const bal = balances.find((b) => b.personId === m.id);
+                const net = bal ? displayBalance(bal.amount) : 0;
+                const settled = isEffectivelySettled(net);
+                return (
+                  <button
+                    type="button"
+                    key={m.id}
+                    disabled={!tappable}
+                    className={`flex items-center gap-3 py-2.5 border-b border-border last:border-b-0 text-left ${tappable ? "cursor-pointer hover-elevate" : "cursor-default"}`}
+                    onClick={() => {
+                      if (!tappable) return;
+                      setMembersSheetOpen(false);
+                      if (isGhost) { setGhostInviteMember(m); setGhostInviteEmail(""); }
+                      else if (canAct) setMemberActionMember(m);
+                      else if (m.id !== user?.id) setMemberInfoMember(m);
+                    }}
+                    data-testid={`member-row-${m.id}`}
+                  >
+                    <div className="relative shrink-0">
+                      <div
+                        className={`w-10 h-10 rounded-full border-2 border-background flex items-center justify-center text-white text-sm font-semibold ${isGhost ? "border-dashed !border-amber-500/50" : ""}`}
+                        style={{ backgroundColor: isGhost ? "transparent" : warmAvatar(m.id) }}
+                      >
+                        {isGhost ? <Ghost className="w-4 h-4 text-amber-500" /> : m.name[0]?.toUpperCase()}
+                      </div>
+                      {!isGhost && role === "owner" && (
+                        <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-yellow-500 border-2 border-background flex items-center justify-center" title="Owner">
+                          <Crown className="w-2 h-2 text-white" />
+                        </span>
+                      )}
+                      {!isGhost && role === "admin" && (
+                        <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-primary border-2 border-background flex items-center justify-center" title="Admin">
+                          <Shield className="w-2 h-2 text-white" />
+                        </span>
+                      )}
+                      {isGhost && (
+                        <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-amber-500 border-2 border-background flex items-center justify-center" title="Ghost — tap to invite">
+                          <Mail className="w-2 h-2 text-white" />
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[15px] font-semibold truncate">
+                        {m.id === user?.id ? "You" : m.name}
+                        {role === "owner" && <span className="text-muted-foreground font-medium"> · host</span>}
+                        {role === "admin" && <span className="text-muted-foreground font-medium"> · admin</span>}
+                      </p>
+                      {isGhost ? (
+                        <p className="font-mono text-[11px] text-amber-600 mt-0.5">Ghost · tap to invite</p>
+                      ) : email ? (
+                        <p className="font-mono text-[11px] text-muted-foreground mt-0.5 truncate">{email}</p>
+                      ) : null}
+                    </div>
+                    {!isGhost && (settled ? (
+                      <span className="font-mono text-[11px] text-muted-foreground shrink-0">settled</span>
+                    ) : (
+                      <span className={`font-mono text-xs font-semibold shrink-0 ${net > 0 ? AMOUNT_IN_CLASS : AMOUNT_OUT_CLASS}`}>
+                        {formatMoney(Math.abs(net), userCurrency)}
+                      </span>
+                    ))}
+                  </button>
+                );
+              })}
+            </div>
+          </DialogContent>
+        </Dialog>
         <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
           <DialogContent>
             <DialogHeader>
