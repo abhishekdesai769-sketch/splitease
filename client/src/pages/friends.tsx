@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { UserPlus, Plus, Users2, HandCoins, CheckCircle2, ChevronRight, Camera, X, Repeat, Crown, Copy, Check, MessageCircle, Share2 } from "lucide-react";
 import { shareAppLink } from "@/lib/share";
+import { ShareChannels } from "@/components/ShareChannels";
 import { Switch } from "@/components/ui/switch";
 import { UpgradePromptSheet } from "@/components/UpgradePromptSheet";
 import { isInTWA } from "@/lib/platform";
@@ -660,40 +661,13 @@ export default function Friends() {
                     data-testid="input-friend-email"
                   />
                   <p className="text-xs text-muted-foreground">
-                    They need a Spliiit account to connect. Not on Spliiit yet?
+                    They need a Spliiit account to connect. Not on Spliiit yet? Share your invite:
                   </p>
-                  <div className="flex flex-wrap gap-2 pt-0.5">
-                    {/* PRIMARY: native share sheet — covers IG, WhatsApp, iMessage,
-                        Signal, AirDrop, email, etc. in one tap. Highest-leverage
-                        invite path per PostHog data (Phase-1 invite-friction fix). */}
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        const result = await shareAppLink({
-                          inviterName: user?.name || "A friend",
-                          referralCode: user?.referralCode,
-                        });
-                        if (result.method === "clipboard") {
-                          setInviteLinkCopied(true);
-                          setTimeout(() => setInviteLinkCopied(false), 2000);
-                        }
-                      }}
-                      className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors font-medium"
-                    >
-                      <Share2 className="w-3.5 h-3.5" />
-                      {inviteLinkCopied ? "Link copied!" : "Share invite"}
-                    </button>
-                    {/* SECONDARY: explicit WhatsApp for users who prefer the direct path */}
-                    <a
-                      href={`https://wa.me/?text=${encodeURIComponent(`Hey, ${user?.name || "a friend"} here. I use Spliiit to split expenses with friends — it's free with no limits. Join me: https://spliiit.klarityit.ca${user?.referralCode ? `?ref=${user.referralCode}` : ""}`)}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md border border-border bg-muted/30 hover:bg-muted/60 transition-colors"
-                    >
-                      <MessageCircle className="w-3.5 h-3.5 text-foreground" />
-                      WhatsApp
-                    </a>
-                  </div>
+                  <ShareChannels
+                    url={user?.referralCode ? `https://spliiit.ca?ref=${user.referralCode}` : "https://spliiit.ca"}
+                    text={`Hey, ${user?.name || "a friend"} here. I use Spliiit to split expenses with friends. Join me:`}
+                    emailSubject="Join me on Spliiit"
+                  />
                 </div>
                 <Button
                   type="submit"

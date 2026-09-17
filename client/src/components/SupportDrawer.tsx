@@ -17,6 +17,7 @@ import { useTheme, type ThemePref } from "@/lib/theme";
 import { CURRENCIES } from "@/components/CurrencySelector";
 import { useLocation } from "wouter";
 import { UpgradePromptSheet } from "@/components/UpgradePromptSheet";
+import { ShareChannels } from "@/components/ShareChannels";
 import { isInTWA } from "@/lib/platform";
 
 // ─── Email preview generator ─────────────────────────────────────────────────
@@ -113,8 +114,8 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
     onError: () => toast({ title: "Error", description: "Could not save settings", variant: "destructive" }),
   });
 
-  const APP_URL = "https://spliiit.klarityit.ca";
-  const inviteText = `Hey! I use Spliiit to split expenses with friends and groups. Check it out: ${APP_URL}`;
+  const APP_URL = user?.referralCode ? `https://spliiit.ca?ref=${user.referralCode}` : "https://spliiit.ca";
+  const inviteText = `Hey! I use Spliiit to split expenses with friends and groups. Join me:`;
 
   const handleCopyLink = async () => {
     try {
@@ -514,67 +515,7 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
               Share Spliiit with friends so you can split expenses together.
             </p>
 
-            {/* Copy Link */}
-            <button
-              onClick={handleCopyLink}
-              className="flex items-center gap-3 px-3 py-3 rounded-lg border border-border hover:bg-muted/50 transition-colors text-left mb-3"
-              data-testid="invite-copy-link"
-            >
-              <div className="w-9 h-9 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
-                {copied ? <Check className="w-4 h-4 text-primary" /> : <Copy className="w-4 h-4 text-muted-foreground" />}
-              </div>
-              <div>
-                <p className="text-sm font-medium">{copied ? "Link Copied" : "Copy Link"}</p>
-                <p className="text-xs text-muted-foreground truncate max-w-[200px]">{APP_URL}</p>
-              </div>
-            </button>
-
-            {/* WhatsApp */}
-            <a
-              href={`https://wa.me/?text=${encodeURIComponent(inviteText)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-3 px-3 py-3 rounded-lg border border-border hover:bg-muted/50 transition-colors text-left mb-3"
-              data-testid="invite-whatsapp"
-            >
-              <div className="w-9 h-9 rounded-lg bg-green-500/10 flex items-center justify-center flex-shrink-0">
-                <MessageCircle className="w-4 h-4 text-green-500" />
-              </div>
-              <div>
-                <p className="text-sm font-medium">WhatsApp</p>
-                <p className="text-xs text-muted-foreground">Send via WhatsApp</p>
-              </div>
-            </a>
-
-            {/* SMS / Text */}
-            <a
-              href={`sms:?body=${encodeURIComponent(inviteText)}`}
-              className="flex items-center gap-3 px-3 py-3 rounded-lg border border-border hover:bg-muted/50 transition-colors text-left mb-3"
-              data-testid="invite-sms"
-            >
-              <div className="w-9 h-9 rounded-lg bg-foreground/5 flex items-center justify-center flex-shrink-0">
-                <Send className="w-4 h-4 text-foreground" />
-              </div>
-              <div>
-                <p className="text-sm font-medium">Text Message</p>
-                <p className="text-xs text-muted-foreground">Send via SMS</p>
-              </div>
-            </a>
-
-            {/* Email */}
-            <a
-              href={`mailto:?subject=${encodeURIComponent("Join me on Spliiit")}&body=${encodeURIComponent(inviteText)}`}
-              className="flex items-center gap-3 px-3 py-3 rounded-lg border border-border hover:bg-muted/50 transition-colors text-left mb-3"
-              data-testid="invite-email"
-            >
-              <div className="w-9 h-9 rounded-lg bg-foreground/5 flex items-center justify-center flex-shrink-0">
-                <Mail className="w-4 h-4 text-foreground" />
-              </div>
-              <div>
-                <p className="text-sm font-medium">Email</p>
-                <p className="text-xs text-muted-foreground">Send via email</p>
-              </div>
-            </a>
+            <ShareChannels url={APP_URL} text={inviteText} emailSubject="Join me on Spliiit" />
           </div>
         )}
 

@@ -23,6 +23,7 @@ import { useAuth } from "@/lib/auth";
 import { calculateGroupBalances, simplifyDebts, calculatePairwiseBalances } from "@/lib/simplify";
 import { isEffectivelySettled, displayBalance, AMOUNT_IN_CLASS, AMOUNT_OUT_CLASS } from "@/lib/balance-display";
 import { PaymentMethodsView } from "@/components/PaymentMethods";
+import { ShareChannels } from "@/components/ShareChannels";
 import { recordExpenseAndCheck, triggerReview } from "@/lib/reviewPrompt";
 import { track } from "@/lib/analytics";
 
@@ -940,24 +941,11 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                       year: "numeric", month: "long", day: "numeric"
                     })}.
                   </p>
-                  <div className="flex items-center gap-2 p-3 bg-muted rounded-lg">
-                    <code className="flex-1 text-xs font-mono break-all" data-testid="invite-link-url">
-                      {inviteLinkUrl}
-                    </code>
-                    <Button
-                      size="sm"
-                      variant="default"
-                      onClick={handleCopyShareLink}
-                      data-testid="btn-copy-invite-link"
-                      className="shrink-0"
-                    >
-                      {shareLinkCopied ? (
-                        <><Check className="w-3.5 h-3.5 mr-1.5" /> Copied</>
-                      ) : (
-                        <><Share2 className="w-3.5 h-3.5 mr-1.5" /> Share</>
-                      )}
-                    </Button>
-                  </div>
+                  <ShareChannels
+                    url={inviteLinkUrl}
+                    text={`Join "${group.name}" on Spliiit — tap the link to hop in:`}
+                    emailSubject={`Join ${group.name} on Spliiit`}
+                  />
                   <div className="flex gap-2">
                     <Button
                       variant="outline"
