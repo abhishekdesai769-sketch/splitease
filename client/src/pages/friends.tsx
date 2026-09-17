@@ -755,7 +755,7 @@ export default function Friends() {
         <div className="space-y-8">
           {youOwe.length > 0 && (
             <div>
-              <h2 className="font-serif text-3xl tracking-tight leading-none border-b border-border pb-3 mb-4">You owe</h2>
+              <h2 className="font-serif text-3xl tracking-tight leading-none mb-4">You owe</h2>
               <div className="space-y-3">
                 {youOwe.map(({ f, balance }) => renderRow(f, balance))}
               </div>
@@ -764,7 +764,7 @@ export default function Friends() {
 
           {owesYou.length > 0 && (
             <div>
-              <h2 className="font-serif text-3xl tracking-tight leading-none border-b border-border pb-3 mb-4">Owes you</h2>
+              <h2 className="font-serif text-3xl tracking-tight leading-none mb-4">Owes you</h2>
               <div className="space-y-3">
                 {owesYou.map(({ f, balance }) => renderRow(f, balance))}
               </div>
