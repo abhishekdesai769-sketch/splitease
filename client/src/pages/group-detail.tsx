@@ -1588,7 +1588,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
             <DialogHeader>
               <DialogTitle>{members.length} members</DialogTitle>
             </DialogHeader>
-            <div className="flex flex-col pt-1 max-h-[62vh] overflow-y-auto">
+            <div className="flex flex-col pt-1 max-h-[62vh] overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
               {members.map((m) => {
                 const role = getMemberRole(m.id);
                 const canAct = canActOnMember(m.id);
