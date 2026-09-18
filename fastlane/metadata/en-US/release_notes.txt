@@ -1,8 +1,8 @@
-Welcome to Spliiit on iOS!
+A fresh look and a smoother Spliiit.
 
-- Split expenses with friends and groups
-- Import your Splitwise data with one tap
-- Smart debt simplification
-- Receipt scanning
-- Email notifications for new expenses
-- Dark mode by default
+- Brand-new app icon
+- Cleaner Expenses, Groups, and members views
+- Redesigned AI Mode composer
+- Faster invites — share via WhatsApp, Telegram, X, SMS, email and more
+- Added Terms of Use link on the subscription screen
+- Polish and bug fixes throughout
