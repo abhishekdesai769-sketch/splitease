@@ -204,6 +204,34 @@ export function UpgradePromptSheet({
           Cancel any time ·{" "}
           {isIosNative ? "Billed via Apple App Store" : "Secure checkout via Stripe"}
         </p>
+
+        {/* Legal — App Store Guideline 3.1.2 requires functional Terms of Use
+            (EULA) + Privacy Policy links on any auto-renewable-subscription
+            paywall. Terms → Apple's standard EULA. */}
+        <p className="text-[11px] text-center text-muted-foreground/80 mt-2 leading-relaxed px-2">
+          {isIosNative
+            ? "Payment is charged to your Apple ID and auto-renews until cancelled in Settings at least 24h before the period ends. "
+            : "Your subscription auto-renews until cancelled. "}
+          By subscribing you agree to our{" "}
+          <a
+            href="https://www.apple.com/legal/internet-services/itunes/dev/stdeula/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-foreground"
+          >
+            Terms of Use (EULA)
+          </a>{" "}
+          and{" "}
+          <a
+            href="https://spliiit.ca/privacy"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-foreground"
+          >
+            Privacy Policy
+          </a>
+          .
+        </p>
       </SheetContent>
     </Sheet>
   );

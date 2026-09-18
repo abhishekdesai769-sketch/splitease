@@ -154,6 +154,14 @@ export function PaywallPrime({ persona, onChoose }: Props) {
           {"  ·  "}
           {PREMIUM_PRICE.yearly}/year option available.
         </p>
+        {/* Terms of Use (EULA) + Privacy — required on any subscription
+            purchase surface (App Store Guideline 3.1.2). */}
+        <p className="text-[10px] text-muted-foreground/80 text-center leading-relaxed">
+          By continuing you agree to our{" "}
+          <a href="https://www.apple.com/legal/internet-services/itunes/dev/stdeula/" target="_blank" rel="noopener noreferrer" className="underline hover:text-foreground">Terms of Use (EULA)</a>{" "}
+          &amp;{" "}
+          <a href="https://spliiit.ca/privacy" target="_blank" rel="noopener noreferrer" className="underline hover:text-foreground">Privacy Policy</a>.
+        </p>
       </div>
 
       <button
