@@ -71,12 +71,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
             >
               <svg width="28" height="28" viewBox="0 0 32 32" fill="none" aria-label="Spliiit logo">
                 <rect width="32" height="32" rx="8" fill="hsl(30 6% 15%)" fillOpacity="0.06" />
-                <circle cx="10" cy="9.5" r="1.7" fill="hsl(30 6% 15%)" />
-                <path d="M10 14v9" stroke="hsl(30 6% 15%)" strokeWidth="2.4" strokeLinecap="round" />
-                <circle cx="16" cy="9.5" r="1.7" fill="hsl(18 42% 50%)" />
-                <path d="M16 14v9" stroke="hsl(18 42% 50%)" strokeWidth="2.4" strokeLinecap="round" />
-                <circle cx="22" cy="9.5" r="1.7" fill="hsl(30 6% 15%)" />
-                <path d="M22 14v9" stroke="hsl(30 6% 15%)" strokeWidth="2.4" strokeLinecap="round" />
+                <circle cx="10" cy="8.8" r="1.5" fill="hsl(30 6% 15%)" />
+                <path d="M10 13.6V23.8" stroke="hsl(30 6% 15%)" strokeWidth="3" strokeLinecap="round" />
+                <circle cx="16" cy="8.8" r="1.5" fill="hsl(30 6% 15%)" />
+                <path d="M16 13.6V23.8" stroke="hsl(30 6% 15%)" strokeWidth="3" strokeLinecap="round" />
+                <circle cx="22" cy="8.8" r="1.5" fill="hsl(30 6% 15%)" />
+                <path d="M22 13.6V23.8" stroke="hsl(30 6% 15%)" strokeWidth="3" strokeLinecap="round" />
               </svg>
               <span className="text-base font-semibold tracking-tight text-foreground">
                 Spl<span className="text-accent-foreground">iii</span>t
