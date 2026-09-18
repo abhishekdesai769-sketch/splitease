@@ -47,6 +47,7 @@ const styles = `
   --sans:'Inter Tight',system-ui,-apple-system,'Segoe UI',sans-serif;
   --mono:'JetBrains Mono',ui-monospace,Menlo,monospace;
   --gutter:clamp(18px,4.5vw,76px); --maxw:1280px; --r-card:22px; --r-pill:999px;
+  --shadow-photo:0 1px 2px hsl(28 24% 16% / .05), 0 10px 22px -8px hsl(28 24% 16% / .16), 0 30px 60px -20px hsl(28 28% 14% / .22);
   background:var(--canvas); color:var(--ink); font-family:var(--sans);
   font-weight:450; font-size:16px; line-height:1.55; -webkit-font-smoothing:antialiased;
   min-height:100vh; overflow-x:hidden;
@@ -89,7 +90,7 @@ const styles = `
 .sl .avail{ font-family:var(--mono); font-size:.8rem; letter-spacing:.08em; color:var(--ink-3); text-transform:uppercase; }
 @media (max-width:860px){ .sl .hero-grid{ grid-template-columns:1fr; } }
 
-.sl .photo{ position:relative; border-radius:var(--r-card); overflow:hidden; border:1px solid var(--rule-2); aspect-ratio:4/5; max-width:100%; }
+.sl .photo{ position:relative; border-radius:var(--r-card); overflow:hidden; border:1px solid hsl(30 12% 38% / .10); box-shadow:var(--shadow-photo); aspect-ratio:4/5; max-width:100%; }
 .sl .photo.wide{ aspect-ratio:5/4; }
 .sl .photo-img{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block; }
 
