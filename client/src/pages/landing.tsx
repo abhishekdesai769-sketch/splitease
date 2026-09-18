@@ -400,7 +400,7 @@ function Landing({ onSignIn }: { onSignIn: () => void }) {
           <div className="wrap split rev">
             <div className="col-media">
               <div className="photo wide">
-                <img className="photo-img" src="/landing-reminders.jpg" alt="A person relaxing at home, glancing at a phone notification that a friend just paid them back" loading="lazy" />
+                <img className="photo-img" src="/landing-reminders.jpg?v=2" alt="Two friends laughing together over a shared meal outdoors" loading="lazy" />
               </div>
             </div>
             <div>
