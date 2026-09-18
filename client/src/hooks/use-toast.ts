@@ -6,7 +6,10 @@ import type {
 } from "@/components/ui/toast"
 
 const TOAST_LIMIT = 1
-const TOAST_REMOVE_DELAY = 1000000
+// Time a toast lingers in the DOM after it closes (for the exit animation),
+// NOT how long it's shown — that's the Toast `duration` in toaster.tsx.
+// The shadcn default of 1000000ms (~16 min) is why toasts appeared "stuck".
+const TOAST_REMOVE_DELAY = 400
 
 type ToasterToast = ToastProps & {
   id: string

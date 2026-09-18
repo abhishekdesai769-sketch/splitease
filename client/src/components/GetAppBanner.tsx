@@ -56,12 +56,12 @@ export function GetAppBanner() {
     <div className="mb-4 rounded-xl border border-primary/30 bg-primary/5 px-3 py-2.5 flex items-center gap-3">
       <svg viewBox="0 0 32 32" fill="none" className="w-9 h-9 shrink-0" aria-hidden="true">
         <rect width="32" height="32" rx="8" fill="hsl(30 6% 15%)" fillOpacity="0.06" />
-        <circle cx="10" cy="9.5" r="1.7" fill="hsl(30 6% 15%)" />
-        <path d="M10 14v9" stroke="hsl(30 6% 15%)" strokeWidth="2.4" strokeLinecap="round" />
-        <circle cx="16" cy="9.5" r="1.7" fill="hsl(18 42% 50%)" />
-        <path d="M16 14v9" stroke="hsl(18 42% 50%)" strokeWidth="2.4" strokeLinecap="round" />
-        <circle cx="22" cy="9.5" r="1.7" fill="hsl(30 6% 15%)" />
-        <path d="M22 14v9" stroke="hsl(30 6% 15%)" strokeWidth="2.4" strokeLinecap="round" />
+        <circle cx="10" cy="8.8" r="1.5" fill="hsl(30 6% 15%)" />
+        <path d="M10 13.6V23.8" stroke="hsl(30 6% 15%)" strokeWidth="3" strokeLinecap="round" />
+        <circle cx="16" cy="8.8" r="1.5" fill="hsl(30 6% 15%)" />
+        <path d="M16 13.6V23.8" stroke="hsl(30 6% 15%)" strokeWidth="3" strokeLinecap="round" />
+        <circle cx="22" cy="8.8" r="1.5" fill="hsl(30 6% 15%)" />
+        <path d="M22 13.6V23.8" stroke="hsl(30 6% 15%)" strokeWidth="3" strokeLinecap="round" />
       </svg>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-semibold leading-tight">Spliiit is better in the app</p>
