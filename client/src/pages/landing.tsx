@@ -202,6 +202,8 @@ const styles = `
 .sl .foot-cols a:hover,.sl .foot-cols .signin:hover{ color:var(--ink); }
 .sl .foot-blurb{ color:var(--ink-2); font-size:.98rem; max-width:30ch; line-height:1.55; }
 .sl .foot-blurb .brand-sm{ font-family:var(--serif); font-size:1.4rem; color:var(--ink); }
+.sl .foot-brand{ display:inline-flex; align-items:center; gap:.5em; margin-bottom:.5em; }
+.sl .foot-glyph{ width:28px; height:28px; flex:none; }
 .sl .wordmark{ font-family:var(--serif); font-weight:400; line-height:1; letter-spacing:-.02em; font-size:clamp(5rem,26vw,20rem); color:var(--ink); text-align:center; padding-block:clamp(28px,5vw,60px) clamp(20px,3vw,40px); -webkit-user-select:none; user-select:none; }
 .sl .wordmark .iii{ color:var(--ink); }
 .sl .foot-legal{ border-top:1px solid var(--rule-2); padding-block:22px; display:flex; justify-content:space-between; gap:1rem; flex-wrap:wrap; font-family:var(--mono); font-size:.76rem; color:var(--ink-3); letter-spacing:.02em; }
@@ -473,7 +475,20 @@ function Landing({ onSignIn }: { onSignIn: () => void }) {
         <div className="wrap">
           <div className="foot-cols">
             <div>
-              <p className="foot-blurb"><span className="brand-sm">Spliiit</span><br />Split the bill, keep the friendship. Built in Moncton.</p>
+              <p className="foot-blurb">
+                <span className="foot-brand">
+                  <svg className="foot-glyph" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+                    <rect width="32" height="32" rx="8" fill="var(--ink)" fillOpacity="0.06" />
+                    <circle cx="10" cy="8.8" r="1.5" fill="var(--ink)" />
+                    <path d="M10 13.6V23.8" stroke="var(--ink)" strokeWidth="3" strokeLinecap="round" />
+                    <circle cx="16" cy="8.8" r="1.5" fill="var(--ink)" />
+                    <path d="M16 13.6V23.8" stroke="var(--ink)" strokeWidth="3" strokeLinecap="round" />
+                    <circle cx="22" cy="8.8" r="1.5" fill="var(--ink)" />
+                    <path d="M22 13.6V23.8" stroke="var(--ink)" strokeWidth="3" strokeLinecap="round" />
+                  </svg>
+                  <span className="brand-sm">Spliiit</span>
+                </span>
+                <br />Split the bill, keep the friendship. Built in Moncton.</p>
             </div>
             <div>
               <h4>Product</h4>
