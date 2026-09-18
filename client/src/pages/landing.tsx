@@ -488,7 +488,7 @@ function Landing({ onSignIn }: { onSignIn: () => void }) {
                   </svg>
                   <span className="brand-sm">Spliiit</span>
                 </span>
-                <br />Split the bill, keep the friendship. Built in Moncton.</p>
+                <br />Split the bill, keep the friendship.</p>
             </div>
             <div>
               <h4>Product</h4>
