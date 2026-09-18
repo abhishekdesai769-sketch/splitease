@@ -408,7 +408,7 @@ function Landing({ onSignIn }: { onSignIn: () => void }) {
               <span className="eyebrow">The wedge</span>
               <h2 style={{ marginTop: "1rem" }}>It does the asking.</h2>
               <div className="rem-shrug">
-                <img src="/landing-reminders.jpg?v=3" alt="A shrug — so you never have to be the one who asks" loading="lazy" />
+                <img src="/landing-reminders.jpg?v=4" alt="A shrug — so you never have to be the one who asks" loading="lazy" />
               </div>
               <p className="contrast">A chatbot splits once and forgets. <span className="k">Spliiit keeps asking</span> — on a cadence you set — so you keep the money, and the friendship.</p>
               <div className="ui" style={{ marginTop: "2rem" }}>
