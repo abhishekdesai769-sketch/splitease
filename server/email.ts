@@ -15,7 +15,7 @@ const EMAIL_LOGO = `
       <img src="https://spliiit.ca/email-logo.png?v=1" width="40" height="40" alt="Spliiit" style="display:block;border-radius:9px;" />
     </td>
     <td style="vertical-align:middle;">
-      <span style="font-size:18px;font-weight:700;color:#1a1a1a;letter-spacing:-0.3px;">Spl</span><span style="font-size:18px;font-weight:700;color:#B5674A;letter-spacing:-0.3px;">iii</span><span style="font-size:18px;font-weight:700;color:#1a1a1a;letter-spacing:-0.3px;">t</span>
+      <span style="font-size:18px;font-weight:700;color:#1a1a1a;letter-spacing:-0.3px;">Spl</span><span style="font-size:18px;font-weight:700;color:#1a1a1a;letter-spacing:-0.3px;">iii</span><span style="font-size:18px;font-weight:700;color:#1a1a1a;letter-spacing:-0.3px;">t</span>
     </td>
   </tr>
 </table>

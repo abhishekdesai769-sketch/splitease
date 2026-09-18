@@ -358,7 +358,7 @@ h2{color:#f9fafb;font-size:1.1rem;margin:2rem 0 .75rem}
 .topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;flex-wrap:wrap;gap:.75rem}
 .topbar-left{display:flex;align-items:center;gap:.75rem}
 .logo{display:flex;align-items:center;gap:.5rem;font-size:1.1rem;font-weight:600;color:#f9fafb}
-.logo span{color:#4fd1c5}
+.logo span{color:#f9fafb}
 .badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;font-size:.65rem;font-weight:600}
 .badge-admin{background:rgba(79,209,197,.15);color:#4fd1c5}
 .badge-ghost{background:rgba(234,179,8,.15);color:#eab308}

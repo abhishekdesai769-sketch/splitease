@@ -79,7 +79,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 <path d="M22 13.6V23.8" stroke="hsl(30 6% 15%)" strokeWidth="3" strokeLinecap="round" />
               </svg>
               <span className="text-base font-semibold tracking-tight text-foreground">
-                Spl<span className="text-accent-foreground">iii</span>t
+                Spl<span className="text-foreground">iii</span>t
               </span>
             </button>
           </SupportDrawer>

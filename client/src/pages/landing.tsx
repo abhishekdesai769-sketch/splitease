@@ -202,7 +202,7 @@ const styles = `
 .sl .foot-blurb{ color:var(--ink-2); font-size:.98rem; max-width:30ch; line-height:1.55; }
 .sl .foot-blurb .brand-sm{ font-family:var(--serif); font-size:1.4rem; color:var(--ink); }
 .sl .wordmark{ font-family:var(--serif); font-weight:400; line-height:1; letter-spacing:-.02em; font-size:clamp(5rem,26vw,20rem); color:var(--ink); text-align:center; padding-block:clamp(28px,5vw,60px) clamp(20px,3vw,40px); -webkit-user-select:none; user-select:none; }
-.sl .wordmark .iii{ color:var(--terra); }
+.sl .wordmark .iii{ color:var(--ink); }
 .sl .foot-legal{ border-top:1px solid var(--rule-2); padding-block:22px; display:flex; justify-content:space-between; gap:1rem; flex-wrap:wrap; font-family:var(--mono); font-size:.76rem; color:var(--ink-3); letter-spacing:.02em; }
 
 @media (prefers-reduced-motion:reduce){
