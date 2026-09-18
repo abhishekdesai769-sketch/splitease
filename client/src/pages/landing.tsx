@@ -233,10 +233,14 @@ function Landing({ onSignIn }: { onSignIn: () => void }) {
       <header className="nav">
         <div className="wrap nav-in">
           <a className="brand" href="#top" aria-label="Spliiit home">
-            <svg className="glyph" viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
-              <rect x="3" y="3" width="26" height="26" rx="8" stroke="var(--ink)" />
-              <path d="M9 11h14M9 16h14M9 21h14" stroke="var(--ink)" />
-              <path d="M16 8v16" stroke="var(--ink)" />
+            <svg className="glyph" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+              <rect width="32" height="32" rx="8" fill="var(--ink)" fillOpacity="0.06" />
+              <circle cx="10" cy="8.8" r="1.5" fill="var(--ink)" />
+              <path d="M10 13.6V23.8" stroke="var(--ink)" strokeWidth="3" strokeLinecap="round" />
+              <circle cx="16" cy="8.8" r="1.5" fill="var(--ink)" />
+              <path d="M16 13.6V23.8" stroke="var(--ink)" strokeWidth="3" strokeLinecap="round" />
+              <circle cx="22" cy="8.8" r="1.5" fill="var(--ink)" />
+              <path d="M22 13.6V23.8" stroke="var(--ink)" strokeWidth="3" strokeLinecap="round" />
             </svg>
             <span>Spliiit</span>
           </a>
