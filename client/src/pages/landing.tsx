@@ -271,7 +271,7 @@ function Landing({ onSignIn }: { onSignIn: () => void }) {
             </div>
             <div className="col-media">
               <div className="photo">
-                <img className="photo-img" src="/landing-hero.jpg" alt="A group of friends laughing together as they split the bill on a phone" loading="eager" />
+                <img className="photo-img" src="/landing-hero.jpg?v=2" alt="A group of friends laughing together as they split the bill on a phone" loading="eager" />
               </div>
             </div>
           </div>
