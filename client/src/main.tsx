@@ -1,8 +1,31 @@
 import { createRoot } from "react-dom/client";
+import { Capacitor } from "@capacitor/core";
 import App from "./App";
 import "./index.css";
 import { initAnalytics } from "./lib/analytics";
 import { logClientError } from "./lib/queryClient";
+
+// ─── Legacy-domain redirect ────────────────────────────────────────────────
+// spliiit.klarityit.ca (legacy) and spliiit.ca (canonical) serve the SAME app
+// off one deploy. Send cold WEB visitors to spliiit.ca so there's one public
+// address. Critically, we must NEVER redirect the installed native apps: the
+// iOS Capacitor app loads its whole UI from klarityit and its session +
+// deep-links are bound to that host, and the Android TWA is verified for that
+// origin. Capacitor.isNativePlatform() is definitively true inside the iOS
+// app; the TWA launches with an android-app:// referrer — exempt both.
+const isLegacyWebVisitor =
+  window.location.hostname === "spliiit.klarityit.ca" &&
+  !Capacitor.isNativePlatform() &&
+  !document.referrer.startsWith("android-app://");
+
+if (isLegacyWebVisitor) {
+  window.location.replace(
+    "https://spliiit.ca" +
+      window.location.pathname +
+      window.location.search +
+      window.location.hash,
+  );
+}
 
 initAnalytics();
 
