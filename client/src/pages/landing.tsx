@@ -93,6 +93,11 @@ const styles = `
 .sl .photo{ position:relative; border-radius:var(--r-card); overflow:hidden; border:1px solid hsl(30 12% 38% / .10); box-shadow:var(--shadow-photo); aspect-ratio:4/5; max-width:100%; }
 .sl .photo.wide{ aspect-ratio:5/4; }
 .sl .photo-img{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block; }
+.sl .rem-solo{ max-width:600px; margin-inline:auto; text-align:center; }
+.sl .rem-solo .contrast{ margin-inline:auto; }
+.sl .rem-solo .ui{ margin-inline:auto; text-align:left; }
+.sl .rem-shrug{ margin:1.7rem auto 0; max-width:440px; border-radius:var(--r-card); overflow:hidden; border:1px solid hsl(30 12% 38% / .10); box-shadow:var(--shadow-photo); }
+.sl .rem-shrug img{ display:block; width:100%; height:auto; }
 
 .sl .trust{ border-block:1px solid var(--rule-2); }
 .sl .trust .wrap{ padding-block:clamp(20px,3vw,30px); }
@@ -399,15 +404,12 @@ function Landing({ onSignIn }: { onSignIn: () => void }) {
 
         {/* reminders — the wedge */}
         <section id="reminders">
-          <div className="wrap split rev">
-            <div className="col-media">
-              <div className="photo wide">
-                <img className="photo-img" src="/landing-reminders.jpg?v=2" alt="Two friends laughing together over a shared meal outdoors" loading="lazy" />
-              </div>
-            </div>
-            <div>
+          <div className="wrap rem-solo">
               <span className="eyebrow">The wedge</span>
               <h2 style={{ marginTop: "1rem" }}>It does the asking.</h2>
+              <div className="rem-shrug">
+                <img src="/landing-reminders.jpg?v=3" alt="A shrug — so you never have to be the one who asks" loading="lazy" />
+              </div>
               <p className="contrast">A chatbot splits once and forgets. <span className="k">Spliiit keeps asking</span> — on a cadence you set — so you keep the money, and the friendship.</p>
               <div className="ui" style={{ marginTop: "2rem" }}>
                 <div className="ui-head"><span className="ui-title">Auto-reminder</span><span className="ui-meta">on · every 3 days</span></div>
@@ -418,7 +420,6 @@ function Landing({ onSignIn }: { onSignIn: () => void }) {
                   <div className="row"><span className="av">P</span><span className="nm">Priya</span><span className="sp" /><span className="dot amber" /><span className="st amber">nudged · 2 left</span></div>
                 </div>
               </div>
-            </div>
           </div>
         </section>
 
