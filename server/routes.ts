@@ -3482,6 +3482,13 @@ setInterval(loadAll,30000);
   // Voice talk-back — mint an ephemeral OpenAI Realtime session, scoped to
   // splitting with this user's friends/groups as context. The real OpenAI key
   // stays server-side; the client connects to Realtime with the ek_ token.
+  // Public health check: reports ONLY whether voice is configured (a boolean —
+  // never the key). The client uses this to show/hide the mic; we use it to
+  // verify the Render env var landed without needing an authed session.
+  app.get("/api/voice/health", (_req, res) => {
+    res.json({ enabled: voice.VOICE_ENABLED, model: voice.VOICE_MODEL });
+  });
+
   app.post("/api/voice/session", requireAuth, async (req: any, res) => {
     if (!voice.VOICE_ENABLED) {
       return res.status(503).json({ error: "voice_disabled", message: "Voice mode isn't available right now." });

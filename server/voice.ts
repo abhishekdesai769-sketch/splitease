@@ -18,6 +18,9 @@ export const VOICE_ENABLED = !!process.env.OPENAI_API_KEY;
 const MODEL = process.env.VOICE_REALTIME_MODEL || "gpt-realtime-mini";
 const VOICE = process.env.VOICE_REALTIME_VOICE || "marin";
 
+// Exported for the public /api/voice/health check (safe to expose — not a secret).
+export const VOICE_MODEL = MODEL;
+
 function buildInstructions(ctx: UserContext): string {
   const friendList = ctx.friends.map((f) => f.name).join(", ") || "(no friends added yet)";
   const groupList = ctx.groups.map((g) => g.name).join(", ") || "(no groups yet)";
