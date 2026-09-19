@@ -27,7 +27,7 @@ import { X, Loader2, Check, Users } from "lucide-react";
 
 const IOS_QS = isIosNative ? "?platform=ios" : "";
 
-type CallState = "connecting" | "live" | "error";
+type CallState = "connecting" | "live" | "error" | "capped";
 
 interface ProposalArgs {
   amount: number;
@@ -205,7 +205,6 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
       try {
         const sr = await apiRequest("POST", `/api/voice/session${IOS_QS}`, {});
         const sess = await sr.json().catch(() => ({}));
-        if (!sr.ok) throw new Error(sess?.message || "Voice isn't available right now.");
         if (cancelled) return;
 
         const mic = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -231,12 +230,21 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
         if (!resp.ok) throw new Error("Couldn't connect the call — try again.");
         await pc.setRemoteDescription({ type: "answer", sdp: await resp.text() });
       } catch (e: any) {
-        if (!cancelled) {
-          const m = e?.name === "NotAllowedError"
-            ? "Microphone access is off. Enable it in Settings to talk to Spliiit."
-            : (e?.message || "Something went wrong starting voice.");
-          setError(m); setState("error");
+        if (cancelled) return;
+        const raw = String(e?.message || "");
+        // apiRequest throws `${status}: ${body}` — detect a 429 cost cap and
+        // fall back gracefully to chatting instead of showing an error.
+        const capMatch = raw.match(/^\s*429:\s*([\s\S]*)$/);
+        if (capMatch) {
+          let msg = "Voice is taking a quick breather — you can still split by chatting.";
+          try { const p = JSON.parse(capMatch[1]); msg = p?.message || msg; } catch { /* keep */ }
+          setError(msg); setState("capped");
+          return;
         }
+        const m = e?.name === "NotAllowedError"
+          ? "Microphone access is off. Enable it in Settings to talk to Spliiit."
+          : (raw || "Something went wrong starting voice.");
+        setError(m); setState("error");
       }
     })();
     return () => { cancelled = true; cleanup(); };
@@ -277,6 +285,20 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
           <div className="h-full flex flex-col items-center justify-center gap-4 text-center px-6">
             <p className="text-foreground">{error}</p>
             <button onClick={hangUp} className="h-11 px-6 rounded-full bg-accent-foreground text-white font-medium">Done</button>
+          </div>
+        )}
+
+        {state === "capped" && (
+          <div className="h-full flex flex-col items-center justify-center gap-5 text-center px-8">
+            <div className="h-16 w-16 rounded-full bg-accent flex items-center justify-center">
+              <span className="flex items-center gap-[3px]" aria-hidden="true">
+                {[7, 12, 9].map((h, i) => (
+                  <span key={i} style={{ width: 3, height: h, borderRadius: 9999, background: "hsl(var(--accent-foreground))", opacity: 0.5 }} />
+                ))}
+              </span>
+            </div>
+            <p className="text-foreground text-[15px] leading-snug max-w-xs">{error}</p>
+            <button onClick={hangUp} className="h-12 px-7 rounded-full bg-accent-foreground text-white font-medium">Split by chatting</button>
           </div>
         )}
 

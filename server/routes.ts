@@ -19,6 +19,7 @@ import { isDisposableEmail } from "./disposable-emails";
 import { aiConversations, aiMessages } from "@shared/schema";
 import * as ai from "./ai";
 import * as voice from "./voice";
+import * as voiceQuota from "./voiceQuota";
 import { buildAttachmentContext } from "./receiptTranscription";
 import * as aiQuota from "./aiQuota";
 import * as campaigns from "./campaigns";
@@ -3496,11 +3497,19 @@ setInterval(loadAll,30000);
     const userId = (req.session as any).userId;
     const user = await storage.getUser(userId);
     if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+    // Cost caps (per-user/day + global daily budget), both graceful → chatting.
+    const quota = voiceQuota.checkVoiceQuota(userId);
+    if (!quota.ok) {
+      return res.status(429).json({ error: "voice_capped", scope: quota.scope, message: quota.message });
+    }
+
     const ctx = await buildAiContextForUser(user);
     const session = await voice.createVoiceSession(ctx);
     if (!session) {
       return res.status(502).json({ error: "voice_session_failed", message: "Couldn't start voice right now — try again." });
     }
+    voiceQuota.recordVoiceSession(userId);
     res.json(session);
   });
 
