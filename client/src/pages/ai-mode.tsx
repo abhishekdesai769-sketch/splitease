@@ -534,12 +534,12 @@ export default function AiMode() {
           {/* Live voice transcript — shown above the input when listening,
               so the user sees what's being captured in real time. */}
           {(isListening || isVoiceProcessing) && (
-            <div className="flex items-center gap-2 mb-2 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/30 animate-pulse">
-              <div className="w-2 h-2 rounded-full bg-red-500" />
+            <div className="flex items-center gap-2 mb-2 px-3 py-2 rounded-lg bg-accent-foreground/10 border border-accent-foreground/25">
+              <div className="w-2 h-2 rounded-full bg-accent-foreground animate-pulse" />
               <p className="text-xs text-foreground flex-1 truncate">
                 {isVoiceProcessing
                   ? "Got it — processing…"
-                  : interimTranscript || "Listening… speak now"}
+                  : interimTranscript || "Listening…"}
               </p>
             </div>
           )}
@@ -590,7 +590,7 @@ export default function AiMode() {
               disabled={sendMutation.isPending || isVoiceProcessing}
               className={`h-10 w-10 shrink-0 rounded-full border ${
                 isListening
-                  ? "bg-red-500 hover:bg-red-600 text-white border-red-500"
+                  ? "bg-accent-foreground hover:bg-accent-foreground/90 text-white border-accent-foreground"
                   : "bg-muted border-border text-foreground hover:bg-muted/70"
               }`}
               title={
@@ -601,7 +601,25 @@ export default function AiMode() {
             >
               {isVoiceProcessing ? (
                 <Loader2 className="w-[22px] h-[22px] animate-spin" />
-              ) : voiceSupported || isListening ? (
+              ) : isListening ? (
+                // Grok-style equalizer while listening (white bars on terracotta) — replaces the old red mic
+                <span className="flex items-center justify-center gap-[2.5px]" aria-hidden="true">
+                  <style>{`@keyframes aiMicBar{0%{transform:scaleY(.3)}100%{transform:scaleY(1)}}`}</style>
+                  {[9, 15, 21, 13, 8].map((h, i) => (
+                    <span
+                      key={i}
+                      style={{
+                        width: 2.5,
+                        height: h,
+                        borderRadius: 9999,
+                        background: "currentColor",
+                        transformOrigin: "center",
+                        animation: `aiMicBar ${0.5 + (i % 5) * 0.12}s ease-in-out ${i * 0.06}s infinite alternate`,
+                      }}
+                    />
+                  ))}
+                </span>
+              ) : voiceSupported ? (
                 <Mic className="w-[22px] h-[22px]" strokeWidth={2.2} />
               ) : (
                 <MicOff className="w-[22px] h-[22px] opacity-60" strokeWidth={2.2} />
