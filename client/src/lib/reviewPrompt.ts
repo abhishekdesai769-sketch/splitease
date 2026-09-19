@@ -16,7 +16,17 @@
  *   - Max 3 prompts total across all triggers before we give up
  */
 
-export type ReviewTrigger = "expense_6" | "receipt" | "group";
+export type ReviewTrigger = "expense_6" | "receipt" | "group" | "settled";
+
+// Tuning (Sep 2026 — push harder for reviews, but stay App-Store-safe):
+//   - MAX_PROMPTS raised 3 → 6 so we re-ask skippers more (still capped; we
+//     never gate app usage on a review — that would get us rejected).
+//   - SKIP_COOLDOWN_DAYS lowered 7 → 4 so a skip is re-asked sooner.
+//   - RECURRING triggers can fire again on repeat delight moments (settle-up),
+//     instead of once-ever like the milestone triggers.
+const MAX_PROMPTS = 6;
+const SKIP_COOLDOWN_DAYS = 4;
+const RECURRING = new Set<ReviewTrigger>(["settled"]);
 
 // ─── Storage keys ──────────────────────────────────────────────────────────────
 
@@ -47,14 +57,14 @@ export function triggerFired(type: ReviewTrigger): boolean {
 
 /** Should we show the prompt right now? */
 export function shouldShowReview(type: ReviewTrigger): boolean {
-  if (hasRated()) return false;
-  if (triggerFired(type)) return false;                   // this trigger already used
-  if (parseInt(get(K_TOTAL) ?? "0") >= 3) return false;  // shown 3 times total — give up
+  if (hasRated()) return false;                                     // already reviewed → never nag again
+  if (!RECURRING.has(type) && triggerFired(type)) return false;     // one-time milestones fire once; recurring can re-fire
+  if (parseInt(get(K_TOTAL) ?? "0") >= MAX_PROMPTS) return false;   // hit the overall cap — give up gracefully
 
   const dismissedAt = get(K_DISMISSED);
   if (dismissedAt) {
     const daysSince = (Date.now() - new Date(dismissedAt).getTime()) / 86_400_000;
-    if (daysSince < 7) return false; // within 7-day cooldown after "maybe later"
+    if (daysSince < SKIP_COOLDOWN_DAYS) return false; // cooldown after a skip
   }
 
   return true;

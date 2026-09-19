@@ -423,6 +423,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
       setSettleReceiverId("");
       setSettleAmount("");
       toast({ title: "Settled up", description: "Payment recorded in this group" });
+      setTimeout(() => triggerReview("settled"), 1500);
     },
     onError: (err: Error) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });

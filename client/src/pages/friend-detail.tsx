@@ -273,6 +273,7 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
       queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
       setSettleUpOpen(false);
       toast({ title: "Settled up", description: "Payment recorded" });
+      setTimeout(() => triggerReview("settled"), 1500);
     },
     onError: (err: Error) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });

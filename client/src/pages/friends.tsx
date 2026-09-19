@@ -21,6 +21,7 @@ import { Link } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { calculateGroupBalances, calculatePairwiseBalances } from "@/lib/simplify";
 import { displayBalance, isEffectivelySettled, AMOUNT_IN_CLASS, AMOUNT_OUT_CLASS } from "@/lib/balance-display";
+import { triggerReview } from "@/lib/reviewPrompt";
 
 // Clamp friend avatars to the warm cream/terracotta palette (DB colours can be
 // off-brand teal/blue). Deterministic per person — matches the Dashboard.
@@ -175,6 +176,8 @@ export default function Friends() {
       setSettleUpOpen(false);
       setSettleUpFriend(null);
       toast({ title: "Settled up", description: "Payment recorded" });
+      // Peak-delight moment — best time to ask for a review.
+      setTimeout(() => triggerReview("settled"), 1500);
     },
     onError: (err: Error) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });
