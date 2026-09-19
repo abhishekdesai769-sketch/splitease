@@ -261,9 +261,20 @@ export async function createVoiceSession(ctx: UserContext): Promise<VoiceSession
           model: MODEL,
           instructions: buildInstructions(ctx),
           audio: {
-            // Transcribe the USER's speech too, so the client can render a
-            // full chat history (both sides) during the call.
-            input: { transcription: { model: "whisper-1" } },
+            input: {
+              // Transcribe the USER's speech for the on-screen chat. whisper-1
+              // hallucinates (random Korean/other-language text) on near-silence;
+              // gpt-4o-mini-transcribe + a hard English hint is far cleaner.
+              transcription: { model: "gpt-4o-mini-transcribe", language: "en" },
+              // Server VAD tuned so background noise / short silences don't get
+              // sent as "speech" (another hallucination source).
+              turn_detection: {
+                type: "server_vad",
+                threshold: 0.6,
+                prefix_padding_ms: 300,
+                silence_duration_ms: 600,
+              },
+            },
             output: { voice: VOICE },
           },
           tools: TOOLS,

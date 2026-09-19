@@ -108,15 +108,25 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
     setTurns((prev) => [...prev, { id: `sys-${Date.now()}-${Math.random()}`, role: "system", text }]);
   }, []);
 
+  // Reply to the model's tool call so its spoken line matches what actually
+  // happened (don't let it say "tap Confirm" when resolution failed).
+  const answerTool = useCallback((callId: string | undefined, output: any) => {
+    const dc = dcRef.current;
+    if (!callId || !dc || dc.readyState !== "open") return;
+    dc.send(JSON.stringify({ type: "conversation.item.create", item: { type: "function_call_output", call_id: callId, output: JSON.stringify(output) } }));
+    dc.send(JSON.stringify({ type: "response.create" }));
+  }, []);
+
   // Ask the server to resolve the proposal into a real, computed breakdown for
-  // the confirm card. If a name can't be matched, surface the clarifier.
-  const loadPreview = useCallback(async (args: ProposalArgs) => {
+  // the confirm card. If a name can't be matched, tell the model to ask.
+  const loadPreview = useCallback(async (args: ProposalArgs, callId?: string) => {
     setPreviewing(true);
     setPreview(null);
     try {
       const r = await apiRequest("POST", `/api/voice/preview${IOS_QS}`, args);
       const card = await r.json();
       setPreview(card as PreviewCard);
+      answerTool(callId, { shown: true, instruction: "Say one short line telling them the split is ready and to tap Confirm." });
     } catch (e: any) {
       let clean = "I couldn't work that split out — mind saying it again?";
       const raw = String(e?.message || "");
@@ -124,10 +134,11 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
       if (m) { try { const p = JSON.parse(m[2]); clean = p?.message || clean; } catch { /* keep */ } }
       addSystemTurn(`⚠️ ${clean}`);
       setProposal(null);
+      answerTool(callId, { error: clean, instruction: "Do NOT say it's ready. Ask the user this exact clarifying question in one short line." });
     } finally {
       setPreviewing(false);
     }
-  }, [addSystemTurn]);
+  }, [addSystemTurn, answerTool]);
 
   // ── Commit a proposal via the server (reuses trusted createExpense) ────────
   const commit = useCallback(async (args: ProposalArgs) => {
@@ -160,6 +171,17 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
   // ── Handle Realtime events over the data channel ──────────────────────────
   const handleEvent = useCallback((msg: any) => {
     switch (msg.type) {
+      // ---- establish chat order as items are created ----
+      // The user's audio item is committed (and this fires) BEFORE the model's
+      // reply streams, so seeding an ordered placeholder here keeps your words
+      // above the answer even though the transcription text arrives later.
+      case "conversation.item.created": {
+        const it = msg.item;
+        if (it?.id && (it.role === "user" || it.role === "assistant")) {
+          setTurns((prev) => prev.some((t) => t.id === it.id) ? prev : [...prev, { id: it.id, role: it.role, text: "" }]);
+        }
+        break;
+      }
       // ---- user speech (input transcription) ----
       case "conversation.item.input_audio_transcription.delta":
         if (msg.item_id) upsertTurn(msg.item_id, "user", msg.delta || "", "append");
@@ -183,15 +205,7 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
         try {
           const args = JSON.parse(msg.arguments || "{}") as ProposalArgs;
           setProposal(args);
-          loadPreview(args);
-          const dc = dcRef.current;
-          if (dc && dc.readyState === "open") {
-            dc.send(JSON.stringify({
-              type: "conversation.item.create",
-              item: { type: "function_call_output", call_id: msg.call_id, output: JSON.stringify({ shown: true }) },
-            }));
-            dc.send(JSON.stringify({ type: "response.create" }));
-          }
+          loadPreview(args, msg.call_id); // preview → then answers the tool call
         } catch { /* ignore malformed tool args */ }
         break;
       }
@@ -309,6 +323,7 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
         )}
 
         {turns.map((t) => {
+          if (!t.text.trim()) return null; // ordered placeholder not yet filled
           if (t.role === "system") {
             return (
               <div key={t.id} className="flex justify-center">
