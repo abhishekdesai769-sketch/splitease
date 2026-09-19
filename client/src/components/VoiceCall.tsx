@@ -23,7 +23,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { isIosNative } from "@/lib/iap";
-import { X, Loader2 } from "lucide-react";
+import { X, Loader2, Check, Users } from "lucide-react";
 
 const IOS_QS = isIosNative ? "?platform=ios" : "";
 
@@ -41,12 +41,40 @@ interface ProposalArgs {
 
 interface Turn { id: string; role: "user" | "assistant" | "system"; text: string; }
 
+interface ResolvedPerson { id: string; name: string; isYou: boolean; share: number; }
+interface PreviewCard {
+  amount: number; currency: string; description: string; date: string;
+  groupId: string | null; groupName: string | null; splitLabel: string;
+  perPerson: number; people: ResolvedPerson[]; youGetBack: number;
+}
+
+// Same warm avatar palette + hash the rest of the app uses (dashboard/friends).
+const WARM_AVATARS = ["#7A3E32", "#8C5A3C", "#9A4A2A", "#A6674A", "#8A6A32", "#B04A34", "#6B4A3A", "#B5794A"];
+function warmAvatar(id: string): string {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return WARM_AVATARS[h % WARM_AVATARS.length];
+}
+function initials(n: string): string {
+  return n.trim().split(/\s+/).map((p) => p[0]).slice(0, 2).join("").toUpperCase();
+}
+function money(v: number, currency: string): string {
+  const sym = !currency || currency === "CAD" || currency === "USD" ? "$" : currency + " ";
+  return `${sym}${Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+function shortDate(iso: string): string {
+  try { return new Date(iso).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" }); }
+  catch { return "Today"; }
+}
+
 export default function VoiceCall({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient();
   const [state, setState] = useState<CallState>("connecting");
   const [error, setError] = useState<string | null>(null);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [proposal, setProposal] = useState<ProposalArgs | null>(null);
+  const [preview, setPreview] = useState<PreviewCard | null>(null);
+  const [previewing, setPreviewing] = useState(false);
   const [committing, setCommitting] = useState(false);
   const [speaking, setSpeaking] = useState(false); // model is talking → animate
 
@@ -80,6 +108,27 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
     setTurns((prev) => [...prev, { id: `sys-${Date.now()}-${Math.random()}`, role: "system", text }]);
   }, []);
 
+  // Ask the server to resolve the proposal into a real, computed breakdown for
+  // the confirm card. If a name can't be matched, surface the clarifier.
+  const loadPreview = useCallback(async (args: ProposalArgs) => {
+    setPreviewing(true);
+    setPreview(null);
+    try {
+      const r = await apiRequest("POST", `/api/voice/preview${IOS_QS}`, args);
+      const card = await r.json();
+      setPreview(card as PreviewCard);
+    } catch (e: any) {
+      let clean = "I couldn't work that split out — mind saying it again?";
+      const raw = String(e?.message || "");
+      const m = raw.match(/^\s*(\d{3}):\s*([\s\S]*)$/);
+      if (m) { try { const p = JSON.parse(m[2]); clean = p?.message || clean; } catch { /* keep */ } }
+      addSystemTurn(`⚠️ ${clean}`);
+      setProposal(null);
+    } finally {
+      setPreviewing(false);
+    }
+  }, [addSystemTurn]);
+
   // ── Commit a proposal via the server (reuses trusted createExpense) ────────
   const commit = useCallback(async (args: ProposalArgs) => {
     setCommitting(true);
@@ -89,9 +138,9 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
       qc.invalidateQueries({ queryKey: ["/api/friends/expenses"] });
       qc.invalidateQueries({ queryKey: ["/api/friends"] });
       qc.invalidateQueries({ queryKey: ["/api/groups"] });
-      const cur = args.currency && args.currency !== "CAD" ? args.currency + " " : "$";
-      addSystemTurn(`✅ Saved · ${cur}${Number(args.amount).toFixed(2)}${args.description ? " · " + args.description : ""}`);
+      addSystemTurn(`✅ Saved · ${money(Number(args.amount), args.currency || "CAD")}${args.description ? " · " + args.description : ""}`);
       setProposal(null);
+      setPreview(null);
     } catch (e: any) {
       // apiRequest throws `${status}: ${rawBody}` on any non-2xx. Dig the real
       // server message out of that instead of a generic "connection" error.
@@ -134,6 +183,7 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
         try {
           const args = JSON.parse(msg.arguments || "{}") as ProposalArgs;
           setProposal(args);
+          loadPreview(args);
           const dc = dcRef.current;
           if (dc && dc.readyState === "open") {
             dc.send(JSON.stringify({
@@ -146,7 +196,7 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
         break;
       }
     }
-  }, [upsertTurn]);
+  }, [upsertTurn, loadPreview]);
 
   // ── Connect ───────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -195,14 +245,7 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
   // Auto-scroll the transcript to the newest turn / card.
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [turns, proposal, committing]);
-
-  // ── Derived (proposal card) ────────────────────────────────────────────────
-  const cur = (v: number) => `${(proposal?.currency && proposal.currency !== "CAD" ? proposal.currency + " " : "$")}${v.toFixed(2)}`;
-  const names = proposal?.splitAmongNames?.length ? proposal.splitAmongNames : ["You"];
-  const amountStr = proposal ? cur(Number(proposal.amount)) : "";
-  const perPerson = proposal ? cur(Number(proposal.amount) / Math.max(names.length, 1)) : "";
-  const initials = (n: string) => n.trim().split(/\s+/).map((p) => p[0]).slice(0, 2).join("").toUpperCase();
+  }, [turns, preview, previewing, committing]);
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-background">
@@ -237,7 +280,7 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
           </div>
         )}
 
-        {state === "live" && turns.length === 0 && !proposal && (
+        {state === "live" && turns.length === 0 && !proposal && !preview && !previewing && (
           <div className="h-full flex items-center justify-center text-center px-8">
             <p className="text-muted-foreground text-lg">Tell me the bill — like you'd tell a friend. 🎙️</p>
           </div>
@@ -267,49 +310,62 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
           );
         })}
 
-        {/* inline proposal card */}
-        {proposal && (
+        {/* working out the split */}
+        {previewing && (
           <div className="flex justify-start">
-            <div className="w-[88%] max-w-sm rounded-[24px] border border-border bg-card p-5 shadow-[0_18px_44px_-24px_rgba(40,26,16,0.45)]">
-              <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-2">Here's your split</p>
+            <div className="rounded-2xl bg-card border border-border px-4 py-2.5 text-[15px] text-muted-foreground flex items-center gap-2 rounded-bl-md">
+              <Loader2 className="w-4 h-4 animate-spin" /> Working out the split…
+            </div>
+          </div>
+        )}
+
+        {/* inline confirm card — server-computed, on-brand */}
+        {preview && (
+          <div className="flex justify-start">
+            <div className="w-[92%] max-w-sm rounded-[24px] border border-border bg-card p-5">
+              <p className="text-[11px] font-mono uppercase tracking-[0.14em] text-muted-foreground mb-2">Confirm split</p>
+
               <div className="flex items-end justify-between gap-3">
-                <span className="text-foreground leading-none" style={{ fontFamily: "'Instrument Serif', Georgia, serif", fontSize: "2.75rem" }}>{amountStr}</span>
-                {proposal.groupName && (
-                  <span className="mb-1 rounded-full bg-muted px-3 py-1 text-xs text-foreground/70">{proposal.groupName}</span>
+                <span className="font-mono tabular-nums text-foreground leading-none" style={{ fontSize: "2.5rem" }}>{money(preview.amount, preview.currency)}</span>
+                {preview.groupName && (
+                  <span className="mb-1 inline-flex items-center gap-1 rounded-full bg-accent px-3 py-1 text-xs text-accent-foreground">
+                    <Users className="w-3.5 h-3.5" />{preview.groupName}
+                  </span>
                 )}
               </div>
-              <p className="text-foreground/70 mt-1 mb-4 capitalize">{proposal.description || "Split"}</p>
+              <p className="font-serif text-2xl text-foreground mt-1 capitalize leading-tight">{preview.description}</p>
+              <p className="text-xs text-muted-foreground mt-1">{shortDate(preview.date)} · you paid</p>
 
-              <div className="rounded-2xl bg-muted/60 p-4 space-y-3">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">You paid</span>
-                  <span className="font-medium text-foreground">{amountStr}</span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Split {names.length} {names.length === 1 ? "way" : "ways"}</span>
-                  <span className="font-medium text-foreground">{perPerson} each</span>
-                </div>
-                <div className="flex flex-wrap gap-2 pt-1">
-                  {names.map((n, i) => (
-                    <span key={`${n}-${i}`} className="inline-flex items-center gap-1.5 rounded-full bg-card border border-border pl-1 pr-2.5 py-1 text-xs text-foreground">
-                      <span className="h-5 w-5 rounded-full bg-accent-foreground text-white text-[10px] font-semibold flex items-center justify-center">{initials(n)}</span>
-                      {n}
-                    </span>
-                  ))}
-                </div>
+              <div className="mt-4 rounded-2xl bg-muted/50 divide-y divide-border/70">
+                {preview.people.map((p) => (
+                  <div key={p.id} className="flex items-center gap-3 px-3.5 py-2.5">
+                    <span className="h-8 w-8 rounded-full text-white text-[11px] font-medium flex items-center justify-center shrink-0" style={{ backgroundColor: warmAvatar(p.id) }}>{initials(p.name)}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[14px] text-foreground truncate">{p.name}{p.isYou && <span className="text-muted-foreground text-xs"> you</span>}</p>
+                      <p className="text-xs text-muted-foreground">{p.isYou ? `paid ${money(preview.amount, preview.currency)}` : "their share"}</p>
+                    </div>
+                    <span className="font-mono tabular-nums text-[13.5px] text-foreground shrink-0">{money(p.share, preview.currency)}</span>
+                  </div>
+                ))}
               </div>
 
-              <div className="flex gap-3 mt-5">
+              {preview.youGetBack > 0 && (
+                <div className="mt-3 rounded-xl bg-accent/60 px-3.5 py-2.5 text-[13.5px] text-foreground">
+                  You get back <span className="font-mono tabular-nums font-medium text-accent-foreground">{money(preview.youGetBack, preview.currency)}</span>
+                </div>
+              )}
+
+              <div className="flex gap-3 mt-4">
                 <button
                   disabled={committing}
-                  onClick={() => setProposal(null)}
+                  onClick={() => { setPreview(null); setProposal(null); }}
                   className="flex-1 h-12 rounded-full border border-border bg-card text-foreground font-medium disabled:opacity-50"
                 >Not quite</button>
                 <button
                   disabled={committing}
                   onClick={() => proposal && commit(proposal)}
-                  className="flex-1 h-12 rounded-full bg-accent-foreground text-white font-medium flex items-center justify-center disabled:opacity-70"
-                >{committing ? <Loader2 className="w-5 h-5 animate-spin" /> : "Confirm split"}</button>
+                  className="flex-[1.35] h-12 rounded-full bg-accent-foreground text-white font-medium flex items-center justify-center gap-1.5 disabled:opacity-70"
+                >{committing ? <Loader2 className="w-5 h-5 animate-spin" /> : <><Check className="w-[18px] h-[18px]" />Confirm split</>}</button>
               </div>
             </div>
           </div>

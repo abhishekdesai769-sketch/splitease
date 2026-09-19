@@ -3504,6 +3504,25 @@ setInterval(loadAll,30000);
     res.json(session);
   });
 
+  // Preview a voice proposal: resolve names -> real people (you + friends +
+  // group members) and compute the per-person breakdown SERVER-SIDE, so the
+  // confirm card renders authoritative numbers (not a client guess). Returns
+  // 422 with a clarifying message if a name can't be matched.
+  app.post("/api/voice/preview", requireAuth, async (req: any, res) => {
+    if (!voice.VOICE_ENABLED) {
+      return res.status(503).json({ error: "voice_disabled", message: "Voice mode isn't available right now." });
+    }
+    const userId = (req.session as any).userId;
+    const user = await storage.getUser(userId);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const ctx = await buildAiContextForUser(user);
+    const resolved = voice.resolveVoiceProposal(ctx, req.body || {});
+    if (!resolved.ok) return res.status(422).json(resolved);
+    // Strip the internal `proposal` (IDs) — the card only needs display data.
+    const { proposal, ...card } = resolved;
+    res.json(card);
+  });
+
   // Commit a voice proposal. The Realtime model called propose_split (with
   // names); the client sends those args here on the user's Confirm tap. We
   // resolve names -> IDs against the user's own world and create the expense

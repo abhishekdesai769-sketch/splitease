@@ -86,6 +86,13 @@ export interface ProposeSplitArgs {
   splitType?: "equal" | "unequal" | "full_to_one";
 }
 
+export interface ResolvedPerson {
+  id: string;
+  name: string;
+  isYou: boolean;
+  share: number;   // what this person's slice of the bill is
+}
+
 export interface ResolvedProposal {
   ok: true;
   proposal: {
@@ -96,8 +103,17 @@ export interface ResolvedProposal {
     groupId: string | null;
     currency?: string;
   };
-  // Human-readable echo for the confirm card / logs.
-  summary: { paidByName: string; splitAmongNames: string[]; groupName: string | null };
+  // Everything the confirm card needs (authoritative — computed server-side).
+  amount: number;
+  currency: string;         // display code, e.g. "$" is derived client-side
+  description: string;
+  date: string;             // ISO
+  groupId: string | null;
+  groupName: string | null;
+  splitLabel: string;       // "Split equally"
+  perPerson: number;        // even share
+  people: ResolvedPerson[]; // resolved, with each person's share
+  youGetBack: number;       // total others owe the speaker (payer = you)
 }
 export interface ResolveError {
   ok: false;
@@ -109,68 +125,78 @@ export interface ResolveError {
 function norm(s: string): string {
   return s.trim().toLowerCase();
 }
+function firstToken(s: string): string {
+  return norm(s).split(/\s+/)[0] || "";
+}
 
-/** Resolve a spoken name to a userId within this user's world.
- *  "me"/"myself"/"i" and the user's own name → the current user. */
-function resolveName(ctx: UserContext, raw: string): string | null {
+/** Everyone the speaker can name: themself + friends + (if a group is in play)
+ *  that group's members. */
+function candidatePool(ctx: UserContext, groupId: string | null): Array<{ id: string; name: string }> {
+  const pool: Array<{ id: string; name: string }> = [{ id: ctx.userId, name: ctx.userName }];
+  for (const f of ctx.friends) if (!pool.some((p) => p.id === f.id)) pool.push({ id: f.id, name: f.name });
+  if (groupId) {
+    const g = ctx.groups.find((x) => x.id === groupId);
+    if (g) for (const [id, name] of Object.entries(g.memberNames || {})) {
+      if (!pool.some((p) => p.id === id)) pool.push({ id, name });
+    }
+  }
+  return pool;
+}
+
+/** Resolve a spoken name to a userId against the pool. Handles "me"/the user's
+ *  own name (any form), exact, first-name, and unique prefix matches. */
+function resolveName(ctx: UserContext, pool: Array<{ id: string; name: string }>, raw: string): string | null {
   const n = norm(raw);
   if (!n) return null;
-  if (["me", "myself", "i", "im", "i'm"].includes(n) || n === norm(ctx.userName)) {
-    return ctx.userId;
-  }
-  // Exact friend-name match first, then first-name / startsWith fallback.
-  const exact = ctx.friends.find((f) => norm(f.name) === n);
-  if (exact) return exact.id;
-  const first = ctx.friends.find((f) => norm(f.name).split(" ")[0] === n);
-  if (first) return first.id;
-  const partial = ctx.friends.filter((f) => norm(f.name).startsWith(n));
+  if (["me", "myself", "i", "im", "i'm", "mine"].includes(n)) return ctx.userId;
+  // The speaker, by full or first name.
+  if (n === norm(ctx.userName) || firstToken(ctx.userName) === firstToken(raw)) return ctx.userId;
+  let hit = pool.find((c) => norm(c.name) === n); if (hit) return hit.id;
+  hit = pool.find((c) => firstToken(c.name) === n); if (hit) return hit.id;
+  const partial = pool.filter((c) => norm(c.name).startsWith(n) || firstToken(c.name).startsWith(n));
   if (partial.length === 1) return partial[0].id;
   return null;
 }
 
-/** Turn a propose_split tool call into a committable ExpenseProposal, or an
- *  error naming which people couldn't be matched. Enforces the same
- *  CURRENT-USER-PAID lock as text AI Mode. */
+/** Turn a propose_split tool call into a committable proposal + the full,
+ *  server-computed breakdown the confirm card renders. Payer is always the
+ *  speaker (Voice Mode only logs what you paid for). */
 export function resolveVoiceProposal(ctx: UserContext, args: ProposeSplitArgs): ResolvedProposal | ResolveError {
   const amount = Number(args.amount);
   if (!Number.isFinite(amount) || amount <= 0) {
     return { ok: false, error: "bad_amount", message: "I didn't catch a valid amount — how much was it?" };
   }
 
-  // Payer: always the current user. Voice Mode only logs what the speaker paid
-  // for (the model is told to verbally decline "someone else paid" before ever
-  // calling the tool), so we don't hard-fail on paidByName — we just assume the
-  // speaker paid. This removes a confusing failure mode if the model slips.
-
-  // Group (optional).
+  // Group (optional) — resolve first so its members join the candidate pool.
   let groupId: string | null = null;
   let groupName: string | null = null;
   if (args.groupName) {
     const gn = norm(args.groupName);
-    const g = ctx.groups.find((x) => norm(x.name) === gn) || ctx.groups.find((x) => norm(x.name).startsWith(gn));
+    const g = ctx.groups.find((x) => norm(x.name) === gn)
+      || ctx.groups.find((x) => norm(x.name).startsWith(gn))
+      || ctx.groups.find((x) => firstToken(x.name) === firstToken(args.groupName!));
     if (g) { groupId = g.id; groupName = g.name; }
   }
 
-  // Who shares it. Default to just the user if none named (rare — model is told
-  // to always include participants).
-  const names = (args.splitAmongNames && args.splitAmongNames.length ? args.splitAmongNames : [ctx.userName]);
+  const pool = candidatePool(ctx, groupId);
+
+  // Who shares it. Default to just the user if none named.
+  const rawNames = (args.splitAmongNames && args.splitAmongNames.length ? args.splitAmongNames : ["me"]);
   const ids: string[] = [];
   const unresolved: string[] = [];
-  for (const raw of names) {
-    const id = resolveName(ctx, raw);
+  for (const raw of rawNames) {
+    const id = resolveName(ctx, pool, raw);
     if (id) { if (!ids.includes(id)) ids.push(id); }
     else unresolved.push(raw);
   }
-  // Assume the speaker is part of the split unless they were clearly excluded.
-  if (!ids.includes(ctx.userId) && !names.some((n) => resolveName(ctx, n) === ctx.userId)) {
-    ids.unshift(ctx.userId);
-  }
+  // Assume the speaker is in the split unless clearly excluded.
+  if (!ids.includes(ctx.userId)) ids.unshift(ctx.userId);
 
   if (unresolved.length) {
     return {
       ok: false,
       error: "unknown_people",
-      message: `I couldn't find ${unresolved.join(", ")} in your friends. Who did you mean?`,
+      message: `I couldn't find ${unresolved.join(", ")}. Who did you mean?`,
       unresolved,
     };
   }
@@ -178,9 +204,15 @@ export function resolveVoiceProposal(ctx: UserContext, args: ProposeSplitArgs): 
     return { ok: false, error: "no_people", message: "Who's this split with?" };
   }
 
-  const splitAmongNames = ids.map((id) =>
-    id === ctx.userId ? ctx.userName : (ctx.friends.find((f) => f.id === id)?.name || "someone"),
-  );
+  const nameFor = (id: string) =>
+    id === ctx.userId ? ctx.userName : (pool.find((p) => p.id === id)?.name || "someone");
+
+  const perPerson = Math.round((amount / ids.length) * 100) / 100;
+  const people: ResolvedPerson[] = ids.map((id) => ({
+    id, name: nameFor(id), isYou: id === ctx.userId, share: perPerson,
+  }));
+  const youGetBack = Math.round((amount - perPerson) * 100) / 100; // others' shares owed to you
+  const currency = args.currency && args.currency.toUpperCase() !== "CAD" ? args.currency.toUpperCase() : "CAD";
 
   return {
     ok: true,
@@ -190,9 +222,18 @@ export function resolveVoiceProposal(ctx: UserContext, args: ProposeSplitArgs): 
       paidByUserId: ctx.userId,
       splitAmongUserIds: ids,
       groupId,
-      currency: args.currency && args.currency.toUpperCase() !== "CAD" ? args.currency.toUpperCase() : undefined,
+      currency: currency !== "CAD" ? currency : undefined,
     },
-    summary: { paidByName: ctx.userName, splitAmongNames, groupName },
+    amount,
+    currency,
+    description: (args.description || "Voice split").slice(0, 200),
+    date: new Date().toISOString(),
+    groupId,
+    groupName,
+    splitLabel: "Split equally",
+    perPerson,
+    people,
+    youGetBack,
   };
 }
 
