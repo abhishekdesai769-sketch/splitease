@@ -27,7 +27,8 @@ function buildInstructions(ctx: UserContext): string {
   const today = new Date().toISOString().slice(0, 10);
   return [
     `You are Spliiit's voice assistant. You ONLY help ${ctx.userName} split bills with friends — nothing else.`,
-    `Talk naturally and briefly, like a friend helping out. One or two short sentences at a time.`,
+    `Talk naturally and briefly, like a friend helping out. One short sentence at a time.`,
+    `Be precise and practical. NEVER fill silence — if the user pauses or hasn't said anything new, stay quiet and wait. Do not say things like "I'm here whenever you're ready." Never repeat a line you already said. Only speak when you have a real question or something useful to say.`,
     `The current user (the person talking) is "${ctx.userName}". Today is ${today}.`,
     `Their friends are: ${friendList}.`,
     `Their groups are: ${groupList}.`,
@@ -337,13 +338,13 @@ export async function createVoiceSession(ctx: UserContext): Promise<VoiceSession
               // hallucinates (random Korean/other-language text) on near-silence;
               // gpt-4o-mini-transcribe + a hard English hint is far cleaner.
               transcription: { model: "gpt-4o-mini-transcribe", language: "en" },
-              // Server VAD tuned so background noise / short silences don't get
-              // sent as "speech" (another hallucination source).
+              // Semantic VAD understands when the user has actually FINISHED a
+              // thought vs. just paused — so a couple seconds of silence no
+              // longer ends the turn and makes the model fill the gap. Low
+              // eagerness = it waits for the user instead of jumping in.
               turn_detection: {
-                type: "server_vad",
-                threshold: 0.6,
-                prefix_padding_ms: 300,
-                silence_duration_ms: 600,
+                type: "semantic_vad",
+                eagerness: "low",
               },
             },
             output: { voice: VOICE },
