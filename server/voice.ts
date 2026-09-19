@@ -30,7 +30,8 @@ function buildInstructions(ctx: UserContext): string {
     `The current user (the person talking) is "${ctx.userName}".`,
     `Their friends are: ${friendList}.`,
     `Their groups are: ${groupList}.`,
-    `When they describe a bill, work out: the total amount; who is involved (map the names they say to the friends or groups listed above); who paid; and how to split it — equally, unequally, or one person owes another the full amount.`,
+    `When they describe a bill, work out: the total amount; who is involved (map the names they say to the friends or groups listed above); and how to split it — equally, or one person owes the full amount.`,
+    `You ONLY log expenses THIS user paid for. Always set paidByName to "${ctx.userName}". If they say someone ELSE paid, say in one short sentence that you can only log splits they paid for, and to use the manual form or have that person log it — do not call the tool.`,
     `If the user does not say whether they themselves are part of the split, assume they are unless they clearly excluded themselves.`,
     `If something essential is missing or a name is ambiguous, ask ONE short question — do not guess. Never invent amounts or names.`,
     `Once you have the amount, the people, who paid, and the split method, call the propose_split tool with your best structured understanding, then say one short line telling them it's ready and to tap Confirm.`,
@@ -67,6 +68,142 @@ const TOOLS = [
     },
   },
 ];
+
+// ---- propose_split → ExpenseProposal bridge -------------------------------
+//
+// The Realtime model emits propose_split with NAMES (it doesn't know internal
+// IDs). We resolve those names against the user's own friends/groups and build
+// the exact same ExpenseProposal shape the text-AI confirm path commits, so all
+// the trusted balance/validation logic (storage.createExpense) is reused.
+
+export interface ProposeSplitArgs {
+  amount: number;
+  description?: string;
+  currency?: string;
+  paidByName?: string;
+  splitAmongNames?: string[];
+  groupName?: string;
+  splitType?: "equal" | "unequal" | "full_to_one";
+}
+
+export interface ResolvedProposal {
+  ok: true;
+  proposal: {
+    description: string;
+    amount: number;
+    paidByUserId: string;
+    splitAmongUserIds: string[];
+    groupId: string | null;
+    currency?: string;
+  };
+  // Human-readable echo for the confirm card / logs.
+  summary: { paidByName: string; splitAmongNames: string[]; groupName: string | null };
+}
+export interface ResolveError {
+  ok: false;
+  error: string;
+  message: string;
+  unresolved?: string[];
+}
+
+function norm(s: string): string {
+  return s.trim().toLowerCase();
+}
+
+/** Resolve a spoken name to a userId within this user's world.
+ *  "me"/"myself"/"i" and the user's own name → the current user. */
+function resolveName(ctx: UserContext, raw: string): string | null {
+  const n = norm(raw);
+  if (!n) return null;
+  if (["me", "myself", "i", "im", "i'm"].includes(n) || n === norm(ctx.userName)) {
+    return ctx.userId;
+  }
+  // Exact friend-name match first, then first-name / startsWith fallback.
+  const exact = ctx.friends.find((f) => norm(f.name) === n);
+  if (exact) return exact.id;
+  const first = ctx.friends.find((f) => norm(f.name).split(" ")[0] === n);
+  if (first) return first.id;
+  const partial = ctx.friends.filter((f) => norm(f.name).startsWith(n));
+  if (partial.length === 1) return partial[0].id;
+  return null;
+}
+
+/** Turn a propose_split tool call into a committable ExpenseProposal, or an
+ *  error naming which people couldn't be matched. Enforces the same
+ *  CURRENT-USER-PAID lock as text AI Mode. */
+export function resolveVoiceProposal(ctx: UserContext, args: ProposeSplitArgs): ResolvedProposal | ResolveError {
+  const amount = Number(args.amount);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return { ok: false, error: "bad_amount", message: "I didn't catch a valid amount — how much was it?" };
+  }
+
+  // Payer: always the current user (voice, like text AI Mode, only logs what
+  // the speaker paid for). If they named someone else, bounce to the manual form.
+  if (args.paidByName) {
+    const payer = resolveName(ctx, args.paidByName);
+    if (payer && payer !== ctx.userId) {
+      return {
+        ok: false,
+        error: "payer_locked",
+        message:
+          "I can only log splits you paid for. If someone else paid, add it from the manual form or have them log it on their end.",
+      };
+    }
+  }
+
+  // Group (optional).
+  let groupId: string | null = null;
+  let groupName: string | null = null;
+  if (args.groupName) {
+    const gn = norm(args.groupName);
+    const g = ctx.groups.find((x) => norm(x.name) === gn) || ctx.groups.find((x) => norm(x.name).startsWith(gn));
+    if (g) { groupId = g.id; groupName = g.name; }
+  }
+
+  // Who shares it. Default to just the user if none named (rare — model is told
+  // to always include participants).
+  const names = (args.splitAmongNames && args.splitAmongNames.length ? args.splitAmongNames : [ctx.userName]);
+  const ids: string[] = [];
+  const unresolved: string[] = [];
+  for (const raw of names) {
+    const id = resolveName(ctx, raw);
+    if (id) { if (!ids.includes(id)) ids.push(id); }
+    else unresolved.push(raw);
+  }
+  // Assume the speaker is part of the split unless they were clearly excluded.
+  if (!ids.includes(ctx.userId) && !names.some((n) => resolveName(ctx, n) === ctx.userId)) {
+    ids.unshift(ctx.userId);
+  }
+
+  if (unresolved.length) {
+    return {
+      ok: false,
+      error: "unknown_people",
+      message: `I couldn't find ${unresolved.join(", ")} in your friends. Who did you mean?`,
+      unresolved,
+    };
+  }
+  if (ids.length < 1) {
+    return { ok: false, error: "no_people", message: "Who's this split with?" };
+  }
+
+  const splitAmongNames = ids.map((id) =>
+    id === ctx.userId ? ctx.userName : (ctx.friends.find((f) => f.id === id)?.name || "someone"),
+  );
+
+  return {
+    ok: true,
+    proposal: {
+      description: (args.description || "Voice split").slice(0, 200),
+      amount,
+      paidByUserId: ctx.userId,
+      splitAmongUserIds: ids,
+      groupId,
+      currency: args.currency && args.currency.toUpperCase() !== "CAD" ? args.currency.toUpperCase() : undefined,
+    },
+    summary: { paidByName: ctx.userName, splitAmongNames, groupName },
+  };
+}
 
 export interface VoiceSession {
   clientSecret: string;

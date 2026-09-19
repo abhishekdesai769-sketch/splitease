@@ -3504,6 +3504,53 @@ setInterval(loadAll,30000);
     res.json(session);
   });
 
+  // Commit a voice proposal. The Realtime model called propose_split (with
+  // names); the client sends those args here on the user's Confirm tap. We
+  // resolve names -> IDs against the user's own world and create the expense
+  // through the SAME storage.createExpense path the manual form + text AI use.
+  app.post("/api/voice/commit", requireAuth, async (req: any, res) => {
+    if (!voice.VOICE_ENABLED) {
+      return res.status(503).json({ error: "voice_disabled", message: "Voice mode isn't available right now." });
+    }
+    const userId = (req.session as any).userId;
+    const user = await storage.getUser(userId);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+    const ctx = await buildAiContextForUser(user);
+    const resolved = voice.resolveVoiceProposal(ctx, req.body || {});
+    if (!resolved.ok) {
+      // 422: model/user needs to clarify (unknown person, bad amount, etc.)
+      return res.status(422).json(resolved);
+    }
+
+    const p = resolved.proposal;
+    // Server backstop for the current-user-paid lock (defense in depth).
+    if (p.paidByUserId !== user.id) {
+      return res.status(400).json({ error: "ai_mode_payer_locked", message: "Voice only logs expenses you paid for." });
+    }
+
+    try {
+      const expense = await storage.createExpense({
+        description: sanitize(p.description, 200),
+        amount: Number(p.amount),
+        paidById: p.paidByUserId,
+        splitAmongIds: p.splitAmongUserIds,
+        groupId: p.groupId || null,
+        date: new Date().toISOString(),
+        addedById: user.id,
+        isSettlement: false,
+        notes: null,
+        splitAmounts: null,
+        currency: p.currency && p.currency !== "CAD" ? p.currency : null,
+        originalAmount: null,
+      });
+      res.json({ created: [expense], summary: resolved.summary });
+    } catch (err: any) {
+      console.error("[voice] commit failed:", err);
+      res.status(500).json({ error: "voice_commit_failed", message: "Couldn't save that split — try again." });
+    }
+  });
+
   // 3. Get a conversation + all its messages
   app.get("/api/ai/conversations/:id", requireAuth, async (req: any, res) => {
     const guard = await aiGuard(req, res); if (!guard) return;

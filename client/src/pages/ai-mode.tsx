@@ -26,8 +26,9 @@ import { apiRequest, apiFormRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Sparkles, ArrowLeft, Send, Loader2, Crown, Check, X, Paperclip, Plus, ArrowUp, FileText, Image as ImageIcon, Mic, Keyboard, MicOff } from "lucide-react";
+import { Sparkles, ArrowLeft, Send, Loader2, Crown, Check, X, Paperclip, Plus, ArrowUp, FileText, Image as ImageIcon, Mic, Keyboard, MicOff, AudioLines } from "lucide-react";
 import { useVoiceMode } from "@/hooks/useVoiceMode";
+import VoiceCall from "@/components/VoiceCall";
 import { isIosNative } from "@/lib/iap";
 import ReactMarkdown from "react-markdown";
 
@@ -82,6 +83,19 @@ export default function AiMode() {
   // client-side, never written to disk server-side, only forwarded to the
   // AI for parsing then discarded.
   const [attachments, setAttachments] = useState<File[]>([]);
+
+  // Talk-back voice mode (OpenAI Realtime). Gated on the server actually having
+  // a key configured — /api/voice/health returns { enabled } (a boolean).
+  const [showVoiceCall, setShowVoiceCall] = useState(false);
+  const [voiceCallEnabled, setVoiceCallEnabled] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    apiRequest("GET", "/api/voice/health")
+      .then((r) => r.json())
+      .then((d) => { if (alive) setVoiceCallEnabled(!!d?.enabled); })
+      .catch(() => { if (alive) setVoiceCallEnabled(false); });
+    return () => { alive = false; };
+  }, []);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -624,6 +638,20 @@ export default function AiMode() {
                   <MicOff className="w-[22px] h-[22px] opacity-60" strokeWidth={2.2} />
                 )}
               </Button>
+              {voiceCallEnabled && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => setShowVoiceCall(true)}
+                  disabled={sendMutation.isPending}
+                  className="h-11 w-11 shrink-0 p-0 rounded-full bg-muted border border-border text-foreground hover:bg-muted/70"
+                  title="Talk to Spliiit — it talks back"
+                  data-testid="ai-mode-talkback"
+                  aria-label="Start talk-back voice"
+                >
+                  <AudioLines className="w-[22px] h-[22px]" strokeWidth={2.2} />
+                </Button>
+              )}
               <div className="flex-1" />
               <Button
                 type="button"
@@ -639,6 +667,8 @@ export default function AiMode() {
           </div>
         </div>
       </div>
+
+      {showVoiceCall && <VoiceCall onClose={() => setShowVoiceCall(false)} />}
     </>
   );
 }
