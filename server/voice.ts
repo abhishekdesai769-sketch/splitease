@@ -137,19 +137,10 @@ export function resolveVoiceProposal(ctx: UserContext, args: ProposeSplitArgs): 
     return { ok: false, error: "bad_amount", message: "I didn't catch a valid amount — how much was it?" };
   }
 
-  // Payer: always the current user (voice, like text AI Mode, only logs what
-  // the speaker paid for). If they named someone else, bounce to the manual form.
-  if (args.paidByName) {
-    const payer = resolveName(ctx, args.paidByName);
-    if (payer && payer !== ctx.userId) {
-      return {
-        ok: false,
-        error: "payer_locked",
-        message:
-          "I can only log splits you paid for. If someone else paid, add it from the manual form or have them log it on their end.",
-      };
-    }
-  }
+  // Payer: always the current user. Voice Mode only logs what the speaker paid
+  // for (the model is told to verbally decline "someone else paid" before ever
+  // calling the tool), so we don't hard-fail on paidByName — we just assume the
+  // speaker paid. This removes a confusing failure mode if the model slips.
 
   // Group (optional).
   let groupId: string | null = null;

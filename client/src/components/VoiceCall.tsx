@@ -65,21 +65,23 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
   const commit = useCallback(async (args: ProposalArgs) => {
     setState("committing");
     try {
-      const r = await apiRequest("POST", `/api/voice/commit${IOS_QS}`, args);
-      const body = await r.json().catch(() => ({}));
-      if (!r.ok) {
-        // 422 = model/user needs to clarify (unknown person, etc.); surface it.
-        setError(body?.message || "Couldn't save that split.");
-        setState("error");
-        return;
-      }
+      await apiRequest("POST", `/api/voice/commit${IOS_QS}`, args);
       qc.invalidateQueries({ queryKey: ["/api/expenses"] });
       qc.invalidateQueries({ queryKey: ["/api/friends/expenses"] });
       qc.invalidateQueries({ queryKey: ["/api/friends"] });
       qc.invalidateQueries({ queryKey: ["/api/groups"] });
       setState("done");
-    } catch {
-      setError("Couldn't save that split — check your connection.");
+    } catch (e: any) {
+      // apiRequest throws `${status}: ${rawBody}` on any non-2xx. Dig the real
+      // server message out of that instead of a generic "connection" error.
+      let clean = "Couldn't save that split — try again.";
+      const raw = String(e?.message || "");
+      const m = raw.match(/^\s*(\d{3}):\s*([\s\S]*)$/);
+      if (m) {
+        try { const p = JSON.parse(m[2]); clean = p?.message || p?.error || clean; }
+        catch { if (m[2]) clean = m[2]; }
+      } else if (raw) { clean = raw; }
+      setError(clean);
       setState("error");
     }
   }, [qc]);
@@ -165,8 +167,12 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
   }, [cleanup, handleEvent]);
 
   // ── UI ────────────────────────────────────────────────────────────────────
-  const people = proposal?.splitAmongNames?.length ? proposal.splitAmongNames.join(", ") : "you";
-  const amountStr = proposal ? `${(proposal.currency || "$").replace("CAD", "$")}${Number(proposal.amount).toFixed(2)}` : "";
+  const cur = (v: number) => `${(proposal?.currency && proposal.currency !== "CAD" ? proposal.currency + " " : "$")}${v.toFixed(2)}`;
+  const names = proposal?.splitAmongNames?.length ? proposal.splitAmongNames : ["You"];
+  const people = names.join(", ");
+  const amountStr = proposal ? cur(Number(proposal.amount)) : "";
+  const perPerson = proposal ? cur(Number(proposal.amount) / Math.max(names.length, 1)) : "";
+  const initials = (n: string) => n.trim().split(/\s+/).map((p) => p[0]).slice(0, 2).join("").toUpperCase();
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col items-center justify-between bg-background/95 backdrop-blur-sm px-6 py-10">
@@ -215,19 +221,44 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
       {/* bottom: proposal confirm card OR controls */}
       <div className="w-full max-w-sm">
         {state === "proposal" && proposal && (
-          <div className="rounded-3xl border border-border bg-card p-5 shadow-lg">
-            <p className="text-2xl font-semibold text-foreground">{amountStr}</p>
-            <p className="text-muted-foreground mt-0.5">{proposal.description || "Split"}</p>
-            <p className="text-sm text-foreground mt-3">Split among <span className="font-medium">{people}</span>{proposal.groupName ? ` · ${proposal.groupName}` : ""}</p>
+          <div className="rounded-[28px] border border-border bg-card p-6 shadow-[0_24px_60px_-24px_rgba(40,26,16,0.45)]">
+            <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-2">Here's your split</p>
+            <div className="flex items-end justify-between gap-3">
+              <span className="text-foreground leading-none" style={{ fontFamily: "'Instrument Serif', Georgia, serif", fontSize: "3rem" }}>{amountStr}</span>
+              {proposal.groupName && (
+                <span className="mb-1 rounded-full bg-muted px-3 py-1 text-xs text-foreground/70">{proposal.groupName}</span>
+              )}
+            </div>
+            <p className="text-foreground/70 mt-1 mb-4 capitalize">{proposal.description || "Split"}</p>
+
+            <div className="rounded-2xl bg-muted/60 p-4 space-y-3">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">You paid</span>
+                <span className="font-medium text-foreground">{amountStr}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">Split {names.length} {names.length === 1 ? "way" : "ways"}</span>
+                <span className="font-medium text-foreground">{perPerson} each</span>
+              </div>
+              <div className="flex flex-wrap gap-2 pt-1">
+                {names.map((n, i) => (
+                  <span key={`${n}-${i}`} className="inline-flex items-center gap-1.5 rounded-full bg-card border border-border pl-1 pr-2.5 py-1 text-xs text-foreground">
+                    <span className="h-5 w-5 rounded-full bg-accent-foreground text-white text-[10px] font-semibold flex items-center justify-center">{initials(n)}</span>
+                    {n}
+                  </span>
+                ))}
+              </div>
+            </div>
+
             <div className="flex gap-3 mt-5">
               <button
                 onClick={() => { setProposal(null); setState("live"); }}
-                className="flex-1 h-12 rounded-full border border-border bg-muted text-foreground font-medium"
+                className="flex-1 h-12 rounded-full border border-border bg-card text-foreground font-medium"
               >Not quite</button>
               <button
                 onClick={() => proposal && commit(proposal)}
                 className="flex-1 h-12 rounded-full bg-accent-foreground text-white font-medium"
-              >Confirm</button>
+              >Confirm split</button>
             </div>
           </div>
         )}
