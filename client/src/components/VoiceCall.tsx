@@ -27,7 +27,10 @@ import { X, Loader2, Check, Users } from "lucide-react";
 
 const IOS_QS = isIosNative ? "?platform=ios" : "";
 
-type CallState = "connecting" | "live" | "error" | "capped";
+type CallState = "connecting" | "live" | "error" | "capped" | "reconnecting";
+
+const IDLE_MS = 40000;        // hang up after this much dead air
+const MAX_CALL_MS = 300000;   // hard 5-min cap (cost guard)
 
 interface ProposalArgs {
   amount: number;
@@ -84,15 +87,44 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
   const micRef = useRef<MediaStream | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  // Live mic-level metering (drives the "it hears me" bars without re-renders).
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const meterRef = useRef<HTMLSpanElement | null>(null);
+  // Lifecycle guards + timers.
+  const closedRef = useRef(false);
+  const idleTimerRef = useRef<number | null>(null);
+  const maxTimerRef = useRef<number | null>(null);
+  const reconnectsRef = useRef(0);
 
-  const cleanup = useCallback(() => {
+  const teardownMedia = useCallback(() => {
+    if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+    try { audioCtxRef.current?.close(); } catch {}
+    audioCtxRef.current = null;
     try { dcRef.current?.close(); } catch {}
+    try { pcRef.current?.getSenders().forEach((s) => s.track?.stop()); } catch {}
     try { pcRef.current?.close(); } catch {}
     try { micRef.current?.getTracks().forEach((t) => t.stop()); } catch {}
     dcRef.current = null; pcRef.current = null; micRef.current = null;
   }, []);
 
+  const cleanup = useCallback(() => {
+    closedRef.current = true;
+    if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+    if (maxTimerRef.current) clearTimeout(maxTimerRef.current);
+    teardownMedia();
+  }, [teardownMedia]);
+
   const hangUp = useCallback(() => { cleanup(); onClose(); }, [cleanup, onClose]);
+
+  // Reset the dead-air timer on any speech activity; fire → graceful hangup.
+  const resetIdle = useCallback(() => {
+    if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+    idleTimerRef.current = window.setTimeout(() => {
+      if (!closedRef.current) { addSystemTurn("Ended — the call went quiet."); hangUp(); }
+    }, IDLE_MS);
+  // addSystemTurn/hangUp are stable enough; declared below, so guard via refs.
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Append or update a chat turn keyed by id (item_id for real speech turns).
   const upsertTurn = useCallback((id: string, role: Turn["role"], value: string, mode: "append" | "set") => {
@@ -178,6 +210,15 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
   // ── Handle Realtime events over the data channel ──────────────────────────
   const handleEvent = useCallback((msg: any) => {
     switch (msg.type) {
+      // ---- barge-in: user started talking → stop the "AI is talking" state so
+      // it visibly yields immediately (server VAD cancels its audio). ----
+      case "input_audio_buffer.speech_started":
+        setSpeaking(false);
+        resetIdle();
+        break;
+      case "input_audio_buffer.speech_stopped":
+        resetIdle();
+        break;
       // ---- establish chat order as items are created ----
       // The user's audio item is committed (and this fires) BEFORE the model's
       // reply streams, so seeding an ordered placeholder here keeps your words
@@ -200,6 +241,7 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
       case "response.audio_transcript.delta":
       case "response.output_audio_transcript.delta":
         setSpeaking(true);
+        resetIdle();
         if (msg.item_id) upsertTurn(msg.item_id, "assistant", msg.delta || "", "append");
         break;
       case "response.audio_transcript.done":
@@ -223,59 +265,108 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
         break;
       }
     }
-  }, [upsertTurn, loadPreview, hangUp]);
+  }, [upsertTurn, loadPreview, hangUp, resetIdle]);
 
-  // ── Connect ───────────────────────────────────────────────────────────────
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const sr = await apiRequest("POST", `/api/voice/session${IOS_QS}`, {});
-        const sess = await sr.json().catch(() => ({}));
-        if (cancelled) return;
+  // Live mic-level meter: drives the footer bars via a CSS var, no re-renders.
+  const attachMeter = useCallback((stream: MediaStream) => {
+    try {
+      const Ctx = (window.AudioContext || (window as any).webkitAudioContext);
+      if (!Ctx) return;
+      const ctx = new Ctx();
+      audioCtxRef.current = ctx;
+      const src = ctx.createMediaStreamSource(stream);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 512;
+      src.connect(analyser);
+      const buf = new Uint8Array(analyser.frequencyBinCount);
+      const tick = () => {
+        analyser.getByteTimeDomainData(buf);
+        let sum = 0;
+        for (let i = 0; i < buf.length; i++) { const v = (buf[i] - 128) / 128; sum += v * v; }
+        const rms = Math.min(1, Math.sqrt(sum / buf.length) * 3.2); // 0..1, boosted
+        meterRef.current?.style.setProperty("--mic", rms.toFixed(3));
+        rafRef.current = requestAnimationFrame(tick);
+      };
+      rafRef.current = requestAnimationFrame(tick);
+    } catch { /* metering is best-effort */ }
+  }, []);
 
-        const mic = await navigator.mediaDevices.getUserMedia({ audio: true });
-        micRef.current = mic;
-        if (cancelled) { mic.getTracks().forEach((t) => t.stop()); return; }
+  // ── Connect (reusable so we can reconnect on drop) ─────────────────────────
+  const startCall = useCallback(async () => {
+    try {
+      const sr = await apiRequest("POST", `/api/voice/session${IOS_QS}`, {});
+      const sess = await sr.json().catch(() => ({}));
+      if (closedRef.current) return;
 
-        const pc = new RTCPeerConnection();
-        pcRef.current = pc;
-        pc.ontrack = (e) => { if (audioRef.current) audioRef.current.srcObject = e.streams[0]; };
-        pc.addTrack(mic.getAudioTracks()[0], mic);
+      const mic = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      });
+      micRef.current = mic;
+      if (closedRef.current) { mic.getTracks().forEach((t) => t.stop()); return; }
+      attachMeter(mic);
 
-        const dc = pc.createDataChannel("oai-events");
-        dcRef.current = dc;
-        dc.onopen = () => { if (!cancelled) setState("live"); };
-        dc.onmessage = (ev) => { try { handleEvent(JSON.parse(ev.data)); } catch {} };
+      const pc = new RTCPeerConnection();
+      pcRef.current = pc;
+      pc.ontrack = (e) => { if (audioRef.current) audioRef.current.srcObject = e.streams[0]; };
+      pc.addTrack(mic.getAudioTracks()[0], mic);
 
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        const resp = await fetch(
-          `https://api.openai.com/v1/realtime/calls?model=${encodeURIComponent(sess.model)}`,
-          { method: "POST", body: offer.sdp || "", headers: { Authorization: `Bearer ${sess.clientSecret}`, "Content-Type": "application/sdp" } },
-        );
-        if (!resp.ok) throw new Error("Couldn't connect the call — try again.");
-        await pc.setRemoteDescription({ type: "answer", sdp: await resp.text() });
-      } catch (e: any) {
-        if (cancelled) return;
-        const raw = String(e?.message || "");
-        // apiRequest throws `${status}: ${body}` — detect a 429 cost cap and
-        // fall back gracefully to chatting instead of showing an error.
-        const capMatch = raw.match(/^\s*429:\s*([\s\S]*)$/);
-        if (capMatch) {
-          let msg = "Voice is taking a quick breather — you can still split by chatting.";
-          try { const p = JSON.parse(capMatch[1]); msg = p?.message || msg; } catch { /* keep */ }
-          setError(msg); setState("capped");
-          return;
+      // Reconnect on an unexpected drop (ICE fail / network blip). Up to 2 tries.
+      pc.onconnectionstatechange = () => {
+        const st = pc.connectionState;
+        if (closedRef.current) return;
+        if (st === "failed" || st === "disconnected") {
+          if (reconnectsRef.current < 2) {
+            reconnectsRef.current += 1;
+            setState("reconnecting");
+            teardownMedia();
+            window.setTimeout(() => { if (!closedRef.current) startCall(); }, 800);
+          } else {
+            setError("Lost the connection. Tap to try again."); setState("error");
+          }
         }
-        const m = e?.name === "NotAllowedError"
-          ? "Microphone access is off. Enable it in Settings to talk to Spliiit."
-          : (raw || "Something went wrong starting voice.");
-        setError(m); setState("error");
+      };
+
+      const dc = pc.createDataChannel("oai-events");
+      dcRef.current = dc;
+      dc.onopen = () => { if (!closedRef.current) { reconnectsRef.current = 0; setState("live"); resetIdle(); } };
+      dc.onmessage = (ev) => { try { handleEvent(JSON.parse(ev.data)); } catch {} };
+
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      const resp = await fetch(
+        `https://api.openai.com/v1/realtime/calls?model=${encodeURIComponent(sess.model)}`,
+        { method: "POST", body: offer.sdp || "", headers: { Authorization: `Bearer ${sess.clientSecret}`, "Content-Type": "application/sdp" } },
+      );
+      if (!resp.ok) throw new Error("Couldn't connect the call — try again.");
+      await pc.setRemoteDescription({ type: "answer", sdp: await resp.text() });
+    } catch (e: any) {
+      if (closedRef.current) return;
+      const raw = String(e?.message || "");
+      const capMatch = raw.match(/^\s*429:\s*([\s\S]*)$/);
+      if (capMatch) {
+        let msg = "Voice is taking a quick breather — you can still split by chatting.";
+        try { const p = JSON.parse(capMatch[1]); msg = p?.message || msg; } catch { /* keep */ }
+        setError(msg); setState("capped");
+        return;
       }
-    })();
-    return () => { cancelled = true; cleanup(); };
-  }, [cleanup, handleEvent]);
+      const m = e?.name === "NotAllowedError"
+        ? "Microphone access is off. Enable it in Settings to talk to Spliiit."
+        : (raw || "Something went wrong starting voice.");
+      setError(m); setState("error");
+    }
+  }, [attachMeter, handleEvent, resetIdle, teardownMedia]);
+
+  // Run once for the lifetime of the call (don't restart if the parent
+  // re-renders and passes a new onClose).
+  useEffect(() => {
+    closedRef.current = false;
+    startCall();
+    maxTimerRef.current = window.setTimeout(() => {
+      if (!closedRef.current) { addSystemTurn("Ended — calls cap at 5 minutes."); hangUp(); }
+    }, MAX_CALL_MS);
+    return () => { cleanup(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Auto-scroll the transcript to the newest turn / card.
   useEffect(() => {
@@ -305,6 +396,12 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
         {state === "connecting" && (
           <div className="h-full flex items-center justify-center">
             <p className="text-muted-foreground flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Connecting…</p>
+          </div>
+        )}
+
+        {state === "reconnecting" && (
+          <div className="h-full flex items-center justify-center">
+            <p className="text-muted-foreground flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Reconnecting…</p>
           </div>
         )}
 
@@ -428,14 +525,18 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
       {state === "live" && (
         <div className="px-5 pb-[calc(env(safe-area-inset-bottom)+16px)] pt-3 border-t border-border/60 flex items-center gap-3">
           <div className="flex items-center gap-2 flex-1 min-w-0">
-            <span className="flex items-center justify-center gap-[3px] h-6 w-8" aria-hidden="true">
+            <span ref={meterRef} className="flex items-center justify-center gap-[3px] h-6 w-8" aria-hidden="true" style={{ ["--mic" as any]: 0 }}>
               <style>{`@keyframes vcBar{0%{transform:scaleY(.35)}100%{transform:scaleY(1)}}`}</style>
               {[8, 14, 20, 12, 7].map((h, i) => (
                 <span key={i} style={{
                   width: 3, height: h, borderRadius: 9999,
-                  background: "var(--accent-foreground, #B56A4A)", transformOrigin: "center",
+                  background: "hsl(var(--accent-foreground))", transformOrigin: "center",
+                  // Speaking → the model's animated equalizer. Listening → react
+                  // to YOUR mic level so it feels alive while you talk.
                   animation: speaking ? `vcBar ${0.45 + (i % 5) * 0.1}s ease-in-out ${i * 0.05}s infinite alternate` : "none",
-                  opacity: speaking ? 1 : 0.4,
+                  transform: speaking ? undefined : "scaleY(calc(0.22 + var(--mic, 0) * 1.6))",
+                  transition: speaking ? undefined : "transform 90ms linear",
+                  opacity: speaking ? 1 : 0.85,
                 }} />
               ))}
             </span>
