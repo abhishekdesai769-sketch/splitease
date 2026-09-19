@@ -544,22 +544,9 @@ export default function AiMode() {
             </div>
           )}
 
-          {/* Slim composer (B) — one rounded bar: + attach · input · mic ·
-              terracotta send. Docks flush above the keyboard. */}
-          <div className="flex items-end gap-1.5 rounded-[26px] border border-border bg-card pl-2 pr-2 py-1.5 shadow-[0_18px_40px_-22px_rgba(40,26,16,0.28)]">
-            <Button
-              type="button"
-              size="icon"
-              variant="ghost"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={sendMutation.isPending || attachments.length >= MAX_ATTACHMENTS}
-              className="h-10 w-10 shrink-0 rounded-full bg-muted border border-border text-foreground hover:bg-muted/70"
-              title="Attach PDF, screenshot, or photo"
-              data-testid="ai-mode-attach"
-              aria-label="Attach file"
-            >
-              <Plus className="w-[22px] h-[22px]" strokeWidth={2.4} />
-            </Button>
+          {/* Composer (B) — two rows: input on top, controls below.
+              + attach & mic on the left, terracotta send on the right. */}
+          <div className="rounded-[26px] border border-border bg-card px-3.5 py-3 shadow-[0_18px_40px_-22px_rgba(40,26,16,0.28)]">
             <Textarea
               ref={inputRef}
               value={input}
@@ -569,10 +556,10 @@ export default function AiMode() {
                   ? "Listening — keep going…"
                   : attachments.length > 0
                   ? "Add context (optional)…"
-                  : "Split a bill, scan a receipt, or just say it…"
+                  : "Tell Spliiit like you'd tell a friend…"
               }
               rows={1}
-              className="flex-1 resize-none !border-0 bg-transparent px-1 py-2 text-base leading-relaxed shadow-none outline-none focus-visible:outline-none focus-visible:!ring-0 focus-visible:!ring-offset-0 min-h-[40px] max-h-[132px] overflow-y-auto"
+              className="w-full resize-none !border-0 bg-transparent px-1 pt-1 pb-2 text-base leading-relaxed shadow-none outline-none focus-visible:outline-none focus-visible:!ring-0 focus-visible:!ring-offset-0 min-h-[36px] max-h-[132px] overflow-y-auto"
               disabled={sendMutation.isPending}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
@@ -582,59 +569,73 @@ export default function AiMode() {
               }}
               data-testid="ai-mode-input"
             />
-            <Button
-              type="button"
-              size="icon"
-              variant="ghost"
-              onClick={handleMicTap}
-              disabled={sendMutation.isPending || isVoiceProcessing}
-              className={`h-10 w-10 shrink-0 rounded-full border ${
-                isListening
-                  ? "bg-accent-foreground hover:bg-accent-foreground/90 text-white border-accent-foreground"
-                  : "bg-muted border-border text-foreground hover:bg-muted/70"
-              }`}
-              title={
-                isListening ? "Tap to stop" : voiceSupported ? "Talk to AI" : "Voice needs the iOS app"
-              }
-              data-testid="ai-mode-voice"
-              aria-label={isListening ? "Stop listening" : "Start voice input"}
-            >
-              {isVoiceProcessing ? (
-                <Loader2 className="w-[22px] h-[22px] animate-spin" />
-              ) : isListening ? (
-                // Grok-style equalizer while listening (white bars on terracotta) — replaces the old red mic
-                <span className="flex items-center justify-center gap-[2.5px]" aria-hidden="true">
-                  <style>{`@keyframes aiMicBar{0%{transform:scaleY(.3)}100%{transform:scaleY(1)}}`}</style>
-                  {[9, 15, 21, 13, 8].map((h, i) => (
-                    <span
-                      key={i}
-                      style={{
-                        width: 2.5,
-                        height: h,
-                        borderRadius: 9999,
-                        background: "currentColor",
-                        transformOrigin: "center",
-                        animation: `aiMicBar ${0.5 + (i % 5) * 0.12}s ease-in-out ${i * 0.06}s infinite alternate`,
-                      }}
-                    />
-                  ))}
-                </span>
-              ) : voiceSupported ? (
-                <Mic className="w-[22px] h-[22px]" strokeWidth={2.2} />
-              ) : (
-                <MicOff className="w-[22px] h-[22px] opacity-60" strokeWidth={2.2} />
-              )}
-            </Button>
-            <Button
-              type="button"
-              size="icon"
-              onClick={handleSend}
-              disabled={sendMutation.isPending || (!input.trim() && attachments.length === 0)}
-              className="h-10 w-10 shrink-0 rounded-full bg-accent-foreground text-white hover:bg-accent-foreground/90 disabled:opacity-40"
-              data-testid="ai-mode-send"
-            >
-              {sendMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin" /> : <ArrowUp className="w-5 h-5" />}
-            </Button>
+            <div className="flex items-center gap-2 mt-1">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={sendMutation.isPending || attachments.length >= MAX_ATTACHMENTS}
+                className="h-11 w-11 shrink-0 p-0 rounded-full bg-muted border border-border text-foreground hover:bg-muted/70"
+                title="Attach PDF, screenshot, or photo"
+                data-testid="ai-mode-attach"
+                aria-label="Attach file"
+              >
+                <Plus className="w-[22px] h-[22px]" strokeWidth={2.4} />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={handleMicTap}
+                disabled={sendMutation.isPending || isVoiceProcessing}
+                className={`h-11 shrink-0 p-0 border ${
+                  isListening
+                    ? "w-[54px] rounded-2xl bg-accent-foreground hover:bg-accent-foreground/90 text-white border-accent-foreground"
+                    : "w-11 rounded-full bg-muted border-border text-foreground hover:bg-muted/70"
+                }`}
+                title={
+                  isListening ? "Tap to stop" : voiceSupported ? "Talk to AI" : "Voice needs the iOS app"
+                }
+                data-testid="ai-mode-voice"
+                aria-label={isListening ? "Stop listening" : "Start voice input"}
+              >
+                {isVoiceProcessing ? (
+                  <Loader2 className="w-[22px] h-[22px] animate-spin" />
+                ) : isListening ? (
+                  // Grok-style equalizer while listening (white bars on terracotta)
+                  <span className="flex items-center justify-center gap-[3px]" aria-hidden="true">
+                    <style>{`@keyframes aiMicBar{0%{transform:scaleY(.3)}100%{transform:scaleY(1)}}`}</style>
+                    {[9, 15, 22, 13, 8].map((h, i) => (
+                      <span
+                        key={i}
+                        style={{
+                          width: 3,
+                          height: h,
+                          borderRadius: 9999,
+                          background: "currentColor",
+                          transformOrigin: "center",
+                          animation: `aiMicBar ${0.5 + (i % 5) * 0.12}s ease-in-out ${i * 0.06}s infinite alternate`,
+                        }}
+                      />
+                    ))}
+                  </span>
+                ) : voiceSupported ? (
+                  <Mic className="w-[22px] h-[22px]" strokeWidth={2.2} />
+                ) : (
+                  <MicOff className="w-[22px] h-[22px] opacity-60" strokeWidth={2.2} />
+                )}
+              </Button>
+              <div className="flex-1" />
+              <Button
+                type="button"
+                onClick={handleSend}
+                disabled={sendMutation.isPending || (!input.trim() && attachments.length === 0)}
+                className="h-12 w-12 shrink-0 p-0 rounded-full bg-accent-foreground text-white hover:bg-accent-foreground/90 disabled:opacity-40"
+                data-testid="ai-mode-send"
+                aria-label="Send"
+              >
+                {sendMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin" /> : <ArrowUp className="w-5 h-5" />}
+              </Button>
+            </div>
           </div>
         </div>
       </div>
