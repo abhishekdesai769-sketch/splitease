@@ -18,6 +18,7 @@ import { checkScanEligibility, incrementScanCounters, recordScanAudit, normalize
 import { isDisposableEmail } from "./disposable-emails";
 import { aiConversations, aiMessages } from "@shared/schema";
 import * as ai from "./ai";
+import * as voice from "./voice";
 import { buildAttachmentContext } from "./receiptTranscription";
 import * as aiQuota from "./aiQuota";
 import * as campaigns from "./campaigns";
@@ -3476,6 +3477,24 @@ setInterval(loadAll,30000);
       { clientClaimsIosNative },
     );
     res.json({ ...access, configured: true });
+  });
+
+  // Voice talk-back — mint an ephemeral OpenAI Realtime session, scoped to
+  // splitting with this user's friends/groups as context. The real OpenAI key
+  // stays server-side; the client connects to Realtime with the ek_ token.
+  app.post("/api/voice/session", requireAuth, async (req: any, res) => {
+    if (!voice.VOICE_ENABLED) {
+      return res.status(503).json({ error: "voice_disabled", message: "Voice mode isn't available right now." });
+    }
+    const userId = (req.session as any).userId;
+    const user = await storage.getUser(userId);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const ctx = await buildAiContextForUser(user);
+    const session = await voice.createVoiceSession(ctx);
+    if (!session) {
+      return res.status(502).json({ error: "voice_session_failed", message: "Couldn't start voice right now — try again." });
+    }
+    res.json(session);
   });
 
   // 3. Get a conversation + all its messages
