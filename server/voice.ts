@@ -219,7 +219,12 @@ export async function createVoiceSession(ctx: UserContext): Promise<VoiceSession
           type: "realtime",
           model: MODEL,
           instructions: buildInstructions(ctx),
-          audio: { output: { voice: VOICE } },
+          audio: {
+            // Transcribe the USER's speech too, so the client can render a
+            // full chat history (both sides) during the call.
+            input: { transcription: { model: "whisper-1" } },
+            output: { voice: VOICE },
+          },
           tools: TOOLS,
           tool_choice: "auto",
         },
