@@ -81,6 +81,7 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
   const [committing, setCommitting] = useState(false);
   const [ending, setEnding] = useState(false);     // model called end_call → wrapping up
   const [speaking, setSpeaking] = useState(false); // model is talking → animate
+  const [userSpeaking, setUserSpeaking] = useState(false); // you're talking → live bubble
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const dcRef = useRef<RTCDataChannel | null>(null);
@@ -96,6 +97,7 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
   const idleTimerRef = useRef<number | null>(null);
   const maxTimerRef = useRef<number | null>(null);
   const reconnectsRef = useRef(0);
+  const greetedRef = useRef(false);
 
   const teardownMedia = useCallback(() => {
     if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
@@ -214,9 +216,11 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
       // it visibly yields immediately (server VAD cancels its audio). ----
       case "input_audio_buffer.speech_started":
         setSpeaking(false);
+        setUserSpeaking(true);
         resetIdle();
         break;
       case "input_audio_buffer.speech_stopped":
+        setUserSpeaking(false);
         resetIdle();
         break;
       // ---- establish chat order as items are created ----
@@ -235,6 +239,7 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
         if (msg.item_id) upsertTurn(msg.item_id, "user", msg.delta || "", "append");
         break;
       case "conversation.item.input_audio_transcription.completed":
+        setUserSpeaking(false);
         if (msg.item_id && typeof msg.transcript === "string") upsertTurn(msg.item_id, "user", msg.transcript, "set");
         break;
       // ---- assistant speech (output transcript; event name varies by version) ----
@@ -253,8 +258,8 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
       case "response.function_call_arguments.done": {
         if (msg.name === "end_call") {
           setEnding(true);
-          // Let any final goodbye audio play, then hang up.
-          window.setTimeout(() => hangUp(), 2600);
+          // Let the spoken goodbye finish before hanging up.
+          window.setTimeout(() => hangUp(), 4000);
           break;
         }
         try {
@@ -328,7 +333,17 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
 
       const dc = pc.createDataChannel("oai-events");
       dcRef.current = dc;
-      dc.onopen = () => { if (!closedRef.current) { reconnectsRef.current = 0; setState("live"); resetIdle(); } };
+      dc.onopen = () => {
+        if (closedRef.current) return;
+        reconnectsRef.current = 0;
+        setState("live");
+        resetIdle();
+        // Greet first (only on the initial connect, not on a reconnect).
+        if (!greetedRef.current) {
+          greetedRef.current = true;
+          dc.send(JSON.stringify({ type: "response.create", response: { instructions: "Open with one short, warm line greeting the user and asking what they'd like to split. E.g. \"Hey! What are we splitting today?\"" } }));
+        }
+      };
       dc.onmessage = (ev) => { try { handleEvent(JSON.parse(ev.data)); } catch {} };
 
       const offer = await pc.createOffer();
@@ -371,7 +386,7 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
   // Auto-scroll the transcript to the newest turn / card.
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [turns, preview, previewing, committing]);
+  }, [turns, preview, previewing, committing, userSpeaking]);
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-background">
@@ -456,6 +471,18 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
             </div>
           );
         })}
+
+        {/* live "you're speaking" bubble (words fill in when transcription lands) */}
+        {userSpeaking && (
+          <div className="flex justify-end">
+            <div className="rounded-2xl rounded-br-md bg-accent-foreground/90 text-white px-4 py-3 flex items-center gap-1" aria-label="listening">
+              <style>{`@keyframes vcDot{0%,60%,100%{opacity:.3}30%{opacity:1}}`}</style>
+              {[0, 1, 2].map((i) => (
+                <span key={i} style={{ width: 6, height: 6, borderRadius: 9999, background: "currentColor", animation: `vcDot 1.1s ease-in-out ${i * 0.18}s infinite` }} />
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* working out the split */}
         {previewing && (

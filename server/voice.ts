@@ -23,7 +23,12 @@ export const VOICE_MODEL = MODEL;
 
 function buildInstructions(ctx: UserContext): string {
   const friendList = ctx.friends.map((f) => f.name).join(", ") || "(no friends added yet)";
-  const groupList = ctx.groups.map((g) => g.name).join(", ") || "(no groups yet)";
+  const groupList = ctx.groups.length
+    ? ctx.groups.map((g) => {
+        const members = Object.values(g.memberNames || {}).filter((n) => n !== ctx.userName).join(", ");
+        return `${g.name}${members ? ` (with ${members})` : ""}`;
+      }).join("; ")
+    : "(no groups yet)";
   const today = new Date().toISOString().slice(0, 10);
   return [
     `You are Spliiit's voice assistant. You ONLY help ${ctx.userName} split bills with friends — nothing else.`,
@@ -32,6 +37,7 @@ function buildInstructions(ctx: UserContext): string {
     `The current user (the person talking) is "${ctx.userName}". Today is ${today}.`,
     `Their friends are: ${friendList}.`,
     `Their groups are: ${groupList}.`,
+    `You ALREADY KNOW all these people. When the user says a first name, match it to the person above automatically — do NOT ask for a full name when there's only one match (e.g. one "Sarah" → use her). Only ask to disambiguate when TWO or more known people share that name, and when you do, offer the specific options ("Do you mean Sarah Miller in Homies, or Sarah Jones?"). Never make the user spell out someone you already know.`,
     `When they describe a bill, work out: the total amount; who is involved (map the names to the friends/groups above); how to split it; and the date.`,
     `SPLIT TYPES: "equal" = divided evenly. "custom" = specific amounts per person — when the user gives any per-person amount (e.g. "Marcus pays $50, the rest split the remaining $50"), use splitType "custom" and provide "shares" as an amount for EVERY person, and the shares MUST sum to the total. Do the arithmetic yourself.`,
     `You ONLY log expenses THIS user paid for. Always set paidByName to "${ctx.userName}". If they say someone ELSE paid, say in one short sentence you can only log splits they paid for — do not call the tool.`,
@@ -39,7 +45,7 @@ function buildInstructions(ctx: UserContext): string {
     `DATE: if they mention when it happened ("on Sept 15", "yesterday"), set "date" to that calendar date in YYYY-MM-DD. Otherwise use today (${today}).`,
     `If something essential is missing or a name is ambiguous, ask ONE short question — never guess amounts or names.`,
     `Call propose_split with your best full understanding. If the user then CHANGES anything (amount, people, who pays what, date, description), call propose_split AGAIN with the updated details — don't just repeat that it's ready.`,
-    `After I confirm the split was saved, say one short friendly line and ask if there's anything else. If they say no / that's all / thanks, call end_call to hang up. If they go quiet after you ask, call end_call.`,
+    `After I confirm the split was saved, say one short friendly line and ask if there's anything else. If they say no / that's all / thanks, FIRST say a short warm goodbye out loud (like "Sounds good — have a great day!"), and THEN call end_call. Always say the goodbye before ending; never hang up silently.`,
     `If the user asks anything unrelated to splitting a bill, say in one sentence you can only help with splitting bills.`,
   ].join(" ");
 }
@@ -157,33 +163,38 @@ function firstToken(s: string): string {
   return norm(s).split(/\s+/)[0] || "";
 }
 
-/** Everyone the speaker can name: themself + friends + (if a group is in play)
- *  that group's members. */
-function candidatePool(ctx: UserContext, groupId: string | null): Array<{ id: string; name: string }> {
+/** EVERYONE the speaker knows: themself + friends + members of ALL their
+ *  groups. Used so a first name resolves without needing the group named. */
+function candidatePool(ctx: UserContext): Array<{ id: string; name: string }> {
   const pool: Array<{ id: string; name: string }> = [{ id: ctx.userId, name: ctx.userName }];
   for (const f of ctx.friends) if (!pool.some((p) => p.id === f.id)) pool.push({ id: f.id, name: f.name });
-  if (groupId) {
-    const g = ctx.groups.find((x) => x.id === groupId);
-    if (g) for (const [id, name] of Object.entries(g.memberNames || {})) {
-      if (!pool.some((p) => p.id === id)) pool.push({ id, name });
-    }
+  for (const g of ctx.groups) for (const [id, name] of Object.entries(g.memberNames || {})) {
+    if (!pool.some((p) => p.id === id)) pool.push({ id, name });
   }
   return pool;
 }
 
-/** Resolve a spoken name to a userId against the pool. Handles "me"/the user's
- *  own name (any form), exact, first-name, and unique prefix matches. */
-function resolveName(ctx: UserContext, pool: Array<{ id: string; name: string }>, raw: string): string | null {
+/** Where a person is known from — for disambiguation ("Sarah in Homies"). */
+function describePerson(ctx: UserContext, id: string): string {
+  const groups = ctx.groups.filter((g) => (g.memberIds || []).includes(id)).map((g) => g.name);
+  if (groups.length) return `in ${groups.join(" & ")}`;
+  if (ctx.friends.some((f) => f.id === id)) return "your friend";
+  return "";
+}
+
+/** Match a spoken name to the people it could be. Returns 0, 1 (resolved), or
+ *  2+ (ambiguous → ask, naming the options). */
+function matchName(ctx: UserContext, pool: Array<{ id: string; name: string }>, raw: string): string[] {
   const n = norm(raw);
-  if (!n) return null;
-  if (["me", "myself", "i", "im", "i'm", "mine"].includes(n)) return ctx.userId;
-  // The speaker, by full or first name.
-  if (n === norm(ctx.userName) || firstToken(ctx.userName) === firstToken(raw)) return ctx.userId;
-  let hit = pool.find((c) => norm(c.name) === n); if (hit) return hit.id;
-  hit = pool.find((c) => firstToken(c.name) === n); if (hit) return hit.id;
+  if (!n) return [];
+  if (["me", "myself", "i", "im", "i'm", "mine"].includes(n)) return [ctx.userId];
+  if (n === norm(ctx.userName) || firstToken(ctx.userName) === firstToken(raw)) return [ctx.userId];
+  const exact = pool.filter((c) => norm(c.name) === n);
+  if (exact.length) return Array.from(new Set(exact.map((c) => c.id)));
+  const byFirst = pool.filter((c) => firstToken(c.name) === n);
+  if (byFirst.length) return Array.from(new Set(byFirst.map((c) => c.id)));
   const partial = pool.filter((c) => norm(c.name).startsWith(n) || firstToken(c.name).startsWith(n));
-  if (partial.length === 1) return partial[0].id;
-  return null;
+  return Array.from(new Set(partial.map((c) => c.id)));
 }
 
 /** Turn a propose_split tool call into a committable proposal + the full,
@@ -206,29 +217,35 @@ export function resolveVoiceProposal(ctx: UserContext, args: ProposeSplitArgs): 
     if (g) { groupId = g.id; groupName = g.name; }
   }
 
-  const pool = candidatePool(ctx, groupId);
+  const pool = candidatePool(ctx);
+
+  // Resolve one spoken name → id, or an ambiguity/not-found error.
+  const resolveOne = (raw: string): { id?: string; err?: ResolveError } => {
+    const m = matchName(ctx, pool, raw);
+    if (m.length === 1) return { id: m[0] };
+    if (m.length === 0) {
+      return { err: { ok: false, error: "unknown_people", message: `I couldn't find ${raw}. Who did you mean?`, unresolved: [raw] } };
+    }
+    const opts = m.map((id) => {
+      const name = id === ctx.userId ? ctx.userName : (pool.find((p) => p.id === id)?.name || "someone");
+      const where = describePerson(ctx, id);
+      return where ? `${name} (${where})` : name;
+    });
+    return { err: { ok: false, error: "ambiguous_person", message: `There are a couple people named ${raw}: ${opts.join(", ")}. Which one?` } };
+  };
 
   // Who shares it. Default to just the user if none named.
   const rawNames = (args.splitAmongNames && args.splitAmongNames.length ? args.splitAmongNames : ["me"]);
   const ids: string[] = [];
-  const unresolved: string[] = [];
   for (const raw of rawNames) {
-    const id = resolveName(ctx, pool, raw);
-    if (id) { if (!ids.includes(id)) ids.push(id); }
-    else unresolved.push(raw);
+    const r = resolveOne(raw);
+    if (r.err) return r.err;
+    if (r.id && !ids.includes(r.id)) ids.push(r.id);
   }
   // Assume the speaker is in the split unless clearly excluded — but NOT for
   // full_to_one, where someone else owes the whole amount.
   if (args.splitType !== "full_to_one" && !ids.includes(ctx.userId)) ids.unshift(ctx.userId);
 
-  if (unresolved.length) {
-    return {
-      ok: false,
-      error: "unknown_people",
-      message: `I couldn't find ${unresolved.join(", ")}. Who did you mean?`,
-      unresolved,
-    };
-  }
   if (ids.length < 1) {
     return { ok: false, error: "no_people", message: "Who's this split with?" };
   }
@@ -246,14 +263,10 @@ export function resolveVoiceProposal(ctx: UserContext, args: ProposeSplitArgs): 
 
   if (isCustom) {
     const amounts: Record<string, number> = {};
-    const shareUnresolved: string[] = [];
     for (const s of args.shares!) {
-      const id = resolveName(ctx, pool, s.name);
-      if (!id) { shareUnresolved.push(s.name); continue; }
-      amounts[id] = round2(Number(s.amount) || 0);
-    }
-    if (shareUnresolved.length) {
-      return { ok: false, error: "unknown_people", message: `I couldn't find ${shareUnresolved.join(", ")}. Who did you mean?`, unresolved: shareUnresolved };
+      const r = resolveOne(s.name);
+      if (r.err) return r.err;
+      if (r.id) amounts[r.id] = round2(Number(s.amount) || 0);
     }
     const sum = round2(Object.values(amounts).reduce((a, b) => a + b, 0));
     if (Math.abs(sum - amount) > 0.02) {
