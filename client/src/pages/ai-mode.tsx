@@ -534,9 +534,9 @@ export default function AiMode() {
           {/* Live voice transcript — shown above the input when listening,
               so the user sees what's being captured in real time. */}
           {(isListening || isVoiceProcessing) && (
-            <div className="flex items-center gap-2 mb-2 px-3 py-2 rounded-lg bg-accent-foreground/10 border border-accent-foreground/25">
+            <div className="flex items-center gap-2 mb-2 px-1">
               <div className="w-2 h-2 rounded-full bg-accent-foreground animate-pulse" />
-              <p className="text-xs text-foreground flex-1 truncate">
+              <p className="text-sm font-medium flex-1 truncate text-accent-foreground">
                 {isVoiceProcessing
                   ? "Got it — processing…"
                   : interimTranscript || "Listening…"}
