@@ -24,18 +24,22 @@ export const VOICE_MODEL = MODEL;
 function buildInstructions(ctx: UserContext): string {
   const friendList = ctx.friends.map((f) => f.name).join(", ") || "(no friends added yet)";
   const groupList = ctx.groups.map((g) => g.name).join(", ") || "(no groups yet)";
+  const today = new Date().toISOString().slice(0, 10);
   return [
     `You are Spliiit's voice assistant. You ONLY help ${ctx.userName} split bills with friends — nothing else.`,
     `Talk naturally and briefly, like a friend helping out. One or two short sentences at a time.`,
-    `The current user (the person talking) is "${ctx.userName}".`,
+    `The current user (the person talking) is "${ctx.userName}". Today is ${today}.`,
     `Their friends are: ${friendList}.`,
     `Their groups are: ${groupList}.`,
-    `When they describe a bill, work out: the total amount; who is involved (map the names they say to the friends or groups listed above); and how to split it — equally, or one person owes the full amount.`,
-    `You ONLY log expenses THIS user paid for. Always set paidByName to "${ctx.userName}". If they say someone ELSE paid, say in one short sentence that you can only log splits they paid for, and to use the manual form or have that person log it — do not call the tool.`,
-    `If the user does not say whether they themselves are part of the split, assume they are unless they clearly excluded themselves.`,
-    `If something essential is missing or a name is ambiguous, ask ONE short question — do not guess. Never invent amounts or names.`,
-    `Once you have the amount, the people, who paid, and the split method, call the propose_split tool with your best structured understanding, then say one short line telling them it's ready and to tap Confirm.`,
-    `If the user asks anything unrelated to splitting a bill, politely say in one sentence that you can only help with splitting bills.`,
+    `When they describe a bill, work out: the total amount; who is involved (map the names to the friends/groups above); how to split it; and the date.`,
+    `SPLIT TYPES: "equal" = divided evenly. "custom" = specific amounts per person — when the user gives any per-person amount (e.g. "Marcus pays $50, the rest split the remaining $50"), use splitType "custom" and provide "shares" as an amount for EVERY person, and the shares MUST sum to the total. Do the arithmetic yourself.`,
+    `You ONLY log expenses THIS user paid for. Always set paidByName to "${ctx.userName}". If they say someone ELSE paid, say in one short sentence you can only log splits they paid for — do not call the tool.`,
+    `If they don't say whether they're in the split, assume they are unless clearly excluded.`,
+    `DATE: if they mention when it happened ("on Sept 15", "yesterday"), set "date" to that calendar date in YYYY-MM-DD. Otherwise use today (${today}).`,
+    `If something essential is missing or a name is ambiguous, ask ONE short question — never guess amounts or names.`,
+    `Call propose_split with your best full understanding. If the user then CHANGES anything (amount, people, who pays what, date, description), call propose_split AGAIN with the updated details — don't just repeat that it's ready.`,
+    `After I confirm the split was saved, say one short friendly line and ask if there's anything else. If they say no / that's all / thanks, call end_call to hang up. If they go quiet after you ask, call end_call.`,
+    `If the user asks anything unrelated to splitting a bill, say in one sentence you can only help with splitting bills.`,
   ].join(" ");
 }
 
@@ -44,28 +48,47 @@ const TOOLS = [
     type: "function",
     name: "propose_split",
     description:
-      "Propose a bill split for the user to review and confirm. Call this once you have the amount, the people involved, who paid, and the split method.",
+      "Propose (or re-propose) a bill split for the user to review and confirm. Call again with updated fields whenever the user changes anything.",
     parameters: {
       type: "object",
       properties: {
         description: { type: "string", description: "Short human description, e.g. 'Tacofino dinner'." },
         amount: { type: "number", description: "The total bill amount as a number." },
         currency: { type: "string", description: "ISO 4217 code (e.g. USD, EUR). Omit or 'CAD' if not stated." },
-        paidByName: { type: "string", description: "Name of who paid — one of the known friends, or the current user." },
+        paidByName: { type: "string", description: "Who paid — always the current user." },
         splitAmongNames: {
           type: "array",
           items: { type: "string" },
-          description: "Names of everyone sharing the bill (include the current user if they are involved).",
+          description: "Names of everyone sharing the bill (include the current user if involved).",
         },
         groupName: { type: "string", description: "Group name if this belongs to a known group; omit for a friends split." },
         splitType: {
           type: "string",
-          enum: ["equal", "unequal", "full_to_one"],
-          description: "equal = divided evenly; unequal = different amounts; full_to_one = one person owes another the whole amount.",
+          enum: ["equal", "custom", "full_to_one"],
+          description: "equal = divided evenly; custom = specific per-person amounts (provide shares); full_to_one = one person owes the whole amount.",
         },
+        shares: {
+          type: "array",
+          description: "REQUIRED when splitType is 'custom': each person's exact amount. Must include every person and sum to the total.",
+          items: {
+            type: "object",
+            properties: {
+              name: { type: "string" },
+              amount: { type: "number" },
+            },
+            required: ["name", "amount"],
+          },
+        },
+        date: { type: "string", description: "Calendar date of the expense in YYYY-MM-DD. Omit for today." },
       },
       required: ["amount", "paidByName", "splitAmongNames", "splitType"],
     },
+  },
+  {
+    type: "function",
+    name: "end_call",
+    description: "Hang up the voice call. Call this when the user is done (after saving, if they have nothing else, or if they ask to stop).",
+    parameters: { type: "object", properties: {} },
   },
 ];
 
@@ -83,7 +106,9 @@ export interface ProposeSplitArgs {
   paidByName?: string;
   splitAmongNames?: string[];
   groupName?: string;
-  splitType?: "equal" | "unequal" | "full_to_one";
+  splitType?: "equal" | "custom" | "unequal" | "full_to_one";
+  shares?: Array<{ name: string; amount: number }>;
+  date?: string;
 }
 
 export interface ResolvedPerson {
@@ -100,8 +125,10 @@ export interface ResolvedProposal {
     amount: number;
     paidByUserId: string;
     splitAmongUserIds: string[];
+    splitAmounts?: Record<string, number>;  // set for custom splits
     groupId: string | null;
     currency?: string;
+    date: string;                           // ISO — honored on commit
   };
   // Everything the confirm card needs (authoritative — computed server-side).
   amount: number;
@@ -189,8 +216,9 @@ export function resolveVoiceProposal(ctx: UserContext, args: ProposeSplitArgs): 
     if (id) { if (!ids.includes(id)) ids.push(id); }
     else unresolved.push(raw);
   }
-  // Assume the speaker is in the split unless clearly excluded.
-  if (!ids.includes(ctx.userId)) ids.unshift(ctx.userId);
+  // Assume the speaker is in the split unless clearly excluded — but NOT for
+  // full_to_one, where someone else owes the whole amount.
+  if (args.splitType !== "full_to_one" && !ids.includes(ctx.userId)) ids.unshift(ctx.userId);
 
   if (unresolved.length) {
     return {
@@ -207,30 +235,73 @@ export function resolveVoiceProposal(ctx: UserContext, args: ProposeSplitArgs): 
   const nameFor = (id: string) =>
     id === ctx.userId ? ctx.userName : (pool.find((p) => p.id === id)?.name || "someone");
 
-  const perPerson = Math.round((amount / ids.length) * 100) / 100;
-  const people: ResolvedPerson[] = ids.map((id) => ({
-    id, name: nameFor(id), isYou: id === ctx.userId, share: perPerson,
-  }));
-  const youGetBack = Math.round((amount - perPerson) * 100) / 100; // others' shares owed to you
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+  const isCustom = (args.splitType === "custom" || args.splitType === "unequal")
+    && Array.isArray(args.shares) && args.shares.length > 0;
+
+  let people: ResolvedPerson[];
+  let splitAmounts: Record<string, number> | undefined;
+  let splitLabel: string;
+
+  if (isCustom) {
+    const amounts: Record<string, number> = {};
+    const shareUnresolved: string[] = [];
+    for (const s of args.shares!) {
+      const id = resolveName(ctx, pool, s.name);
+      if (!id) { shareUnresolved.push(s.name); continue; }
+      amounts[id] = round2(Number(s.amount) || 0);
+    }
+    if (shareUnresolved.length) {
+      return { ok: false, error: "unknown_people", message: `I couldn't find ${shareUnresolved.join(", ")}. Who did you mean?`, unresolved: shareUnresolved };
+    }
+    const sum = round2(Object.values(amounts).reduce((a, b) => a + b, 0));
+    if (Math.abs(sum - amount) > 0.02) {
+      return { ok: false, error: "amount_mismatch", message: `Those add up to ${sum.toFixed(2)}, but the total is ${amount.toFixed(2)}. Which should I use?` };
+    }
+    const allIds = Array.from(new Set([...ids, ...Object.keys(amounts)]));
+    ids.length = 0; ids.push(...allIds);
+    people = allIds.map((id) => ({ id, name: nameFor(id), isYou: id === ctx.userId, share: amounts[id] ?? 0 }));
+    splitAmounts = amounts;
+    splitLabel = "Custom split";
+  } else {
+    const per = round2(amount / ids.length);
+    people = ids.map((id) => ({ id, name: nameFor(id), isYou: id === ctx.userId, share: per }));
+    splitLabel = args.splitType === "full_to_one" ? "Owes the full amount" : "Split equally";
+  }
+
+  const yourShare = people.find((p) => p.isYou)?.share ?? 0;
+  const youGetBack = round2(amount - yourShare); // total owed back to the payer
+  const perPerson = round2(amount / Math.max(people.length, 1));
   const currency = args.currency && args.currency.toUpperCase() !== "CAD" ? args.currency.toUpperCase() : "CAD";
+
+  // Date: honor a valid YYYY-MM-DD, else today. Noon-UTC avoids TZ off-by-one.
+  let dateIso = new Date().toISOString();
+  if (args.date && /^\d{4}-\d{2}-\d{2}$/.test(args.date)) {
+    const d = new Date(args.date + "T12:00:00Z");
+    if (!isNaN(d.getTime())) dateIso = d.toISOString();
+  }
+
+  const description = (args.description || "Voice split").slice(0, 200);
 
   return {
     ok: true,
     proposal: {
-      description: (args.description || "Voice split").slice(0, 200),
+      description,
       amount,
       paidByUserId: ctx.userId,
       splitAmongUserIds: ids,
+      splitAmounts,
       groupId,
       currency: currency !== "CAD" ? currency : undefined,
+      date: dateIso,
     },
     amount,
     currency,
-    description: (args.description || "Voice split").slice(0, 200),
-    date: new Date().toISOString(),
+    description,
+    date: dateIso,
     groupId,
     groupName,
-    splitLabel: "Split equally",
+    splitLabel,
     perPerson,
     people,
     youGetBack,

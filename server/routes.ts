@@ -3564,11 +3564,11 @@ setInterval(loadAll,30000);
         paidById: p.paidByUserId,
         splitAmongIds: p.splitAmongUserIds,
         groupId: p.groupId || null,
-        date: new Date().toISOString(),
+        date: p.date || new Date().toISOString(),
         addedById: user.id,
         isSettlement: false,
         notes: null,
-        splitAmounts: null,
+        splitAmounts: p.splitAmounts ? JSON.stringify(p.splitAmounts) : null,
         currency: p.currency && p.currency !== "CAD" ? p.currency : null,
         originalAmount: null,
       });

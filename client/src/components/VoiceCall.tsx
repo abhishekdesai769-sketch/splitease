@@ -76,6 +76,7 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
   const [preview, setPreview] = useState<PreviewCard | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [committing, setCommitting] = useState(false);
+  const [ending, setEnding] = useState(false);     // model called end_call → wrapping up
   const [speaking, setSpeaking] = useState(false); // model is talking → animate
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
@@ -152,6 +153,12 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
       addSystemTurn(`✅ Saved · ${money(Number(args.amount), args.currency || "CAD")}${args.description ? " · " + args.description : ""}`);
       setProposal(null);
       setPreview(null);
+      // Nudge the model to confirm it's saved and ask if there's anything else
+      // (it will call end_call to hang up when the user is done).
+      const dc = dcRef.current;
+      if (dc && dc.readyState === "open") {
+        dc.send(JSON.stringify({ type: "response.create", response: { instructions: "The split was just saved. In one short, friendly line tell them it's saved, then ask if there's anything else." } }));
+      }
     } catch (e: any) {
       // apiRequest throws `${status}: ${rawBody}` on any non-2xx. Dig the real
       // server message out of that instead of a generic "connection" error.
@@ -200,8 +207,14 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
         setSpeaking(false);
         if (msg.item_id && typeof msg.transcript === "string") upsertTurn(msg.item_id, "assistant", msg.transcript, "set");
         break;
-      // ---- tool call: propose a split ----
+      // ---- tool calls ----
       case "response.function_call_arguments.done": {
+        if (msg.name === "end_call") {
+          setEnding(true);
+          // Let any final goodbye audio play, then hang up.
+          window.setTimeout(() => hangUp(), 2600);
+          break;
+        }
         try {
           const args = JSON.parse(msg.arguments || "{}") as ProposalArgs;
           setProposal(args);
@@ -210,7 +223,7 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
         break;
       }
     }
-  }, [upsertTurn, loadPreview]);
+  }, [upsertTurn, loadPreview, hangUp]);
 
   // ── Connect ───────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -371,7 +384,7 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
                 )}
               </div>
               <p className="font-serif text-2xl text-foreground mt-1 capitalize leading-tight">{preview.description}</p>
-              <p className="text-xs text-muted-foreground mt-1">{shortDate(preview.date)} · you paid</p>
+              <p className="text-xs text-muted-foreground mt-1">{shortDate(preview.date)} · you paid · {preview.splitLabel}</p>
 
               <div className="mt-4 rounded-2xl bg-muted/50 divide-y divide-border/70">
                 {preview.people.map((p) => (
@@ -426,7 +439,7 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
                 }} />
               ))}
             </span>
-            <span className="text-sm text-muted-foreground truncate">{speaking ? "Spliiit is talking…" : "Listening…"}</span>
+            <span className="text-sm text-muted-foreground truncate">{ending ? "Wrapping up…" : speaking ? "Spliiit is talking…" : "Listening…"}</span>
           </div>
           <button onClick={hangUp} className="h-11 px-6 rounded-full border border-border bg-muted text-foreground font-medium shrink-0">End</button>
         </div>
