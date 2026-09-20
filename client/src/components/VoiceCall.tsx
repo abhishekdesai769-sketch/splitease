@@ -23,7 +23,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { isIosNative } from "@/lib/iap";
-import { X, Loader2, Check, Users } from "lucide-react";
+import { X, Loader2, Check, Users, Pencil } from "lucide-react";
 
 const IOS_QS = isIosNative ? "?platform=ios" : "";
 
@@ -39,7 +39,9 @@ interface ProposalArgs {
   paidByName?: string;
   splitAmongNames?: string[];
   groupName?: string;
-  splitType?: "equal" | "unequal" | "full_to_one";
+  splitType?: "equal" | "custom" | "unequal" | "full_to_one";
+  shares?: Array<{ name: string; amount: number }>;
+  date?: string;
 }
 
 interface Turn { id: string; role: "user" | "assistant" | "system"; text: string; }
@@ -79,6 +81,8 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
   const [preview, setPreview] = useState<PreviewCard | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [committing, setCommitting] = useState(false);
+  const [editing, setEditing] = useState(false);   // tap-to-edit the confirm card
+  const [edit, setEdit] = useState<{ description: string; amount: string; date: string }>({ description: "", amount: "", date: "" });
   const [ending, setEnding] = useState(false);     // model called end_call → wrapping up
   const [speaking, setSpeaking] = useState(false); // model is talking → animate
   const [userSpeaking, setUserSpeaking] = useState(false); // you're talking → live bubble
@@ -98,6 +102,10 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
   const maxTimerRef = useRef<number | null>(null);
   const reconnectsRef = useRef(0);
   const greetedRef = useRef(false);
+  // Ordering: anchor each user turn to the moment speech STARTS (always before
+  // the reply), so the transcript never shows the answer above the question.
+  const pendingUserRef = useRef<string | null>(null);
+  const seqRef = useRef(0);
 
   const teardownMedia = useCallback(() => {
     if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
@@ -161,6 +169,7 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
       const r = await apiRequest("POST", `/api/voice/preview${IOS_QS}`, args);
       const card = await r.json();
       setPreview(card as PreviewCard);
+      setEditing(false);
       answerTool(callId, { shown: true, instruction: "Say one short line telling them the split is ready and to tap Confirm." });
     } catch (e: any) {
       let clean = "I couldn't work that split out — mind saying it again?";
@@ -209,38 +218,60 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
     }
   }, [qc, addSystemTurn]);
 
+  // Tap-to-edit the confirm card (amount / title / date) without re-speaking.
+  const beginEdit = useCallback(() => {
+    if (!preview) return;
+    setEdit({ description: preview.description, amount: String(preview.amount), date: preview.date.slice(0, 10) });
+    setEditing(true);
+  }, [preview]);
+
+  const saveEdit = useCallback(() => {
+    if (!proposal) { setEditing(false); return; }
+    const amt = parseFloat(edit.amount);
+    const merged: ProposalArgs = {
+      ...proposal,
+      description: edit.description.trim() || proposal.description,
+      amount: Number.isFinite(amt) && amt > 0 ? amt : proposal.amount,
+      date: /^\d{4}-\d{2}-\d{2}$/.test(edit.date) ? edit.date : proposal.date,
+    };
+    setProposal(merged);
+    setEditing(false);
+    loadPreview(merged); // no callId → recompute the card, don't make the model talk
+  }, [proposal, edit, loadPreview]);
+
   // ── Handle Realtime events over the data channel ──────────────────────────
   const handleEvent = useCallback((msg: any) => {
     switch (msg.type) {
-      // ---- barge-in: user started talking → stop the "AI is talking" state so
-      // it visibly yields immediately (server VAD cancels its audio). ----
+      // ---- barge-in + ORDERING anchor: the moment the user starts talking we
+      // create their (empty) turn. This always precedes the reply, so the
+      // transcript can never show the answer above the question. The words fill
+      // into THIS turn when transcription lands. ----
       case "input_audio_buffer.speech_started":
         setSpeaking(false);
         setUserSpeaking(true);
         resetIdle();
+        {
+          const tid = `u-${Date.now()}-${seqRef.current++}`;
+          pendingUserRef.current = tid;
+          setTurns((prev) => [...prev, { id: tid, role: "user", text: "" }]);
+        }
         break;
       case "input_audio_buffer.speech_stopped":
         setUserSpeaking(false);
         resetIdle();
         break;
-      // ---- establish chat order as items are created ----
-      // The user's audio item is committed (and this fires) BEFORE the model's
-      // reply streams, so seeding an ordered placeholder here keeps your words
-      // above the answer even though the transcription text arrives later.
-      case "conversation.item.created": {
-        const it = msg.item;
-        if (it?.id && (it.role === "user" || it.role === "assistant")) {
-          setTurns((prev) => prev.some((t) => t.id === it.id) ? prev : [...prev, { id: it.id, role: it.role, text: "" }]);
-        }
-        break;
-      }
-      // ---- user speech (input transcription) ----
+      // ---- user speech transcription → fill the pending user turn ----
       case "conversation.item.input_audio_transcription.delta":
-        if (msg.item_id) upsertTurn(msg.item_id, "user", msg.delta || "", "append");
+        if (pendingUserRef.current) upsertTurn(pendingUserRef.current, "user", msg.delta || "", "append");
+        else if (msg.item_id) upsertTurn(msg.item_id, "user", msg.delta || "", "append");
         break;
       case "conversation.item.input_audio_transcription.completed":
         setUserSpeaking(false);
-        if (msg.item_id && typeof msg.transcript === "string") upsertTurn(msg.item_id, "user", msg.transcript, "set");
+        if (typeof msg.transcript === "string") {
+          const target = pendingUserRef.current || msg.item_id;
+          if (target) upsertTurn(target, "user", msg.transcript, "set");
+        }
+        pendingUserRef.current = null;
         break;
       // ---- assistant speech (output transcript; event name varies by version) ----
       case "response.audio_transcript.delta":
@@ -497,19 +528,52 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
         {preview && (
           <div className="flex justify-start">
             <div className="w-[92%] max-w-sm rounded-[24px] border border-border bg-card p-5">
-              <p className="text-[11px] font-mono uppercase tracking-[0.14em] text-muted-foreground mb-2">Confirm split</p>
-
-              <div className="flex items-end justify-between gap-3">
-                <span className="font-mono tabular-nums text-foreground leading-none" style={{ fontSize: "2.5rem" }}>{money(preview.amount, preview.currency)}</span>
-                {preview.groupName && (
-                  <span className="mb-1 inline-flex items-center gap-1 rounded-full bg-accent px-3 py-1 text-xs text-accent-foreground">
-                    <Users className="w-3.5 h-3.5" />{preview.groupName}
-                  </span>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[11px] font-mono uppercase tracking-[0.14em] text-muted-foreground">Confirm split</p>
+                {!editing && (
+                  <button onClick={beginEdit} aria-label="Edit split" className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+                    <Pencil className="w-3.5 h-3.5" /> Edit
+                  </button>
                 )}
               </div>
-              <p className="font-serif text-2xl text-foreground mt-1 capitalize leading-tight">{preview.description}</p>
-              <p className="text-xs text-muted-foreground mt-1">{shortDate(preview.date)} · you paid · {preview.splitLabel}</p>
 
+              {editing ? (
+                <div className="space-y-2.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-2xl font-mono text-muted-foreground">$</span>
+                    <input
+                      type="number" inputMode="decimal" step="0.01" value={edit.amount}
+                      onChange={(e) => setEdit((s) => ({ ...s, amount: e.target.value }))}
+                      className="w-full bg-muted/60 rounded-xl px-3 py-2 font-mono tabular-nums text-2xl text-foreground outline-none border border-border focus:border-accent-foreground"
+                    />
+                  </div>
+                  <input
+                    type="text" placeholder="What was it for?" value={edit.description}
+                    onChange={(e) => setEdit((s) => ({ ...s, description: e.target.value }))}
+                    className="w-full bg-muted/60 rounded-xl px-3 py-2 text-[15px] text-foreground outline-none border border-border focus:border-accent-foreground"
+                  />
+                  <input
+                    type="date" value={edit.date}
+                    onChange={(e) => setEdit((s) => ({ ...s, date: e.target.value }))}
+                    className="w-full bg-muted/60 rounded-xl px-3 py-2 text-[15px] text-foreground outline-none border border-border focus:border-accent-foreground"
+                  />
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-end justify-between gap-3">
+                    <span className="font-mono tabular-nums text-foreground leading-none" style={{ fontSize: "2.5rem" }}>{money(preview.amount, preview.currency)}</span>
+                    {preview.groupName && (
+                      <span className="mb-1 inline-flex items-center gap-1 rounded-full bg-accent px-3 py-1 text-xs text-accent-foreground">
+                        <Users className="w-3.5 h-3.5" />{preview.groupName}
+                      </span>
+                    )}
+                  </div>
+                  <p className="font-serif text-2xl text-foreground mt-1 capitalize leading-tight">{preview.description}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{shortDate(preview.date)} · you paid · {preview.splitLabel}</p>
+                </>
+              )}
+
+              {!editing && (
               <div className="mt-4 rounded-2xl bg-muted/50 divide-y divide-border/70">
                 {preview.people.map((p) => (
                   <div key={p.id} className="flex items-center gap-3 px-3.5 py-2.5">
@@ -522,25 +586,39 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
                   </div>
                 ))}
               </div>
+              )}
 
-              {preview.youGetBack > 0 && (
+              {!editing && preview.youGetBack > 0 && (
                 <div className="mt-3 rounded-xl bg-accent/60 px-3.5 py-2.5 text-[13.5px] text-foreground">
                   You get back <span className="font-mono tabular-nums font-medium text-accent-foreground">{money(preview.youGetBack, preview.currency)}</span>
                 </div>
               )}
 
-              <div className="flex gap-3 mt-4">
-                <button
-                  disabled={committing}
-                  onClick={() => { setPreview(null); setProposal(null); }}
-                  className="flex-1 h-12 rounded-full border border-border bg-card text-foreground font-medium disabled:opacity-50"
-                >Not quite</button>
-                <button
-                  disabled={committing}
-                  onClick={() => proposal && commit(proposal)}
-                  className="flex-[1.35] h-12 rounded-full bg-accent-foreground text-white font-medium flex items-center justify-center gap-1.5 disabled:opacity-70"
-                >{committing ? <Loader2 className="w-5 h-5 animate-spin" /> : <><Check className="w-[18px] h-[18px]" />Confirm split</>}</button>
-              </div>
+              {editing ? (
+                <div className="flex gap-3 mt-4">
+                  <button
+                    onClick={() => setEditing(false)}
+                    className="flex-1 h-12 rounded-full border border-border bg-card text-foreground font-medium"
+                  >Cancel</button>
+                  <button
+                    onClick={saveEdit}
+                    className="flex-[1.35] h-12 rounded-full bg-accent-foreground text-white font-medium"
+                  >Save changes</button>
+                </div>
+              ) : (
+                <div className="flex gap-3 mt-4">
+                  <button
+                    disabled={committing}
+                    onClick={() => { setPreview(null); setProposal(null); }}
+                    className="flex-1 h-12 rounded-full border border-border bg-card text-foreground font-medium disabled:opacity-50"
+                  >Not quite</button>
+                  <button
+                    disabled={committing}
+                    onClick={() => proposal && commit(proposal)}
+                    className="flex-[1.35] h-12 rounded-full bg-accent-foreground text-white font-medium flex items-center justify-center gap-1.5 disabled:opacity-70"
+                  >{committing ? <Loader2 className="w-5 h-5 animate-spin" /> : <><Check className="w-[18px] h-[18px]" />Confirm split</>}</button>
+                </div>
+              )}
             </div>
           </div>
         )}
