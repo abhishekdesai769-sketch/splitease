@@ -20,6 +20,7 @@ import { aiConversations, aiMessages } from "@shared/schema";
 import * as ai from "./ai";
 import * as voice from "./voice";
 import * as voiceQuota from "./voiceQuota";
+import * as jev from "./jev";
 import { buildAttachmentContext } from "./receiptTranscription";
 import * as aiQuota from "./aiQuota";
 import * as campaigns from "./campaigns";
@@ -3529,6 +3530,25 @@ setInterval(loadAll,30000);
     if (!resolved.ok) return res.status(422).json(resolved);
     // Strip the internal `proposal` (IDs) — the card only needs display data.
     const { proposal, ...card } = resolved;
+
+    // Jev confidence gate: a SECOND engine cross-checks the split against what
+    // the user actually said. Never blocks — adds { verdict, weakField }.
+    const transcript = typeof req.body?.transcript === "string" ? req.body.transcript.slice(0, 2000) : "";
+    if (transcript) {
+      const verdict = await jev.scoreSplit({
+        user_said: transcript,
+        proposed: {
+          amount: card.amount,
+          currency: card.currency,
+          description: card.description,
+          date: card.date.slice(0, 10),
+          group: card.groupName,
+          split: card.splitLabel,
+          people: card.people.map((p) => ({ name: p.name, share: p.share })),
+        },
+      });
+      if (verdict) Object.assign(card, { verdict: verdict.verdict, confidence: verdict.confidence, weakField: verdict.weakField });
+    }
     res.json(card);
   });
 

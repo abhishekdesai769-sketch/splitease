@@ -51,7 +51,12 @@ interface PreviewCard {
   amount: number; currency: string; description: string; date: string;
   groupId: string | null; groupName: string | null; splitLabel: string;
   perPerson: number; people: ResolvedPerson[]; youGetBack: number;
+  verdict?: "high" | "check"; confidence?: number; weakField?: string | null;
 }
+
+const WEAK_LABEL: Record<string, string> = {
+  amount: "the amount", people: "who's involved", split: "how it's divided", date: "the date",
+};
 
 // Same warm avatar palette + hash the rest of the app uses (dashboard/friends).
 const WARM_AVATARS = ["#7A3E32", "#8C5A3C", "#9A4A2A", "#A6674A", "#8A6A32", "#B04A34", "#6B4A3A", "#B5794A"];
@@ -106,6 +111,7 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
   // the reply), so the transcript never shows the answer above the question.
   const pendingUserRef = useRef<string | null>(null);
   const seqRef = useRef(0);
+  const transcriptRef = useRef("");   // rolling user speech, for Jev cross-check
 
   const teardownMedia = useCallback(() => {
     if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
@@ -166,7 +172,7 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
     setPreviewing(true);
     setPreview(null);
     try {
-      const r = await apiRequest("POST", `/api/voice/preview${IOS_QS}`, args);
+      const r = await apiRequest("POST", `/api/voice/preview${IOS_QS}`, { ...args, transcript: transcriptRef.current });
       const card = await r.json();
       setPreview(card as PreviewCard);
       setEditing(false);
@@ -270,6 +276,7 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
         if (typeof msg.transcript === "string") {
           const target = pendingUserRef.current || msg.item_id;
           if (target) upsertTurn(target, "user", msg.transcript, "set");
+          transcriptRef.current = (transcriptRef.current + " " + msg.transcript).slice(-2000);
         }
         pendingUserRef.current = null;
         break;
@@ -529,7 +536,12 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
           <div className="flex justify-start">
             <div className="w-[92%] max-w-sm rounded-[24px] border border-border bg-card p-5">
               <div className="flex items-center justify-between mb-2">
-                <p className="text-[11px] font-mono uppercase tracking-[0.14em] text-muted-foreground">Confirm split</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-[11px] font-mono uppercase tracking-[0.14em] text-muted-foreground">Confirm split</p>
+                  {!editing && preview.verdict === "high" && (
+                    <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground"><Check className="w-3 h-3" />Looks right</span>
+                  )}
+                </div>
                 {!editing && (
                   <button onClick={beginEdit} aria-label="Edit split" className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
                     <Pencil className="w-3.5 h-3.5" /> Edit
@@ -571,6 +583,13 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
                   <p className="font-serif text-2xl text-foreground mt-1 capitalize leading-tight">{preview.description}</p>
                   <p className="text-xs text-muted-foreground mt-1">{shortDate(preview.date)} · you paid · {preview.splitLabel}</p>
                 </>
+              )}
+
+              {!editing && preview.verdict === "check" && (
+                <div className="mt-3 rounded-xl px-3.5 py-2.5 text-[13px] flex items-center gap-2" style={{ backgroundColor: "rgba(180,120,40,0.14)", color: "#8a5a1a" }}>
+                  <Pencil className="w-3.5 h-3.5 shrink-0" />
+                  <span>Double-check {WEAK_LABEL[preview.weakField || ""] || "this one"} before saving.</span>
+                </div>
               )}
 
               {!editing && (
