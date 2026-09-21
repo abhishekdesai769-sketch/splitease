@@ -22,6 +22,7 @@ import * as voice from "./voice";
 import * as voiceQuota from "./voiceQuota";
 import * as jev from "./jev";
 import { buildAttachmentContext } from "./receiptTranscription";
+import * as voiceLog from "./voiceLog";
 import * as aiQuota from "./aiQuota";
 import * as campaigns from "./campaigns";
 import * as authThrottle from "./auth-throttle";
@@ -3534,22 +3535,36 @@ setInterval(loadAll,30000);
     // Jev confidence gate: a SECOND engine cross-checks the split against what
     // the user actually said. Never blocks — adds { verdict, weakField }.
     const transcript = typeof req.body?.transcript === "string" ? req.body.transcript.slice(0, 2000) : "";
+    const proposedForLog = {
+      amount: card.amount,
+      currency: card.currency,
+      description: card.description,
+      date: card.date.slice(0, 10),
+      group: card.groupName,
+      split: card.splitLabel,
+      people: card.people.map((p) => ({ name: p.name, share: p.share })),
+    };
+    let verdict: jev.JevVerdict | null = null;
     if (transcript) {
-      const verdict = await jev.scoreSplit({
-        user_said: transcript,
-        proposed: {
-          amount: card.amount,
-          currency: card.currency,
-          description: card.description,
-          date: card.date.slice(0, 10),
-          group: card.groupName,
-          split: card.splitLabel,
-          people: card.people.map((p) => ({ name: p.name, share: p.share })),
-        },
-      });
+      verdict = await jev.scoreSplit({ user_said: transcript, proposed: proposedForLog });
       if (verdict) Object.assign(card, { verdict: verdict.verdict, confidence: verdict.confidence, weakField: verdict.weakField });
     }
     res.json(card);
+
+    // Log the turn AFTER responding (fire-and-forget; never delays/breaks the
+    // call). This is the record we were missing — real per-turn Jev verdicts.
+    void voiceLog.logVoiceTurn({
+      userId,
+      callId: typeof req.body?.callId === "string" ? req.body.callId : null,
+      transcript,
+      proposedCard: proposedForLog,
+      jevVerdict: verdict?.verdict ?? null,
+      jevConfidence: verdict?.confidence ?? null,
+      jevWeakField: verdict?.weakField ?? null,
+      // The in-the-loop follow-up fires when Jev says "check" with a weak field.
+      assistantAsked: verdict?.verdict === "check" && !!verdict?.weakField,
+      toolName: "propose_split",
+    });
   });
 
   // Commit a voice proposal. The Realtime model called propose_split (with
@@ -3593,9 +3608,64 @@ setInterval(loadAll,30000);
         originalAmount: null,
       });
       res.json({ created: [expense], summary: resolved.summary });
+
+      // Record the confirmed split (fire-and-forget; never affects the save).
+      void voiceLog.logVoiceCommit({
+        userId,
+        callId: typeof req.body?.callId === "string" ? req.body.callId : null,
+        proposedCard: {
+          amount: Number(p.amount),
+          currency: p.currency || "CAD",
+          description: p.description,
+          date: p.date || null,
+          groupId: p.groupId || null,
+          splitAmounts: p.splitAmounts || null,
+          paidByUserId: p.paidByUserId,
+          splitAmongUserIds: p.splitAmongUserIds,
+        },
+        expenseId: (expense as any)?.id ?? null,
+      });
     } catch (err: any) {
       console.error("[voice] commit failed:", err);
       res.status(500).json({ error: "voice_commit_failed", message: "Couldn't save that split — try again." });
+    }
+  });
+
+  // Voice Mode receipt/PDF vision. The Realtime voice model can't ingest images
+  // directly, so the client uploads a photo/PDF here; we run it through the SAME
+  // Claude Haiku vision pipeline text AI mode uses (buildAttachmentContext), and
+  // return the verbatim transcription as text. The client injects that text into
+  // the live call as context so the model can split straight off the receipt.
+  // Bytes are processed in-memory and never persisted (see aiAttachUpload).
+  app.post("/api/voice/attachment", requireAuth, aiAttachUpload.array("attachments", 5), async (req: any, res) => {
+    if (!voice.VOICE_ENABLED) {
+      return res.status(503).json({ error: "voice_disabled", message: "Voice mode isn't available right now." });
+    }
+    if (!ai.AI_MODE_ENABLED) {
+      return res.status(503).json({ error: "vision_unavailable", message: "Receipt reading isn't available right now." });
+    }
+    const userId = (req.session as any).userId;
+    const user = await storage.getUser(userId);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+    const files = (req.files || []) as Express.Multer.File[];
+    if (files.length === 0) return res.status(400).json({ error: "no_attachment", message: "No file received." });
+
+    try {
+      const atts = files.map((f) => ({
+        base64: f.buffer.toString("base64"),
+        mimeType: f.mimetype,
+        filename: f.originalname,
+        sizeBytes: f.size,
+      }));
+      const text = await buildAttachmentContext(atts);
+      if (!text || !text.trim()) {
+        return res.status(422).json({ error: "empty_transcription", message: "Couldn't read that — try a clearer photo." });
+      }
+      res.json({ text: text.slice(0, 6000), count: files.length });
+    } catch (err: any) {
+      console.error("[voice] attachment vision failed:", err);
+      res.status(500).json({ error: "vision_failed", message: "Couldn't read that receipt — try again." });
     }
   });
 
