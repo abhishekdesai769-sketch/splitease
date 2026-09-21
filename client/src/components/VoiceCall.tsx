@@ -19,11 +19,11 @@
  * The model never writes to the DB — it only proposes; the user taps Confirm.
  */
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, type ChangeEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { isIosNative } from "@/lib/iap";
-import { X, Loader2, Check, Users, Pencil } from "lucide-react";
+import { X, Loader2, Check, Users, Pencil, Paperclip } from "lucide-react";
 
 const IOS_QS = isIosNative ? "?platform=ios" : "";
 
@@ -112,6 +112,13 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
   const pendingUserRef = useRef<string | null>(null);
   const seqRef = useRef(0);
   const transcriptRef = useRef("");   // rolling user speech, for Jev cross-check
+  // Stable per-call id so every logged turn (preview) + the save (commit) can be
+  // grouped into one conversation in voice_interactions.
+  const callIdRef = useRef<string>("");
+  // Receipt/PDF vision: the Realtime model can't ingest images, so we upload the
+  // file, transcribe it server-side (Claude Haiku), and inject the text into the call.
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [uploadingReceipt, setUploadingReceipt] = useState(false);
 
   const teardownMedia = useCallback(() => {
     if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
@@ -172,7 +179,7 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
     setPreviewing(true);
     setPreview(null);
     try {
-      const r = await apiRequest("POST", `/api/voice/preview${IOS_QS}`, { ...args, transcript: transcriptRef.current });
+      const r = await apiRequest("POST", `/api/voice/preview${IOS_QS}`, { ...args, transcript: transcriptRef.current, callId: callIdRef.current });
       const card = await r.json() as PreviewCard;
       setPreview(card);
       setEditing(false);
@@ -207,7 +214,7 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
   const commit = useCallback(async (args: ProposalArgs) => {
     setCommitting(true);
     try {
-      await apiRequest("POST", `/api/voice/commit${IOS_QS}`, args);
+      await apiRequest("POST", `/api/voice/commit${IOS_QS}`, { ...args, callId: callIdRef.current });
       qc.invalidateQueries({ queryKey: ["/api/expenses"] });
       qc.invalidateQueries({ queryKey: ["/api/friends/expenses"] });
       qc.invalidateQueries({ queryKey: ["/api/friends"] });
@@ -236,6 +243,46 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
       setCommitting(false);
     }
   }, [qc, addSystemTurn]);
+
+  // ── Receipt / PDF vision during a call ─────────────────────────────────────
+  // The Realtime voice model can't see images, so we upload the file, transcribe
+  // it server-side (Claude Haiku, same pipeline as text mode), then inject the
+  // verbatim text into the live conversation as a user message so the model can
+  // read it out / split off it. Bytes never persist.
+  const onPickReceipt = useCallback(async (e: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = ""; // allow re-picking the same file
+    if (files.length === 0) return;
+    setUploadingReceipt(true);
+    addSystemTurn(`📎 Reading ${files.length > 1 ? `${files.length} receipts` : "receipt"}…`);
+    try {
+      const fd = new FormData();
+      for (const f of files) fd.append("attachments", f);
+      const resp = await fetch(`/api/voice/attachment${IOS_QS}`, { method: "POST", body: fd, credentials: "include" });
+      if (!resp.ok) {
+        let msg = "Couldn't read that — try a clearer photo.";
+        try { const p = await resp.json(); msg = p?.message || msg; } catch { /* keep */ }
+        addSystemTurn(`⚠️ ${msg}`);
+        return;
+      }
+      const { text } = await resp.json() as { text: string };
+      addSystemTurn("📎 Receipt added — ask me to split it.");
+      const dc = dcRef.current;
+      if (dc && dc.readyState === "open") {
+        // Feed the transcription in as user context, then let the model react.
+        dc.send(JSON.stringify({
+          type: "conversation.item.create",
+          item: { type: "message", role: "user", content: [{ type: "input_text", text: `Here's a receipt I want to split (transcribed from a photo/PDF I attached):\n\n${text}` }] },
+        }));
+        dc.send(JSON.stringify({ type: "response.create", response: { instructions: "The user just attached a receipt (the text above). In one short line, tell them you've read it, say the total you see, and ask who they're splitting it with. Do NOT propose a split until they tell you the people." } }));
+      }
+      resetIdle();
+    } catch {
+      addSystemTurn("⚠️ Couldn't read that receipt — try again.");
+    } finally {
+      setUploadingReceipt(false);
+    }
+  }, [addSystemTurn, resetIdle]);
 
   // Tap-to-edit the confirm card (amount / title / date) without re-speaking.
   const beginEdit = useCallback(() => {
@@ -426,6 +473,8 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
   // re-renders and passes a new onClose).
   useEffect(() => {
     closedRef.current = false;
+    // New id for this call — groups all its logged turns together.
+    try { callIdRef.current = crypto.randomUUID(); } catch { callIdRef.current = `call-${Date.now()}-${Math.random().toString(36).slice(2)}`; }
     startCall();
     maxTimerRef.current = window.setTimeout(() => {
       if (!closedRef.current) { addSystemTurn("Ended — calls cap at 5 minutes."); hangUp(); }
@@ -679,6 +728,20 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
             </span>
             <span className="text-sm text-muted-foreground truncate">{ending ? "Wrapping up…" : speaking ? "Spliiit is talking…" : "Listening…"}</span>
           </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*,application/pdf"
+            multiple
+            className="hidden"
+            onChange={onPickReceipt}
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploadingReceipt}
+            aria-label="Attach a receipt"
+            className="h-11 w-11 rounded-full border border-border bg-card text-foreground flex items-center justify-center shrink-0 disabled:opacity-60"
+          >{uploadingReceipt ? <Loader2 className="w-5 h-5 animate-spin" /> : <Paperclip className="w-[18px] h-[18px]" />}</button>
           <button onClick={hangUp} className="h-11 px-6 rounded-full border border-border bg-muted text-foreground font-medium shrink-0">End</button>
         </div>
       )}

@@ -309,6 +309,38 @@ export const aiAlertsSent = pgTable("ai_alerts_sent", {
   index("ai_alerts_sent_date_kind_idx").on(table.alertDate, table.alertKind),
 ]);
 
+// Voice Mode interaction log — one row per voice turn (a /preview) and one per
+// save (a /commit). Lets us SEE what the voice assistant actually did: what the
+// user said, the split it proposed, Jev's verdict/confidence/weak-field, whether
+// the loop pushed a follow-up question, and (on commit) which expense it created.
+// Before this table, voice was "flying blind" — verdicts were computed and thrown
+// away. Rows are grouped into a single call by callId and ordered by createdAt.
+// NOTE: we store the transcript + proposed card as verbatim text/JSON so this is
+// real, queryable eval data. No file bytes are ever stored (receipts are
+// transcribed to text upstream and discarded).
+export const voiceInteractions = pgTable("voice_interactions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  callId: text("call_id"),                          // client-generated per-call id (groups turns)
+  kind: text("kind").notNull(),                     // "preview" | "commit"
+  transcript: text("transcript"),                   // rolling user speech sent to Jev (may be empty)
+  proposedCard: text("proposed_card"),              // JSON: amount, currency, description, date, group, split, people
+  jevVerdict: text("jev_verdict"),                  // "high" | "check" | null (Jev off/errored)
+  jevConfidence: real("jev_confidence"),            // 0..1 | null
+  jevWeakField: text("jev_weak_field"),             // "amount"|"people"|"split"|"date" | null
+  assistantAsked: boolean("assistant_asked").notNull().default(false), // did the loop push a follow-up?
+  toolName: text("tool_name"),                      // Realtime tool that drove this ("propose_split"|"end_call"|null)
+  expenseId: varchar("expense_id"),                 // set on a successful commit
+  createdAt: text("created_at").notNull(),          // ISO timestamp
+}, (table) => [
+  index("voice_interactions_user_id_idx").on(table.userId),
+  index("voice_interactions_call_id_idx").on(table.callId),
+  index("voice_interactions_created_at_idx").on(table.createdAt),
+]);
+
+export type VoiceInteraction = typeof voiceInteractions.$inferSelect;
+export type InsertVoiceInteraction = typeof voiceInteractions.$inferInsert;
+
 // OTP codes for email verification
 export const otpCodes = pgTable("otp_codes", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
