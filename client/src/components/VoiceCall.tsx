@@ -173,10 +173,23 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
     setPreview(null);
     try {
       const r = await apiRequest("POST", `/api/voice/preview${IOS_QS}`, { ...args, transcript: transcriptRef.current });
-      const card = await r.json();
-      setPreview(card as PreviewCard);
+      const card = await r.json() as PreviewCard;
+      setPreview(card);
       setEditing(false);
-      answerTool(callId, { shown: true, instruction: "Say one short line telling them the split is ready and to tap Confirm." });
+      // Close the loop: if Jev's independent second-opinion flagged low confidence,
+      // don't let the model announce "it's ready" — feed the finding BACK so it asks
+      // the user to confirm the weak field out loud, then re-proposes. Jev drives the
+      // conversation instead of just painting an amber badge the user has to catch.
+      if (card.verdict === "check" && card.weakField) {
+        answerTool(callId, {
+          shown: true,
+          needs_confirmation: true,
+          weak_field: card.weakField,
+          instruction: `Do NOT say the split is ready yet. Ask ONE short, specific question to double-check ${WEAK_LABEL[card.weakField] || "that detail"} (confirm the exact ${card.weakField}). If the user corrects it, call propose_split again with the fix; only once they confirm it's right, tell them it's ready to tap Confirm.`,
+        });
+      } else {
+        answerTool(callId, { shown: true, instruction: "Say one short line telling them the split is ready and to tap Confirm." });
+      }
     } catch (e: any) {
       let clean = "I couldn't work that split out — mind saying it again?";
       const raw = String(e?.message || "");
