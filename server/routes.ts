@@ -3501,7 +3501,9 @@ setInterval(loadAll,30000);
     if (!user) return res.status(401).json({ error: "Unauthorized" });
 
     // Cost caps (per-user/day + global daily budget), both graceful → chatting.
-    const quota = voiceQuota.checkVoiceQuota(userId);
+    // Admins (founder/test accounts) bypass the caps for unrestricted testing.
+    const unlimited = !!user.isAdmin;
+    const quota = voiceQuota.checkVoiceQuota(userId, { unlimited });
     if (!quota.ok) {
       return res.status(429).json({ error: "voice_capped", scope: quota.scope, message: quota.message });
     }
@@ -3511,7 +3513,7 @@ setInterval(loadAll,30000);
     if (!session) {
       return res.status(502).json({ error: "voice_session_failed", message: "Couldn't start voice right now — try again." });
     }
-    voiceQuota.recordVoiceSession(userId);
+    voiceQuota.recordVoiceSession(userId, { unlimited });
     res.json(session);
   });
 

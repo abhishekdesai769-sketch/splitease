@@ -48,8 +48,13 @@ export interface VoiceQuotaResult {
 }
 
 /** Check (without consuming) whether this user may start a voice session. */
-export function checkVoiceQuota(userId: string): VoiceQuotaResult {
+export function checkVoiceQuota(userId: string, opts?: { unlimited?: boolean }): VoiceQuotaResult {
   rollover();
+
+  // Admins / test accounts bypass ALL caps (per-user, global budget, degraded)
+  // so the founder can test voice freely. They also don't consume the shared
+  // daily budget — see recordVoiceSession.
+  if (opts?.unlimited) return { ok: true };
 
   const degraded = isGloballyDegraded();
   if (degraded.degraded) {
@@ -77,8 +82,10 @@ export function checkVoiceQuota(userId: string): VoiceQuotaResult {
 }
 
 /** Consume one voice session for this user (call after a session is minted). */
-export function recordVoiceSession(userId: string): void {
+export function recordVoiceSession(userId: string, opts?: { unlimited?: boolean }): void {
   rollover();
+  // Test/admin sessions don't burn the day's shared budget.
+  if (opts?.unlimited) return;
   globalCount += 1;
   perUser.set(userId, (perUser.get(userId) || 0) + 1);
 }
