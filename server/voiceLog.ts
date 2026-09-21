@@ -16,6 +16,7 @@ export interface VoiceTurnLog {
   userId: string;
   callId?: string | null;
   transcript?: string | null;
+  modelArgs?: unknown;                    // raw propose_split args (per-turn intent); stringified
   proposedCard?: unknown;                 // stringified to JSON before storing
   jevVerdict?: "high" | "check" | null;
   jevConfidence?: number | null;
@@ -32,6 +33,8 @@ export async function logVoiceTurn(entry: VoiceTurnLog): Promise<void> {
       callId: entry.callId ?? null,
       kind: "preview",
       transcript: entry.transcript ? entry.transcript.slice(0, 4000) : null,
+      modelArgs: entry.modelArgs != null ? JSON.stringify(entry.modelArgs).slice(0, 4000) : null,
+      clarifyError: null,
       proposedCard: entry.proposedCard != null ? JSON.stringify(entry.proposedCard).slice(0, 8000) : null,
       jevVerdict: entry.jevVerdict ?? null,
       jevConfidence: typeof entry.jevConfidence === "number" ? entry.jevConfidence : null,
@@ -43,6 +46,39 @@ export async function logVoiceTurn(entry: VoiceTurnLog): Promise<void> {
     });
   } catch (err) {
     console.error("[voiceLog] logVoiceTurn failed (non-fatal):", err);
+  }
+}
+
+/** Log a turn where the model's proposal couldn't be resolved (unknown group /
+ *  person / bad amount) so the assistant had to ASK instead of showing a card.
+ *  These are the most useful failures to see — before, they were invisible.
+ *  Never throws. */
+export async function logVoiceClarification(entry: {
+  userId: string;
+  callId?: string | null;
+  transcript?: string | null;
+  modelArgs?: unknown;
+  clarifyError?: string | null;
+}): Promise<void> {
+  try {
+    await db.insert(voiceInteractions).values({
+      userId: entry.userId,
+      callId: entry.callId ?? null,
+      kind: "clarification",
+      transcript: entry.transcript ? entry.transcript.slice(0, 4000) : null,
+      modelArgs: entry.modelArgs != null ? JSON.stringify(entry.modelArgs).slice(0, 4000) : null,
+      clarifyError: entry.clarifyError ?? null,
+      proposedCard: null,
+      jevVerdict: null,
+      jevConfidence: null,
+      jevWeakField: null,
+      assistantAsked: true, // by definition the assistant had to ask
+      toolName: "propose_split",
+      expenseId: null,
+      createdAt: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.error("[voiceLog] logVoiceClarification failed (non-fatal):", err);
   }
 }
 

@@ -322,8 +322,10 @@ export const voiceInteractions = pgTable("voice_interactions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull(),
   callId: text("call_id"),                          // client-generated per-call id (groups turns)
-  kind: text("kind").notNull(),                     // "preview" | "commit"
+  kind: text("kind").notNull(),                     // "preview" | "commit" | "clarification"
   transcript: text("transcript"),                   // rolling user speech sent to Jev (may be empty)
+  modelArgs: text("model_args"),                    // JSON: the RAW propose_split args the model sent this turn (pre-resolution — the per-turn intent)
+  clarifyError: text("clarify_error"),              // on a clarification turn: the resolver error code (e.g. "unknown_group")
   proposedCard: text("proposed_card"),              // JSON: amount, currency, description, date, group, split, people
   jevVerdict: text("jev_verdict"),                  // "high" | "check" | null (Jev off/errored)
   jevConfidence: real("jev_confidence"),            // 0..1 | null
