@@ -33,12 +33,12 @@ const config: CapacitorConfig = {
       forceCodeForRefreshToken: true,
     },
     SplashScreen: {
-      // Match the in-app boot splash (warm paper cream) so the native launch →
+      // Match the in-app boot splash (app cream canvas) so the native launch →
       // webview handoff has no colour flash. The visible iii splash is rendered
       // by the web layer (index.html #boot-splash), held until auth resolves.
       launchAutoHide: true,
       launchShowDuration: 2000,
-      backgroundColor: "#ebe2d7",
+      backgroundColor: "#e8dfd6",
       showSpinner: false,
     },
     StatusBar: {
