@@ -188,11 +188,22 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
       // the user to confirm the weak field out loud, then re-proposes. Jev drives the
       // conversation instead of just painting an amber badge the user has to catch.
       if (card.verdict === "check" && card.weakField) {
+        // Tier the follow-up by Jev's confidence. A VERY low score (<0.10) means
+        // it's probably wrong (e.g. a misheard name resolved to the wrong real
+        // friend) — so read the value back and get an explicit yes before it's
+        // ever "ready", instead of a soft nudge.
+        const veryLow = typeof card.confidence === "number" && card.confidence < 0.1;
+        const readBack = card.weakField === "people"
+          ? `read back the exact names on the split (${card.people.map((p) => p.name).join(", ")}) and ask if those are the right people`
+          : `confirm the exact ${card.weakField}`;
         answerTool(callId, {
           shown: true,
           needs_confirmation: true,
           weak_field: card.weakField,
-          instruction: `Do NOT say the split is ready yet. Ask ONE short, specific question to double-check ${WEAK_LABEL[card.weakField] || "that detail"} (confirm the exact ${card.weakField}). If the user corrects it, call propose_split again with the fix; only once they confirm it's right, tell them it's ready to tap Confirm.`,
+          confidence: card.confidence,
+          instruction: veryLow
+            ? `STOP — do NOT say the split is ready. There's a strong chance ${WEAK_LABEL[card.weakField] || "a detail"} is wrong. ${readBack.charAt(0).toUpperCase() + readBack.slice(1)}. Only proceed once the user explicitly confirms; if they correct it, call propose_split again with the fix.`
+            : `Do NOT say the split is ready yet. Ask ONE short, specific question to double-check ${WEAK_LABEL[card.weakField] || "that detail"} (${readBack}). If the user corrects it, call propose_split again with the fix; only once they confirm it's right, tell them it's ready to tap Confirm.`,
         });
       } else {
         answerTool(callId, { shown: true, instruction: "Say one short line telling them the split is ready and to tap Confirm." });

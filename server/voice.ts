@@ -216,6 +216,18 @@ export function resolveVoiceProposal(ctx: UserContext, args: ProposeSplitArgs): 
       || ctx.groups.find((x) => norm(x.name).startsWith(gn))
       || ctx.groups.find((x) => firstToken(x.name) === firstToken(args.groupName!));
     if (g) { groupId = g.id; groupName = g.name; }
+    else {
+      // The user named a group we don't have. DON'T silently drop it to a
+      // friends split — say so and offer the real groups so they can pick or
+      // switch to friends. (Before this, "the Taboo group" just vanished.)
+      const list = ctx.groups.length ? ctx.groups.map((x) => x.name).join(", ") : "none yet";
+      return {
+        ok: false,
+        error: "unknown_group",
+        message: `I couldn't find a group called "${args.groupName}". Your groups are: ${list}. Which one — or want me to just split it with friends?`,
+        unresolved: [args.groupName],
+      };
+    }
   }
 
   const pool = candidatePool(ctx);

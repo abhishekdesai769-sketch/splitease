@@ -3529,14 +3529,29 @@ setInterval(loadAll,30000);
     const user = await storage.getUser(userId);
     if (!user) return res.status(401).json({ error: "Unauthorized" });
     const ctx = await buildAiContextForUser(user);
+    const reqTranscript = typeof req.body?.transcript === "string" ? req.body.transcript.slice(0, 2000) : "";
+    const reqCallId = typeof req.body?.callId === "string" ? req.body.callId : null;
     const resolved = voice.resolveVoiceProposal(ctx, req.body || {});
-    if (!resolved.ok) return res.status(422).json(resolved);
+    if (!resolved.ok) {
+      res.status(422).json(resolved);
+      // Log the clarification turn — these unknown-group/person failures are the
+      // most useful ones to see, and were previously invisible (logging only ran
+      // on success). Fire-and-forget; never affects the response.
+      void voiceLog.logVoiceClarification({
+        userId,
+        callId: reqCallId,
+        transcript: reqTranscript,
+        modelArgs: req.body,
+        clarifyError: (resolved as any).error || "clarify",
+      });
+      return;
+    }
     // Strip the internal `proposal` (IDs) — the card only needs display data.
     const { proposal, ...card } = resolved;
 
     // Jev confidence gate: a SECOND engine cross-checks the split against what
     // the user actually said. Never blocks — adds { verdict, weakField }.
-    const transcript = typeof req.body?.transcript === "string" ? req.body.transcript.slice(0, 2000) : "";
+    const transcript = reqTranscript;
     const proposedForLog = {
       amount: card.amount,
       currency: card.currency,
@@ -3557,8 +3572,9 @@ setInterval(loadAll,30000);
     // call). This is the record we were missing — real per-turn Jev verdicts.
     void voiceLog.logVoiceTurn({
       userId,
-      callId: typeof req.body?.callId === "string" ? req.body.callId : null,
+      callId: reqCallId,
       transcript,
+      modelArgs: req.body,
       proposedCard: proposedForLog,
       jevVerdict: verdict?.verdict ?? null,
       jevConfidence: verdict?.confidence ?? null,
