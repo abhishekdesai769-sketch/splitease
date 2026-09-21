@@ -235,6 +235,21 @@ function AppRouter() {
   );
 }
 
+// Fades out the boot splash (rendered inline in index.html) the moment the app
+// is actually ready — i.e. auth has resolved and AppRouter is about to paint the
+// real first screen. The minimum on-screen time + hard cap live in the inline
+// script in index.html; this just fires the "app is ready" signal. Lives under
+// AuthProvider so it can read the auth loading state.
+function BootSplashHider() {
+  const { isLoading } = useAuth();
+  useEffect(() => {
+    if (!isLoading) {
+      (window as any).__hideBootSplash?.();
+    }
+  }, [isLoading]);
+  return null;
+}
+
 // Tracks page views on every hash route change
 function PageViewTracker() {
   const [location] = useHashLocation();
@@ -257,6 +272,7 @@ function App() {
       <TooltipProvider>
         <ThemeProvider>
           <AuthProvider>
+            <BootSplashHider />
             <ForceUpdateGate>
               <Toaster />
               <ReviewPromptSheet />

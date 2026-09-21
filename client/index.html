@@ -19,9 +19,68 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <!-- Web landing (cold visitors) — editorial cream type system -->
     <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter+Tight:wght@400;450;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <!-- Boot splash — paints on first parse (before React/bundle) so there is no
+         white/cream flash on cold launch. The premium logo-black iii, held until
+         the app signals ready (auth resolved) via window.__hideBootSplash(). -->
+    <style id="boot-splash-style">
+      html { background: #0a0a0a; }
+      #boot-splash{position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;
+        background:radial-gradient(115% 78% at 50% 43%, #202020 0%, #171717 34%, #101010 60%, #0a0a0a 82%, #060606 100%);
+        opacity:1;transition:opacity .38s ease;}
+      #boot-splash.boot-hide{opacity:0;pointer-events:none;}
+      #boot-splash .bs-key,#boot-splash .bs-halo,#boot-splash .bs-vig,#boot-splash .bs-grain{position:absolute;pointer-events:none;}
+      #boot-splash .bs-key{left:50%;top:46%;width:120vw;height:120vw;max-width:1200px;max-height:1200px;transform:translate(-50%,-50%);
+        background:radial-gradient(circle, rgba(255,255,255,.07) 0%, rgba(255,255,255,.025) 30%, transparent 60%);}
+      #boot-splash .bs-halo{left:50%;top:46%;width:64vw;height:64vw;max-width:640px;max-height:640px;transform:translate(-50%,-50%);
+        background:radial-gradient(circle, rgba(255,255,255,.06) 0%, rgba(255,255,255,.02) 40%, transparent 64%);}
+      #boot-splash .bs-vig{inset:0;background:radial-gradient(120% 92% at 50% 46%, transparent 52%, rgba(0,0,0,.42) 84%, rgba(0,0,0,.6) 100%);}
+      #boot-splash .bs-grain{inset:0;opacity:.4;mix-blend-mode:overlay;background-size:300px 300px;
+        background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='180' height='180' filter='url(%23n)'/></svg>");}
+      #boot-splash .bs-mark{position:absolute;left:50%;top:47%;transform:translate(-50%,-50%);width:104px;height:104px;
+        filter:drop-shadow(0 0 22px rgba(255,255,255,.09)) drop-shadow(0 4px 14px rgba(0,0,0,.35));}
+      @media (prefers-reduced-motion: reduce){ #boot-splash{transition:opacity .12s ease;} }
+    </style>
   </head>
   <body>
     <div id="root"></div>
+    <div id="boot-splash" aria-hidden="true">
+      <div class="bs-key"></div>
+      <div class="bs-halo"></div>
+      <div class="bs-vig"></div>
+      <div class="bs-grain"></div>
+      <svg class="bs-mark" viewBox="0 0 32 32" fill="none">
+        <defs><linearGradient id="bsw" gradientUnits="userSpaceOnUse" x1="16" y1="7" x2="16" y2="25">
+          <stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#eaeaee"/></linearGradient></defs>
+        <g fill="url(#bsw)" stroke="url(#bsw)">
+          <circle cx="10" cy="8.8" r="1.5"/><circle cx="16" cy="8.8" r="1.5"/><circle cx="22" cy="8.8" r="1.5"/>
+          <path d="M10 13.6V23.8" stroke-width="3" stroke-linecap="round"/>
+          <path d="M16 13.6V23.8" stroke-width="3" stroke-linecap="round"/>
+          <path d="M22 13.6V23.8" stroke-width="3" stroke-linecap="round"/>
+        </g>
+      </svg>
+    </div>
+    <script>
+      // Boot-splash controller. Holds the splash until the app signals ready
+      // (window.__hideBootSplash, called from React once auth resolves), with a
+      // minimum on-screen time so it never flickers and a hard cap so a slow
+      // network can never trap the user on it.
+      (function () {
+        window.__bootAt = Date.now();
+        var MIN = 700, FADE = 420, done = false;
+        window.__hideBootSplash = function () {
+          if (done) return; done = true;
+          var el = document.getElementById("boot-splash");
+          if (!el) return;
+          var wait = Math.max(0, MIN - (Date.now() - window.__bootAt));
+          setTimeout(function () {
+            el.classList.add("boot-hide");
+            setTimeout(function () { if (el && el.parentNode) el.parentNode.removeChild(el); }, FADE + 60);
+          }, wait);
+        };
+        // Hard-cap fallback: never hold the splash longer than 3s.
+        setTimeout(function () { window.__hideBootSplash(); }, 3000);
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
