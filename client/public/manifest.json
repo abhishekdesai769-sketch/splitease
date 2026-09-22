@@ -7,6 +7,14 @@
   "background_color": "#EAE0D2",
   "theme_color": "#EAE0D2",
   "orientation": "portrait",
+  "prefer_related_applications": false,
+  "related_applications": [
+    {
+      "platform": "play",
+      "id": "ca.klarityit.spliiit",
+      "url": "https://play.google.com/store/apps/details?id=ca.klarityit.spliiit"
+    }
+  ],
   "icons": [
     {
       "src": "/icon-192.png",

@@ -104,14 +104,21 @@ export async function registerRoutes(
   });
 
   // ========== App version check (force-update gate) ==========
-  // Returns the minimum iOS version required to use the app.
-  // Set IOS_MINIMUM_VERSION on Render to force old clients to update.
-  // Defaults to "1.0.0" (no one blocked) until you explicitly bump it.
+  // Returns the minimum version required to use each native install.
+  // Set IOS_MINIMUM_VERSION / ANDROID_MINIMUM_VERSION on Render to force old
+  // clients to update. Both default to "1.0.0" (no one blocked) until bumped.
+  //   iOS     = Capacitor binary -> version read via @capacitor/app
+  //   Android = PWABuilder TWA   -> version read via navigator.getInstalledRelatedApps()
+  //             (the TWA web content is always live; this gates the native shell)
   app.get("/api/app/version-check", (_req, res) => {
     res.json({
       ios: {
         minimumVersion: process.env.IOS_MINIMUM_VERSION || "1.0.0",
         storeUrl: "https://apps.apple.com/app/spliiit/id6761338254",
+      },
+      android: {
+        minimumVersion: process.env.ANDROID_MINIMUM_VERSION || "1.0.0",
+        storeUrl: "https://play.google.com/store/apps/details?id=ca.klarityit.spliiit",
       },
     });
   });

@@ -1,21 +1,30 @@
 /**
- * ForceUpdateGate — blocks app usage when the installed version is too old.
+ * ForceUpdateGate — blocks app usage when the installed native shell is too old.
  *
- * How it works:
- *   1. On native iOS startup, fetch /api/app/version-check
- *   2. Compare installed version (from Capacitor App plugin) against minimumVersion
- *   3. If installed < minimum: show a full-screen blocking overlay
+ * Two platforms, two version signals:
+ *   • iOS  — Capacitor binary. Version from @capacitor/app App.getInfo().
+ *   • Android — PWABuilder TWA (NOT Capacitor). The web content is always live,
+ *     so only the native shell (icon/splash/intent config) can be stale. Its
+ *     version is read via navigator.getInstalledRelatedApps() — which needs
+ *     `related_applications` declared in manifest.json (Chrome 96+).
+ *
+ * Flow: fetch /api/app/version-check → read the installed version for this
+ * platform → if installed < minimum, show a full-screen blocking overlay.
  *
  * How to trigger a force update (no app release needed):
- *   → Render dashboard → Environment → set IOS_MINIMUM_VERSION=1.2.0 → Save
+ *   → Render dashboard → Environment →
+ *       set IOS_MINIMUM_VERSION=1.2.0     (iOS)
+ *       set ANDROID_MINIMUM_VERSION=1.2.0 (Android)
  *   → Render redeploys in ~30 seconds
- *   → All users on versions below 1.2.0 see the update screen next open
+ *   → Users on versions below the minimum see the update screen next open
  *
- * Fail-open: if the API is unreachable or App.getInfo() fails, users are never blocked.
+ * Fail-open, always: if the API is unreachable, the version can't be read, or
+ * the platform doesn't support the signal, users are NEVER blocked.
  */
 
 import { useEffect, useState } from "react";
 import { isIosNative } from "@/lib/iap";
+import { isInTWA } from "@/lib/platform";
 
 // Simple semver comparator — returns -1 | 0 | 1
 function compareVersions(a: string, b: string): number {
@@ -30,32 +39,68 @@ function compareVersions(a: string, b: string): number {
   return 0;
 }
 
+// navigator.getInstalledRelatedApps() — not yet in TS's lib.dom typings.
+interface RelatedApp {
+  platform?: string;
+  id?: string;
+  url?: string;
+  version?: string;
+}
+
 const APP_STORE_URL = "https://apps.apple.com/app/spliiit/id6761338254";
+const PLAY_STORE_URL =
+  "https://play.google.com/store/apps/details?id=ca.klarityit.spliiit";
+const ANDROID_PACKAGE = "ca.klarityit.spliiit";
 
 export function ForceUpdateGate({ children }: { children: React.ReactNode }) {
   const [updateRequired, setUpdateRequired] = useState(false);
-  const [storeUrl, setStoreUrl] = useState(APP_STORE_URL);
+  const [storeUrl, setStoreUrl] = useState(
+    isIosNative ? APP_STORE_URL : PLAY_STORE_URL,
+  );
 
   useEffect(() => {
-    if (!isIosNative) return; // web / Android — no version gate
+    // Only native installs are gated. Plain web browsers are never blocked.
+    if (!isIosNative && !isInTWA) return;
 
     (async () => {
       try {
-        const { App } = await import("@capacitor/app");
-        const [info, res] = await Promise.all([
-          App.getInfo(),
-          fetch("/api/app/version-check"),
-        ]);
-
+        const res = await fetch("/api/app/version-check");
         if (!res.ok) return; // server error → fail open
 
         const data = await res.json();
-        const minimum: string | undefined = data.ios?.minimumVersion;
-        const url: string | undefined = data.ios?.storeUrl;
 
+        // ─── iOS (Capacitor) ──────────────────────────────────────────────
+        if (isIosNative) {
+          const { App } = await import("@capacitor/app");
+          const info = await App.getInfo();
+          const minimum: string | undefined = data.ios?.minimumVersion;
+          const url: string | undefined = data.ios?.storeUrl;
+          if (url) setStoreUrl(url);
+          if (minimum && compareVersions(info.version, minimum) < 0) {
+            setUpdateRequired(true);
+          }
+          return;
+        }
+
+        // ─── Android (PWABuilder TWA) ─────────────────────────────────────
+        const minimum: string | undefined = data.android?.minimumVersion;
+        const url: string | undefined = data.android?.storeUrl;
         if (url) setStoreUrl(url);
+        if (!minimum) return;
 
-        if (minimum && compareVersions(info.version, minimum) < 0) {
+        // getInstalledRelatedApps reports the installed native shell's version.
+        // Unsupported browser / not declared → fail open (never block).
+        const getInstalled = (navigator as any).getInstalledRelatedApps;
+        if (typeof getInstalled !== "function") return;
+
+        const apps: RelatedApp[] = await getInstalled.call(navigator);
+        const self = apps.find(
+          (a) => a.platform === "play" && a.id === ANDROID_PACKAGE,
+        );
+        const installedVersion = self?.version;
+        if (!installedVersion) return; // version not reported → fail open
+
+        if (compareVersions(installedVersion, minimum) < 0) {
           setUpdateRequired(true);
         }
       } catch {
@@ -70,13 +115,22 @@ export function ForceUpdateGate({ children }: { children: React.ReactNode }) {
 
   const handleClose = async () => {
     try {
-      const { App } = await import("@capacitor/app");
-      await App.exitApp();
+      if (isIosNative) {
+        const { App } = await import("@capacitor/app");
+        await App.exitApp();
+        return;
+      }
+      // TWA / web have no reliable programmatic exit — blank the screen.
+      window.close();
+      document.body.innerHTML = "";
     } catch {
-      // Fallback: remove all content so the screen is blank
       document.body.innerHTML = "";
     }
   };
+
+  const updateCta = isIosNative
+    ? "Update on the App Store"
+    : "Update on Google Play";
 
   return (
     <>
@@ -110,7 +164,7 @@ export function ForceUpdateGate({ children }: { children: React.ReactNode }) {
             onClick={handleUpdate}
             className="w-full max-w-xs py-4 bg-primary text-primary-foreground rounded-2xl text-base font-semibold hover:opacity-90 transition-opacity"
           >
-            Update on the App Store
+            {updateCta}
           </button>
 
           {/* Close — iOS won't let apps truly quit, but this terminates the process */}
