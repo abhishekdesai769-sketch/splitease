@@ -157,16 +157,16 @@ export interface ResolveError {
   unresolved?: string[];
 }
 
-function norm(s: string): string {
+export function norm(s: string): string {
   return s.trim().toLowerCase();
 }
-function firstToken(s: string): string {
+export function firstToken(s: string): string {
   return norm(s).split(/\s+/)[0] || "";
 }
 
 /** EVERYONE the speaker knows: themself + friends + members of ALL their
  *  groups. Used so a first name resolves without needing the group named. */
-function candidatePool(ctx: UserContext): Array<{ id: string; name: string }> {
+export function candidatePool(ctx: UserContext): Array<{ id: string; name: string }> {
   const pool: Array<{ id: string; name: string }> = [{ id: ctx.userId, name: ctx.userName }];
   for (const f of ctx.friends) if (!pool.some((p) => p.id === f.id)) pool.push({ id: f.id, name: f.name });
   for (const g of ctx.groups) for (const [id, name] of Object.entries(g.memberNames || {})) {
@@ -185,7 +185,7 @@ function describePerson(ctx: UserContext, id: string): string {
 
 /** Match a spoken name to the people it could be. Returns 0, 1 (resolved), or
  *  2+ (ambiguous → ask, naming the options). */
-function matchName(ctx: UserContext, pool: Array<{ id: string; name: string }>, raw: string): string[] {
+export function matchName(ctx: UserContext, pool: Array<{ id: string; name: string }>, raw: string): string[] {
   const n = norm(raw);
   if (!n) return [];
   if (["me", "myself", "i", "im", "i'm", "mine"].includes(n)) return [ctx.userId];
