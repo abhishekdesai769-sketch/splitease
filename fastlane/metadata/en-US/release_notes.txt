@@ -1,8 +1,7 @@
-A fresh look and a smoother Spliiit.
+Tell Spliiit anything.
 
-- Brand-new app icon
-- Cleaner Expenses, Groups, and members views
-- Redesigned AI Mode composer
-- Faster invites — share via WhatsApp, Telegram, X, SMS, email and more
-- Added Terms of Use link on the subscription screen
-- Polish and bug fixes throughout
+- New quick-add bar on your dashboard: type it like you'd text a friend ("dinner 120 with dev and sara") and it becomes a split, right there
+- Works for groups, someone-else-paid, settle-ups and balances too
+- Tap the mic to dictate, or start a talk-back voice call from the bar
+- Watch it work: live examples show you what to type
+- Smarter name matching and polish throughout
