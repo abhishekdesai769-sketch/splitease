@@ -111,7 +111,8 @@ export const QuickAddBar = forwardRef<QuickAddBarHandle, QuickAddBarProps>(funct
     meId: user?.id ?? "",
     friends: friends.map((f) => ({ id: f.id, name: f.name })),
     groups: groups.map((g) => ({ id: g.id, name: g.name, memberIds: g.memberIds })),
-  }), [user?.id, friends, groups]);
+    people: people.map((p) => ({ id: p.id, name: p.name })),
+  }), [user?.id, friends, groups, people]);
 
   const intent = useMemo(() => (user ? parseQuickAdd(shownText, ctx) : null), [shownText, ctx, user]);
 
