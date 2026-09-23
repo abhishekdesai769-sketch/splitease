@@ -24,6 +24,8 @@ import { track } from "@/lib/analytics";
 import { formatMoney } from "@/components/CurrencySelector";
 import { AMOUNT_IN_CLASS, AMOUNT_OUT_CLASS } from "@/lib/balance-display";
 import { parseQuickAdd, type QuickIntent } from "@/lib/quickAddParser";
+import { PILL, PillButton, Bars, SpeakGlyph, CardHead, Chip } from "@/components/quick-add-parts";
+import { DEMO_KINDS, DEMO_PHRASES, ExampleCard, useDemoLoop } from "@/components/quick-add-demo";
 import { useVoiceMode } from "@/hooks/useVoiceMode";
 import { useVoiceCall, WEAK_LABEL } from "@/hooks/use-voice-call";
 
@@ -234,7 +236,14 @@ export const QuickAddBar = forwardRef<QuickAddBarHandle, QuickAddBarProps>(funct
             >
               {demoActive && (
                 <div className={`transition-opacity duration-200 ${demo.visible ? "opacity-100" : "opacity-0"}`}>
-                  <ExampleCard key={demo.index} phrase={demo.card} index={demo.index} currency={currency} />
+                  <ExampleCard
+                    key={demo.index}
+                    phrase={demo.card}
+                    kind={DEMO_KINDS[demo.index]}
+                    currency={currency}
+                    tag={<span className="rounded-full border border-card-border px-2 py-0.5 text-[11px] text-muted-foreground">Example {demo.index + 1} of {DEMO_PHRASES.length}</span>}
+                    footer={<p className="mt-3.5 text-[12.5px] text-muted-foreground">Your turn: start typing</p>}
+                  />
                 </div>
               )}
 
@@ -486,230 +495,6 @@ function useGhostTyping(phrases: string[], active: boolean): string {
   return ghost;
 }
 
-// ── "Watch it work" examples ─────────────────────────────────────────────────
-// Made-up people and groups only: this plays on screen (and in screenshots and
-// screen recordings), so it must never use the user's real friends or groups.
-const DEMO_ME = "__demo_me__";
-const DEMO_PEOPLE = [
-  { id: "__maya__", name: "Maya", color: "#A6674A" },
-  { id: "__leo__", name: "Leo", color: "#7A3E32" },
-  { id: "__sam__", name: "Sam", color: "#8C5A3C" },
-  { id: "__jordan__", name: "Jordan", color: "#9A4A2A" },
-  { id: "__ava__", name: "Ava", color: "#B04A34" },
-];
-const DEMO_CTX = {
-  meId: DEMO_ME,
-  friends: DEMO_PEOPLE.slice(0, 4),
-  people: DEMO_PEOPLE,
-  groups: [{ id: "__ski__", name: "Ski crew", memberIds: [DEMO_ME, "__maya__", "__sam__", "__jordan__", "__ava__"] }],
-};
-const DEMO_BALANCES: Record<string, number> = { "__jordan__": -35, "__maya__": 48 }; // + = they owe you
-const DEMO_PHRASES = [
-  "sushi night 96 with maya and leo",
-  "cabin weekend 900 ski crew",
-  "sam paid 64 for tacos",
-  "paid jordan back 35",
-  "what does maya owe",
-];
-// What each example becomes, so a half-typed phrase still shows the right empty card.
-const DEMO_KINDS: Array<"expense" | "settle" | "balance"> = ["expense", "expense", "expense", "settle", "balance"];
-
-/**
- * Types each example into the pill, holds it, deletes it, moves on.
- * - `typed`: what the pill shows (letter by letter).
- * - `card`: what the card is built from. It only advances at word boundaries
- *   and stays frozen while the pill deletes, so the card doesn't rebuild dozens
- *   of times a second (on iOS that also repaints the blur behind it: flicker).
- * - `visible`: false briefly between examples so the card fades out and in.
- * Static for reduced motion.
- */
-type DemoState = { index: number; typed: string; card: string; visible: boolean };
-function useDemoLoop(phrases: string[], active: boolean): DemoState {
-  const [state, setState] = useState<DemoState>({ index: 0, typed: "", card: "", visible: true });
-  useEffect(() => {
-    setState({ index: 0, typed: "", card: "", visible: true });
-    if (!active) return;
-    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
-      setState({ index: 0, typed: phrases[0], card: phrases[0], visible: true });
-      return;
-    }
-    let cancelled = false;
-    const timers: number[] = [];
-    const later = (ms: number) => new Promise<void>((r) => { timers.push(window.setTimeout(r, ms)); });
-    (async () => {
-      await later(450);
-      for (let k = 0; !cancelled; k = (k + 1) % phrases.length) {
-        const phrase = phrases[k];
-        let card = "";
-        setState({ index: k, typed: "", card, visible: true });
-        for (let i = 1; i <= phrase.length && !cancelled; i++) {
-          const typed = phrase.slice(0, i);
-          if (phrase[i] === " " || i === phrase.length) card = typed; // a word just finished
-          setState({ index: k, typed, card, visible: true });
-          await later(phrase[i - 1] === " " ? 110 : 62);
-        }
-        await later(2600);
-        for (let i = phrase.length - 1; i >= 0 && !cancelled; i--) {
-          setState({ index: k, typed: phrase.slice(0, i), card, visible: true });
-          await later(16);
-        }
-        setState({ index: k, typed: "", card, visible: false }); // fade the card out
-        await later(280);
-      }
-    })();
-    return () => { cancelled = true; timers.forEach(clearTimeout); };
-  }, [active, phrases]);
-  return state;
-}
-
-/**
- * One example, rendered like the real card, built live from the half-typed
- * phrase by the real parser (against the made-up people above). Read-only:
- * no buttons, so nobody thinks they saved a pretend expense.
- */
-function ExampleCard({ phrase, index, currency }: { phrase: string; index: number; currency?: string | null }) {
-  const money = (n: number) => formatMoney(n, currency);
-  const person = (id: string) => DEMO_PEOPLE.find((p) => p.id === id);
-  const nameOf = (id: string) => (id === DEMO_ME ? "You" : person(id)?.name ?? "");
-  // A plain render function, not a component: a component defined in here would
-  // be a new type every keystroke, remounting (and re-animating) each avatar.
-  const av = (id: string) => (
-    <span key={id} className="w-8 h-8 rounded-full flex items-center justify-center text-white text-[13px] font-serif ring-2 ring-background animate-in zoom-in-75 fade-in-0 duration-200" style={{ backgroundColor: id === DEMO_ME ? "#292624" : person(id)?.color }}>
-      {nameOf(id).charAt(0)}
-    </span>
-  );
-
-  const parsed = parseQuickAdd(phrase, DEMO_CTX);
-  const kind = parsed && parsed.type !== "unknown" ? parsed.type : DEMO_KINDS[index];
-
-  const head = (icon: React.ComponentType<{ className?: string }>, label: string) => (
-    <div className="flex items-start justify-between gap-2">
-      <CardHead icon={icon} label={label} />
-      <span className="rounded-full border border-card-border px-2 py-0.5 text-[11px] text-muted-foreground">Example {index + 1} of {DEMO_PHRASES.length}</span>
-    </div>
-  );
-  const foot = <p className="mt-3.5 text-[12.5px] text-muted-foreground">Your turn: start typing</p>;
-
-  if (kind === "settle") {
-    const s = parsed?.type === "settle" ? parsed : null;
-    const bal = s ? DEMO_BALANCES[s.friendId] ?? 0 : 0;
-    return (
-      <div className="animate-in fade-in-0 slide-in-from-bottom-1 duration-300" data-testid="quick-add-example">
-        {head(ArrowLeftRight, "Settle up")}
-        <div className="rounded-2xl bg-background px-3.5 py-3 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2 text-[15px] min-w-0">
-            {av(DEMO_ME)}
-            <ArrowRight className="w-4 h-4 text-muted-foreground shrink-0" />
-            {s ? <>{av(s.friendId)}<span className="truncate">You paid {nameOf(s.friendId)}</span></> : <span className="text-muted-foreground">Who did you pay?</span>}
-          </div>
-          <p className="font-mono tabular-nums text-[24px] shrink-0">{s?.amount ? money(s.amount) : <span className="text-muted-foreground">—</span>}</p>
-        </div>
-        {s && bal < 0 && <p className="text-xs text-muted-foreground mt-2 px-1">You owe {nameOf(s.friendId)} {money(Math.abs(bal))} in total.</p>}
-        {foot}
-      </div>
-    );
-  }
-
-  if (kind === "balance") {
-    const b = parsed?.type === "balance" ? parsed : null;
-    const bal = b?.personId ? DEMO_BALANCES[b.personId] ?? 0 : 0;
-    return (
-      <div className="animate-in fade-in-0 slide-in-from-bottom-1 duration-300" data-testid="quick-add-example">
-        {head(Scale, "Balance")}
-        <div className="rounded-2xl bg-background px-3.5 py-3 flex items-center gap-3">
-          {b?.personId ? (
-            <>
-              {av(b.personId)}
-              <p className="flex-1 text-[15px]">{bal > 0 ? `${nameOf(b.personId)} owes you` : `You owe ${nameOf(b.personId)}`}</p>
-              <p className={`font-mono tabular-nums text-[24px] ${bal > 0 ? AMOUNT_IN_CLASS : AMOUNT_OUT_CLASS}`}>{money(Math.abs(bal))}</p>
-            </>
-          ) : (
-            <p className="flex-1 text-[15px] text-muted-foreground py-1">Ask about anyone…</p>
-          )}
-        </div>
-        {foot}
-      </div>
-    );
-  }
-
-  const e = parsed?.type === "expense" ? parsed : null;
-  const splitIds = e?.splitIds ?? [DEMO_ME];
-  const ready = !!e?.amount && splitIds.length > 1;
-  const group = e?.groupId ? DEMO_CTX.groups.find((g) => g.id === e.groupId) : null;
-  return (
-    <div className="animate-in fade-in-0 slide-in-from-bottom-1 duration-300" data-testid="quick-add-example">
-      {head(Receipt, "Expense")}
-      <p className={`font-serif text-[26px] leading-[1.1] mb-2.5 ${e?.description ? "" : "text-muted-foreground"}`}>{e?.description ?? "Add a description"}</p>
-      <div className="flex flex-wrap gap-1.5 mb-3.5">
-        {e?.amount ? <Chip><span className="font-mono tabular-nums">{money(e.amount)}</span></Chip> : <Chip ghost>+ Amount</Chip>}
-        {e && e.payerId !== DEMO_ME
-          ? <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12.5px] bg-[#E3EEE6] text-[#2F5E43]"><Wallet className="w-3.5 h-3.5" />Paid by {nameOf(e.payerId)}</span>
-          : <Chip icon={Wallet}>Paid by you</Chip>}
-        {group && <Chip icon={Users2}>{group.name}</Chip>}
-        <Chip icon={CalendarDays}>Today</Chip>
-      </div>
-      <div className="rounded-2xl bg-background px-3.5 py-3">
-        <div className="flex items-end justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-[11px] text-muted-foreground mb-2">Split equally · {splitIds.length}</p>
-            <div className="flex flex-wrap gap-1.5">{splitIds.map(av)}</div>
-            <p className="text-[11px] text-muted-foreground mt-1.5 truncate">{splitIds.map(nameOf).join(", ")}</p>
-          </div>
-          <div className="text-right shrink-0">
-            <p className="text-[11px] text-muted-foreground">Each pays</p>
-            <p className="font-mono tabular-nums text-[24px] leading-tight">{ready ? money(e!.amount! / splitIds.length) : <span className="text-muted-foreground">—</span>}</p>
-          </div>
-        </div>
-      </div>
-      {foot}
-    </div>
-  );
-}
-
-// Frosted pill shell, shared by the resting/typing pill and the in-pill call.
-const PILL = "flex items-center gap-2 h-[60px] rounded-full pr-2 bg-card/60 backdrop-blur-2xl backdrop-saturate-150 border transition-colors shadow-[0_10px_30px_-12px_rgba(41,38,36,0.22),0_1px_4px_-1px_rgba(41,38,36,0.06),inset_0_1px_0_rgba(255,255,255,0.9)]";
-
-function PillButton({ children, label, tone, onClick, type = "button", testId }: {
-  children: React.ReactNode; label: string; tone: "plain" | "live" | "ink";
-  onClick?: () => void; type?: "button" | "submit"; testId?: string;
-}) {
-  const toneCls = tone === "ink" ? "bg-foreground text-background" : tone === "live" ? "bg-accent-foreground text-white" : "bg-card text-secondary-foreground";
-  return (
-    <button
-      type={type}
-      // Keep the input's focus (and the keyboard) when tapping a pill button.
-      onMouseDown={(e) => e.preventDefault()}
-      onClick={onClick}
-      aria-label={label}
-      className={`w-11 h-11 shrink-0 rounded-full flex items-center justify-center transition-colors duration-200 ring-1 ring-black/[0.04] shadow-[0_2px_8px_-1px_rgba(41,38,36,0.16)] active:scale-[0.96] ${toneCls}`}
-      data-testid={testId}
-    >
-      {children}
-    </button>
-  );
-}
-
-// Animated equalizer (dictating, or Spliiit talking on a call).
-function Bars({ className = "" }: { className?: string }) {
-  return (
-    <span className={`flex items-center justify-center gap-[2.5px] ${className}`} aria-hidden>
-      <style>{`@keyframes qaBar{0%{transform:scaleY(.35)}100%{transform:scaleY(1)}}`}</style>
-      {[8, 14, 19, 12, 7].map((h, i) => (
-        <span key={i} style={{ width: 2.5, height: h, borderRadius: 9999, background: "currentColor", animation: `qaBar ${0.45 + i * 0.1}s ease-in-out ${i * 0.06}s infinite alternate` }} />
-      ))}
-    </span>
-  );
-}
-
-// Static "sound lines" glyph for the talk-back button (matches AI Mode's AudioLines).
-function SpeakGlyph() {
-  return (
-    <span className="flex items-center gap-[2.5px]" aria-hidden>
-      {[7, 13, 18, 12, 6].map((h, i) => <span key={i} style={{ width: 2, height: h, borderRadius: 9999, background: "currentColor" }} />)}
-    </span>
-  );
-}
-
 /**
  * The talk-back call, living inside the pill. No transcript: the pill shows
  * only the line being said right now. When the model proposes a split, the
@@ -833,21 +618,6 @@ function PillCall({ onClose, currency, avatarColor, groups }: {
       </div>
     </>
   );
-}
-
-function CardHead({ icon: Icon, label }: { icon: React.ComponentType<{ className?: string }>; label: string }) {
-  return (
-    <div className="flex items-center gap-2 mb-3">
-      <span className="w-7 h-7 rounded-[9px] bg-accent flex items-center justify-center"><Icon className="w-[15px] h-[15px] text-accent-foreground" /></span>
-      <span className="text-[13px] text-secondary-foreground">{label}</span>
-    </div>
-  );
-}
-
-function Chip({ children, icon: Icon, ghost, onClick }: { children: React.ReactNode; icon?: React.ComponentType<{ className?: string }>; ghost?: boolean; onClick?: () => void }) {
-  const cls = `inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12.5px] ${ghost ? "border border-dashed border-border text-muted-foreground" : "bg-accent/70 text-secondary-foreground"} ${onClick ? "active:scale-[0.97] transition-transform" : ""}`;
-  const inner = <>{Icon && <Icon className="w-3.5 h-3.5" />}{children}</>;
-  return onClick ? <button type="button" onClick={onClick} className={cls}>{inner}</button> : <span className={cls}>{inner}</span>;
 }
 
 function Avatar({ id, name, color }: { id: string; name: string; color: (id: string) => string }) {

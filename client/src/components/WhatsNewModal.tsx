@@ -95,10 +95,15 @@ export function WhatsNewDialog({
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent className="max-w-sm" onCloseAutoFocus={onCloseAutoFocus}>
         <div className="flex flex-col items-center text-center pt-2 pb-1">
-          {slide.media && <div className="w-full mb-4 overflow-hidden rounded-2xl">{slide.media}</div>}
-          <div className="w-14 h-14 rounded-2xl bg-muted/60 flex items-center justify-center mb-4">
-            {slide.icon}
-          </div>
+          {/* A slide with media (e.g. a live demo) shows it instead of the icon.
+              Only the current slide is mounted, so only its demo plays. */}
+          {slide.media ? (
+            <div key={step} className="w-full mb-4 overflow-hidden rounded-2xl">{slide.media}</div>
+          ) : (
+            <div className="w-14 h-14 rounded-2xl bg-muted/60 flex items-center justify-center mb-4">
+              {slide.icon}
+            </div>
+          )}
           <h2 className="text-lg font-semibold mb-2">{slide.title}</h2>
           <p className="text-sm text-muted-foreground leading-relaxed px-1">
             {slide.body}
