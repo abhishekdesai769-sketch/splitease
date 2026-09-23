@@ -4,8 +4,8 @@
  * A frosted pill docked just above the bottom nav. As you type, a live card
  * grows out of it (expense / settle up / balance), built instantly on-device by
  * quickAddParser. When the user pauses, Claude Haiku reads the phrase too
- * (/api/quick-add/understand, after a one-time permission) and its card
- * replaces the rules' card if it understood more (uneven shares, dates…).
+ * (/api/quick-add/understand) and its card replaces the rules' card if it
+ * understood more (uneven shares, dates…).
  * The card is the source of truth: whatever it shows (payer, who's in the
  * split, each share) is exactly what gets saved, including any taps the user
  * made on it after typing.
@@ -121,9 +121,7 @@ export const QuickAddBar = forwardRef<QuickAddBarHandle, QuickAddBarProps>(funct
   // ── AI read (Claude Haiku, server-side) ──
   // The rules above build an instant card on every keystroke. When the user
   // pauses, Haiku reads the phrase too, and its card replaces the rules' card
-  // if the text hasn't changed since. Asks permission once, because the phrase
-  // and friends' names go to Anthropic; "No thanks" keeps the pill rules-only.
-  const [aiConsent, setAiConsent] = useState<"yes" | "no" | null>(readAiConsent);
+  // if the text hasn't changed since.
   const [aiRead, setAiRead] = useState<{ text: string; intent: QuickIntent } | null>(null);
   const [aiPending, setAiPending] = useState(false);
   const aiCache = useRef(new Map<string, QuickIntent>());
@@ -131,7 +129,7 @@ export const QuickAddBar = forwardRef<QuickAddBarHandle, QuickAddBarProps>(funct
   const aiWorthIt = open && !listening && !callOn && aiText.split(/\s+/).length >= 2;
   useEffect(() => {
     setAiPending(false);
-    if (!aiWorthIt || aiConsent !== "yes") return;
+    if (!aiWorthIt) return;
     const cached = aiCache.current.get(aiText);
     if (cached) { setAiRead({ text: aiText, intent: cached }); return; }
     const ctrl = new AbortController();
@@ -153,14 +151,7 @@ export const QuickAddBar = forwardRef<QuickAddBarHandle, QuickAddBarProps>(funct
       finally { if (!ctrl.signal.aborted) setAiPending(false); }
     }, 700);
     return () => { window.clearTimeout(timer); ctrl.abort(); };
-  }, [aiText, aiWorthIt, aiConsent]);
-  const decideAi = (v: "yes" | "no") => {
-    setAiConsent(v);
-    try { localStorage.setItem(AI_CONSENT_KEY, v); } catch { /* storage off: ask again next time */ }
-    track("quick_add_ai_consent", { allowed: v === "yes" });
-    inputRef.current?.focus();
-  };
-  const needAiConsent = aiWorthIt && aiConsent === null;
+  }, [aiText, aiWorthIt]);
   const aiIntent = aiRead && aiRead.text === aiText && !listening ? aiRead.intent : null;
   // An AI "don't know" never replaces a card the rules could build.
   const intent = aiIntent && aiIntent.type !== "unknown" ? aiIntent : ruleIntent;
@@ -281,7 +272,7 @@ export const QuickAddBar = forwardRef<QuickAddBarHandle, QuickAddBarProps>(funct
   return (
     <>
       {/* While a card is open, soften the page behind it; tapping it closes. */}
-      {(showCard || demoActive || needAiConsent || listening || callOn) && (
+      {(showCard || demoActive || listening || callOn) && (
         <div
           aria-hidden
           className="fixed inset-0 z-[35] bg-background/70 backdrop-blur-[3px] animate-in fade-in-0 duration-200"
@@ -296,7 +287,7 @@ export const QuickAddBar = forwardRef<QuickAddBarHandle, QuickAddBarProps>(funct
 
       <div className="fixed inset-x-0 z-40 transition-[bottom] duration-200" style={{ bottom: dockBottom }}>
         <div className="relative max-w-3xl mx-auto px-4">
-          {(showCard || demoActive || needAiConsent) && (
+          {(showCard || demoActive) && (
             <div
               className="absolute bottom-full left-4 right-4 mb-3 max-h-[58vh] overflow-y-auto rounded-[24px] border border-card-border bg-card p-4 shadow-[0_18px_48px_-16px_rgba(41,38,36,0.32),0_2px_8px_-2px_rgba(41,38,36,0.08)] animate-in fade-in-0 slide-in-from-bottom-2 duration-200"
               // Keep taps on the card from blurring the input first.
@@ -309,22 +300,6 @@ export const QuickAddBar = forwardRef<QuickAddBarHandle, QuickAddBarProps>(funct
                 <span className="absolute top-4 right-4" title={aiPending ? "Reading with AI…" : "Read by AI"} data-testid="quick-add-ai-mark">
                   <Sparkles className={`w-4 h-4 text-accent-foreground ${aiPending ? "animate-pulse" : ""}`} />
                 </span>
-              )}
-
-              {needAiConsent && (
-                <div className={`flex items-start gap-3 rounded-2xl bg-background px-3.5 py-3 ${showCard ? "mb-3.5" : ""}`} data-testid="quick-add-ai-consent">
-                  <Sparkles className="w-4 h-4 text-accent-foreground mt-0.5 shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[13.5px] font-medium">Let AI read what you type?</p>
-                    <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-                      Spliiit can send what you type, with your friends' and groups' names, to Anthropic's Claude to understand trickier splits. Nothing is saved until you tap Add.
-                    </p>
-                    <div className="flex gap-2 mt-2.5">
-                      <button type="button" onClick={() => decideAi("yes")} className="h-8 rounded-full bg-foreground px-3.5 text-[12.5px] font-medium text-background">Allow</button>
-                      <button type="button" onClick={() => decideAi("no")} className="h-8 rounded-full px-3 text-[12.5px] text-muted-foreground">No thanks</button>
-                    </div>
-                  </div>
-                </div>
               )}
 
               {demoActive && (
@@ -575,14 +550,6 @@ export const QuickAddBar = forwardRef<QuickAddBarHandle, QuickAddBarProps>(funct
 });
 
 // ── AI read helpers ──────────────────────────────────────────────────────────
-const AI_CONSENT_KEY = "spliiit_quickadd_ai";
-function readAiConsent(): "yes" | "no" | null {
-  try {
-    const v = localStorage.getItem(AI_CONSENT_KEY);
-    return v === "yes" || v === "no" ? v : null;
-  } catch { return null; }
-}
-
 /** The user's local date as YYYY-MM-DD (so "yesterday" means their yesterday). */
 function localToday(d = new Date()): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
