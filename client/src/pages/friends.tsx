@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { track } from "@/lib/analytics";
 import { apiRequest, apiFormRequest, queryClient } from "@/lib/queryClient";
 import type { SafeUser, Expense } from "@shared/schema";
 import { Card } from "@/components/ui/card";
@@ -146,6 +147,13 @@ export default function Friends() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/friends/expenses"] });
       queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
+      track("expense_created", {
+        context: "friend",
+        split_type: splitType,
+        amount: parseFloat(amount),
+        currency,
+        has_receipt: !!receiptFile,
+      });
       resetExpenseForm();
       setAddExpenseOpen(false);
       toast({ title: "Expense added" });
@@ -173,6 +181,10 @@ export default function Friends() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/friends/expenses"] });
       queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
+      track("expense_settled", {
+        context: "friend",
+        amount: settleUpFriend ? Math.abs(settleUpFriend.amount) : null,
+      });
       setSettleUpOpen(false);
       setSettleUpFriend(null);
       toast({ title: "Settled up", description: "Payment recorded" });

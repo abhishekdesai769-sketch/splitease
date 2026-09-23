@@ -213,6 +213,13 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/expenses/group", groupId] });
       queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
+      track("expense_created", {
+        context: "group",
+        split_type: groupSplitType,
+        amount: Number(finalAmount),
+        currency,
+        has_receipt: !!receiptFile,
+      });
       resetForm();
       setAddOpen(false);
       toast({ title: "Expense added" });

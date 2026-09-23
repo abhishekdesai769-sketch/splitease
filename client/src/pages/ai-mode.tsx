@@ -21,6 +21,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useLocation, useParams } from "wouter";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { track } from "@/lib/analytics";
 import { useAuth } from "@/lib/auth";
 import { apiRequest, apiFormRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -290,6 +291,7 @@ export default function AiMode() {
       queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
       queryClient.invalidateQueries({ queryKey: ["/api/friends/expenses"] });
       const count = data?.created?.length ?? 1;
+      track("expense_created", { context: "ai_mode", count });
       toast({
         title: `${count} expense${count !== 1 ? "s" : ""} created`,
         description: data?.failed?.length ? `${data.failed.length} couldn't be created — try the manual form for those.` : undefined,
