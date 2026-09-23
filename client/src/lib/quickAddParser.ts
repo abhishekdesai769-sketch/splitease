@@ -21,6 +21,8 @@ export interface QuickContext {
   meId: string;
   friends: QuickPerson[];
   groups: QuickGroup[];
+  /** Everyone else the user knows (friends + fellow group members), for names. */
+  people?: QuickPerson[];
 }
 
 export type QuickIntent =
@@ -81,13 +83,27 @@ export function parseQuickAdd(raw: string, ctx: QuickContext): QuickIntent | nul
   if (!text) return null;
   const t = text.toLowerCase();
 
-  const groupHit = [...ctx.groups]
+  const friendIds = new Set(ctx.friends.map((f) => f.id));
+  const everyone = Array.from(
+    new Map([...ctx.friends, ...(ctx.people ?? [])].filter((p) => p.id !== ctx.meId).map((p) => [p.id, p])).values(),
+  );
+
+  let groupHit = [...ctx.groups]
     .sort((a, b) => b.name.length - a.name.length)
     .find((g) => g.name.trim().length > 1 && wordRe(g.name.trim().toLowerCase()).test(t));
 
-  // Group names can contain digits ("Apt 4B"), so read the amount after removing it.
-  const tNoGroup = groupHit ? t.replace(new RegExp(esc(groupHit.name.toLowerCase()), "g"), " ") : t;
-  const amt = extractAmount(tNoGroup);
+  // Group names can contain digits ("Apt 4B") or people's names ("Sarah's bday"),
+  // so read amounts and names after removing the group name.
+  const withoutGroup = (g?: QuickGroup) => (g ? t.replace(new RegExp(esc(g.name.toLowerCase()), "g"), " ") : t);
+  let personHits = findPeople(withoutGroup(groupHit), everyone);
+  // A named person outside the matched group means the "group" was really just a
+  // word ("dinner with srushti" when there's also a group called "Dinner"):
+  // the people the user named win, and the word goes back into the description.
+  if (groupHit && personHits.some((h) => !groupHit!.memberIds.includes(h.person.id))) {
+    groupHit = undefined;
+    personHits = findPeople(t, everyone);
+  }
+  const amt = extractAmount(withoutGroup(groupHit));
   const friendHits = findPeople(t, ctx.friends);
   const firstFriend = friendHits[0]?.person ?? null;
 
@@ -106,40 +122,57 @@ export function parseQuickAdd(raw: string, ctx: QuickContext): QuickIntent | nul
   }
 
   // ── Expense ──
+  // Someone named who isn't a direct friend (only a fellow group member) can
+  // only be split with inside a group: use the smallest group you share.
+  let impliedGroup: QuickGroup | undefined;
+  if (!groupHit && personHits.some((h) => !friendIds.has(h.person.id))) {
+    const need = [ctx.meId, ...personHits.map((h) => h.person.id)];
+    impliedGroup = ctx.groups
+      .filter((g) => need.every((id) => g.memberIds.includes(id)))
+      .sort((a, b) => a.memberIds.length - b.memberIds.length)[0];
+    if (!impliedGroup) personHits = personHits.filter((h) => friendIds.has(h.person.id));
+  }
+
   // Payer: "raj paid …" at the start, or "paid by raj" anywhere.
   let payerId = ctx.meId;
-  const leadPaid = firstFriend && friendHits[0].index === 0 && new RegExp(`^${esc(friendHits[0].key)}\\s+paid\\b`).test(t);
+  const lead = personHits[0];
+  const leadPaid = lead && lead.index === 0 && new RegExp(`^${esc(lead.key)}\\s+paid\\b`).test(t);
   const paidBy = /\bpaid by\s+(\S+(?:\s+\S+)?)/.exec(t);
-  if (leadPaid) payerId = firstFriend!.id;
+  if (leadPaid) payerId = lead.person.id;
   else if (paidBy) {
-    const hit = findPeople(paidBy[1], ctx.friends)[0];
+    const hit = findPeople(paidBy[1], everyone)[0];
     if (hit) payerId = hit.person.id;
   }
 
+  const named = personHits.map((h) => h.person.id);
   let splitIds: string[];
   let groupId: string | null = null;
   if (groupHit) {
     groupId = groupHit.id;
-    // Named members inside the group narrow the split; otherwise everyone.
-    const named = friendHits.map((h) => h.person.id).filter((id) => groupHit.memberIds.includes(id));
+    // Named members narrow the split; otherwise it's the whole group.
     splitIds = named.length ? [ctx.meId, ...named] : [...groupHit.memberIds];
+  } else if (impliedGroup) {
+    groupId = impliedGroup.id;
+    splitIds = [ctx.meId, ...named];
   } else {
-    splitIds = [ctx.meId, ...friendHits.map((h) => h.person.id)];
+    splitIds = [ctx.meId, ...named];
   }
   if (!splitIds.includes(payerId)) splitIds.push(payerId);
   splitIds = Array.from(new Set(splitIds));
 
-  if (!amt && splitIds.length < 2 && !groupHit) return { type: "unknown" };
+  if (!amt && splitIds.length < 2 && !groupId) return { type: "unknown" };
 
   const strip = [
     ...(amt ? [amt.match] : []),
     ...(groupHit ? [groupHit.name] : []),
-    ...friendHits.map((h) => h.key),
+    ...personHits.map((h) => h.key),
   ];
+  // "dinner 90" in a group called "Dinner": the group name is the description too.
+  const description = describe(t, strip) ?? (groupHit ? groupHit.name.charAt(0).toUpperCase() + groupHit.name.slice(1) : null);
   return {
     type: "expense",
     amount: amt?.amount ?? null,
-    description: describe(t, strip),
+    description,
     payerId,
     splitIds,
     groupId,
