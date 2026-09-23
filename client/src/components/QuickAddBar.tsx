@@ -197,17 +197,7 @@ export const QuickAddBar = forwardRef<QuickAddBarHandle, QuickAddBarProps>(funct
   const showHints = open && !listening && !callOn && (!intent || intent.type === "unknown");
   const showCard = open && !callOn && !!intent && intent.type !== "unknown";
 
-  // Phrases the empty pill types out, built from the user's real people so
-  // anything it suggests works if they type it.
-  const f1 = friends[0]?.name.split(" ")[0].toLowerCase();
-  const g1 = groups[0]?.name.toLowerCase();
-  const ghostPhrases = useMemo(() => [
-    f1 ? `dinner 60 with ${f1}` : "dinner 60",
-    g1 ? `groceries 45 ${g1}` : null,
-    f1 ? `paid ${f1} 20` : null,
-    f1 ? `what does ${f1} owe` : null,
-  ].filter(Boolean) as string[], [f1, g1]);
-  const ghost = useGhostTyping(ghostPhrases, !focused && !text && !listening && !callOn);
+  const ghost = useGhostTyping(GHOST_PHRASES, !focused && !text && !listening && !callOn);
 
   // Nav is h-16 + safe area; it hides while the keyboard is up.
   const dockBottom = keyboardOpen ? "12px" : "calc(4rem + env(safe-area-inset-bottom) + 12px)";
@@ -458,6 +448,18 @@ export const QuickAddBar = forwardRef<QuickAddBarHandle, QuickAddBarProps>(funct
     </>
   );
 });
+
+// What the empty pill types out as inspiration. Deliberately made-up: this is
+// visible on screen (and in screenshots / screen recordings), so it must never
+// use the user's real friends, group names or addresses.
+const GHOST_PHRASES = [
+  "sushi night 96 with maya and leo",
+  "concert tickets 240 with sam",
+  "cabin weekend 900 with the ski crew",
+  "sam paid 64 for tacos",
+  "paid jordan back 35",
+  "who owes me for the road trip?",
+];
 
 /**
  * Types example phrases into the empty pill's placeholder, one after another,
