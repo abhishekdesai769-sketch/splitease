@@ -33,6 +33,12 @@ export type QuickIntent =
       payerId: string;
       splitIds: string[];       // always includes the payer
       groupId: string | null;
+      /** Stated shares ("she has to pay 30", "i pay 50"). Absent = equal split. */
+      shares?: Record<string, number>;
+      /** YYYY-MM-DD when a day was mentioned (set by the AI read). Absent = today. */
+      date?: string;
+      /** Names the AI read couldn't match to anyone the user knows. */
+      unresolved?: string[];
     }
   | { type: "settle"; friendId: string; amount: number | null; friendIsPayer: boolean }
   | { type: "balance"; personId: string | null }
@@ -76,7 +82,8 @@ const FILLER = /\b(add|log|spent|spend|split|between|equally|evenly|with|and|for
 const LINK_WORDS = ["paid", "pay", "with", "and", "for", "split", "between", "equally", "evenly", "spent", "dollars", "bucks"];
 function endsInUnfinishedLinkWord(raw: string): boolean {
   if (/\s$/.test(raw)) return false;
-  const tail = /([a-z]+)$/i.exec(raw)?.[1]?.toLowerCase();
+  // A whole last word only: the "b" in "apt 4b" is not the start of "between".
+  const tail = /(?:^|\s)([a-z]+)$/i.exec(raw)?.[1]?.toLowerCase();
   return !!tail && !LINK_WORDS.includes(tail) && LINK_WORDS.some((w) => w.startsWith(tail));
 }
 
@@ -87,10 +94,28 @@ function describe(text: string, strip: string[]): string | null {
   return d.length > 1 ? d.charAt(0).toUpperCase() + d.slice(1) : null;
 }
 
+// "she has to pay 30", "katie pays 30", "i pay 50", "my share is 50", "he owes 20".
+// "paid" is deliberately absent: "sam paid 64" names the payer, not a share.
+// The name is one word (first names): two would swallow "goa trip priya pays 40".
+const SHARE_RE = /(?:^|[\s,;.]+)(?:and\s+|but\s+|so\s+)?(i|me|my|she|he|they|[a-z][a-z'’-]*)\s+(?:has to pay|have to pay|has to cover|needs to pay|should pay|will pay|'ll pay|pays?|owes?|covers?|share is|'s share is|puts in)\s+(?:[$₹€£]\s?)?(\d+(?:\.\d{1,2})?)\b/gi;
+const ME_WORDS = new Set(["i", "me", "my"]);
+const PRONOUNS = new Set(["she", "he", "they"]);
+
 export function parseQuickAdd(raw: string, ctx: QuickContext): QuickIntent | null {
   const text = raw.trim();
   if (!text) return null;
-  const t = text.toLowerCase();
+  let t = text.toLowerCase();
+
+  // Pull out share clauses first so their numbers and words don't leak into the
+  // total or the description. Only when a total is still left over: "katie owes
+  // 30" on its own isn't a share of anything.
+  const shareClauses: { who: string; amount: number }[] = [];
+  const withoutShares = t.replace(SHARE_RE, (m, who: string, n: string) => {
+    shareClauses.push({ who: who.trim(), amount: parseFloat(n) });
+    return " ";
+  });
+  if (shareClauses.length && extractAmount(withoutShares)) t = withoutShares.replace(/\s+/g, " ").trim();
+  else shareClauses.length = 0;
 
   const friendIds = new Set(ctx.friends.map((f) => f.id));
   const everyone = Array.from(
@@ -167,6 +192,23 @@ export function parseQuickAdd(raw: string, ctx: QuickContext): QuickIntent | nul
     splitIds = [ctx.meId, ...named];
   }
   if (!splitIds.includes(payerId)) splitIds.push(payerId);
+
+  // Resolve who each stated share belongs to. Someone only named in a share
+  // ("katie pays 30") still joins the split; "she/he/they" means the one other
+  // person when there is exactly one.
+  let shares: Record<string, number> | undefined;
+  for (const c of shareClauses) {
+    let id: string | undefined;
+    if (ME_WORDS.has(c.who)) id = ctx.meId;
+    else if (PRONOUNS.has(c.who)) {
+      const others = Array.from(new Set(splitIds)).filter((x) => x !== ctx.meId);
+      if (others.length === 1) id = others[0];
+    } else {
+      id = findPeople(c.who, everyone)[0]?.person.id;
+      if (id && !splitIds.includes(id)) splitIds.push(id);
+    }
+    if (id) (shares ??= {})[id] = c.amount;
+  }
   splitIds = Array.from(new Set(splitIds));
 
   if (!amt && splitIds.length < 2 && !groupId) return { type: "unknown" };
@@ -186,5 +228,6 @@ export function parseQuickAdd(raw: string, ctx: QuickContext): QuickIntent | nul
     payerId,
     splitIds,
     groupId,
+    ...(shares ? { shares } : {}),
   };
 }

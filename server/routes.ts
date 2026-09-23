@@ -20,6 +20,7 @@ import { aiConversations, aiMessages } from "@shared/schema";
 import * as ai from "./ai";
 import * as voice from "./voice";
 import * as voiceQuota from "./voiceQuota";
+import * as quickAddAi from "./quickAddAi";
 import * as jev from "./jev";
 import { buildAttachmentContext } from "./receiptTranscription";
 import * as voiceLog from "./voiceLog";
@@ -3497,6 +3498,32 @@ setInterval(loadAll,30000);
   // verify the Render env var landed without needing an authed session.
   app.get("/api/voice/health", (_req, res) => {
     res.json({ enabled: voice.VOICE_ENABLED, model: voice.VOICE_MODEL });
+  });
+
+  // Dashboard quick-add pill: Claude Haiku reads a typed phrase when the user
+  // pauses and returns a card resolved to their real people/groups. Free for
+  // everyone, with its own daily caps (not AI Mode's). Never saves anything.
+  app.post("/api/quick-add/understand", requireAuth, async (req: any, res) => {
+    if (!quickAddAi.QUICK_ADD_AI_ENABLED) return res.status(503).json({ error: "ai_disabled" });
+    const text = typeof req.body?.text === "string" ? req.body.text.trim() : "";
+    const today = typeof req.body?.today === "string" && /^\d{4}-\d{2}-\d{2}$/.test(req.body.today)
+      ? req.body.today
+      : new Date().toISOString().slice(0, 10);
+    if (!text || text.length > 300) return res.status(400).json({ error: "bad_text" });
+
+    const userId = (req.session as any).userId;
+    const quota = quickAddAi.takeQuickAddAiQuota(userId);
+    if (!quota.ok) return res.status(429).json({ error: "quick_add_ai_capped", reason: quota.reason });
+
+    const user = await storage.getUser(userId);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    try {
+      const ctx = await buildAiContextForUser(user);
+      res.json(await quickAddAi.understandQuickAdd(ctx, text, today));
+    } catch (err: any) {
+      console.error("[quick-add-ai] failed:", err?.message || err);
+      res.status(502).json({ error: "quick_add_ai_failed" });
+    }
   });
 
   app.post("/api/voice/session", requireAuth, async (req: any, res) => {
