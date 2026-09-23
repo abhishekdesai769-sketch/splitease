@@ -4,7 +4,7 @@
 // expensive part — minutes of audio per session). Two caps, both failing
 // GRACEFULLY into the "split by chatting" fallback rather than hard-blocking:
 //
-//   1. Per-user: N voice sessions/day (default 3).
+//   1. Per-user: N voice sessions/day (default 10).
 //   2. Global:   a daily budget (default $30) expressed as a session count
 //                via an estimated per-session cost.
 //
@@ -17,7 +17,7 @@
 
 import { isGloballyDegraded } from "./aiQuota";
 
-const PER_USER_PER_DAY = parseInt(process.env.VOICE_DAILY_PER_USER || "3", 10);
+const PER_USER_PER_DAY = parseInt(process.env.VOICE_DAILY_PER_USER || "10", 10);
 const DAILY_BUDGET_CENTS = parseInt(process.env.VOICE_DAILY_BUDGET_CENTS || "3000", 10); // $30
 const EST_SESSION_COST_CENTS = parseInt(process.env.VOICE_EST_SESSION_COST_CENTS || "40", 10); // ~$0.40/session
 const GLOBAL_PER_DAY = Math.max(1, Math.floor(DAILY_BUDGET_CENTS / Math.max(1, EST_SESSION_COST_CENTS)));
