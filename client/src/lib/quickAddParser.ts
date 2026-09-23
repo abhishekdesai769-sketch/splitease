@@ -71,6 +71,15 @@ function extractAmount(text: string): { amount: number; match: string } | null {
 
 const FILLER = /\b(add|log|spent|spend|split|between|equally|evenly|with|and|for|on|at|in|to|by|paid|pay|the|a|an|my|me|i|we|us|of|dollars?|bucks|cad|usd|inr|rs)\b/gi;
 
+// Words that link the parts of a phrase. While one is still being typed
+// ("sam pai…", "dinner wi…"), its unfinished start mustn't become the description.
+const LINK_WORDS = ["paid", "pay", "with", "and", "for", "split", "between", "equally", "evenly", "spent", "dollars", "bucks"];
+function endsInUnfinishedLinkWord(raw: string): boolean {
+  if (/\s$/.test(raw)) return false;
+  const tail = /([a-z]+)$/i.exec(raw)?.[1]?.toLowerCase();
+  return !!tail && !LINK_WORDS.includes(tail) && LINK_WORDS.some((w) => w.startsWith(tail));
+}
+
 function describe(text: string, strip: string[]): string | null {
   let d = ` ${text} `;
   for (const s of strip) d = d.replace(new RegExp(esc(s), "gi"), " ");
@@ -168,7 +177,8 @@ export function parseQuickAdd(raw: string, ctx: QuickContext): QuickIntent | nul
     ...personHits.map((h) => h.key),
   ];
   // "dinner 90" in a group called "Dinner": the group name is the description too.
-  const description = describe(t, strip) ?? (groupHit ? groupHit.name.charAt(0).toUpperCase() + groupHit.name.slice(1) : null);
+  const describable = endsInUnfinishedLinkWord(raw) ? t.replace(/[a-z]+$/i, "") : t;
+  const description = describe(describable, strip) ?? (groupHit ? groupHit.name.charAt(0).toUpperCase() + groupHit.name.slice(1) : null);
   return {
     type: "expense",
     amount: amt?.amount ?? null,

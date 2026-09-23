@@ -14,14 +14,14 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Mic, Loader2, X, Check, AudioLines, ArrowUp, Receipt, ArrowLeftRight, Scale, Users2, CalendarDays, Wallet, ArrowRight } from "lucide-react";
+import { Mic, Loader2, X, Check, ArrowUp, Receipt, ArrowLeftRight, Scale, Users2, CalendarDays, Wallet, ArrowRight } from "lucide-react";
 import type { Group, SafeUser } from "@shared/schema";
 import { useAuth } from "@/lib/auth";
 import { apiFormRequest, apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useKeyboardOpen } from "@/hooks/use-keyboard-open";
 import { track } from "@/lib/analytics";
-import { formatMoney, currencySymbol } from "@/components/CurrencySelector";
+import { formatMoney } from "@/components/CurrencySelector";
 import { AMOUNT_IN_CLASS, AMOUNT_OUT_CLASS } from "@/lib/balance-display";
 import { parseQuickAdd, type QuickIntent } from "@/lib/quickAddParser";
 import { useVoiceMode } from "@/hooks/useVoiceMode";
@@ -195,7 +195,11 @@ export const QuickAddBar = forwardRef<QuickAddBarHandle, QuickAddBarProps>(funct
 
   const fill = (s: string) => { setText(s); inputRef.current?.focus(); };
 
-  const showHints = open && !listening && !callOn && (!intent || intent.type === "unknown");
+  // With the pill open and nothing typed yet, made-up examples type themselves
+  // and build the real cards above it ("watch it work"). Any typing, the mic or
+  // a call stops it and the user's own card takes over.
+  const demoActive = open && !listening && !callOn && !text.trim();
+  const demo = useDemoLoop(DEMO_PHRASES, demoActive);
   const showCard = open && !callOn && !!intent && intent.type !== "unknown";
 
   const ghost = useGhostTyping(GHOST_PHRASES, !focused && !text && !listening && !callOn);
@@ -206,7 +210,7 @@ export const QuickAddBar = forwardRef<QuickAddBarHandle, QuickAddBarProps>(funct
   return (
     <>
       {/* While a card is open, soften the page behind it; tapping it closes. */}
-      {(showCard || showHints || listening || callOn) && (
+      {(showCard || demoActive || listening || callOn) && (
         <div
           aria-hidden
           className="fixed inset-0 z-[35] bg-background/70 backdrop-blur-[3px] animate-in fade-in-0 duration-200"
@@ -221,35 +225,16 @@ export const QuickAddBar = forwardRef<QuickAddBarHandle, QuickAddBarProps>(funct
 
       <div className="fixed inset-x-0 z-40 transition-[bottom] duration-200" style={{ bottom: dockBottom }}>
         <div className="relative max-w-3xl mx-auto px-4">
-          {(showCard || showHints) && (
+          {(showCard || demoActive) && (
             <div
               className="absolute bottom-full left-4 right-4 mb-3 max-h-[58vh] overflow-y-auto rounded-[24px] border border-card-border bg-card p-4 shadow-[0_18px_48px_-16px_rgba(41,38,36,0.32),0_2px_8px_-2px_rgba(41,38,36,0.08)] animate-in fade-in-0 slide-in-from-bottom-2 duration-200"
               // Keep taps on the card from blurring the input first.
               onMouseDown={(e) => e.preventDefault()}
               data-testid="quick-add-card"
             >
-              {showHints && (
-                <div>
-                  <Showcase
-                    friends={friends}
-                    groups={groups}
-                    balances={balances}
-                    currency={currency}
-                    avatarColor={avatarColor}
-                    nameOf={nameOf}
-                    onPick={fill}
-                    onTalk={callAvailable ? startCall : undefined}
-                  />
-                  <Link href="/ai">
-                    <button type="button" className="mt-3 w-full flex items-center gap-3 border-t border-card-border pt-3.5 text-left" data-testid="quick-add-ai-link">
-                      <span className="w-8 h-8 rounded-[10px] bg-foreground flex items-center justify-center shrink-0"><Receipt className="w-4 h-4 text-background" /></span>
-                      <span className="flex-1 min-w-0">
-                        <span className="block text-[14px] font-medium">Scan a receipt or screenshot</span>
-                        <span className="block text-xs text-muted-foreground">It reads the bill and splits it for you</span>
-                      </span>
-                      <ArrowRight className="w-4 h-4 text-muted-foreground" />
-                    </button>
-                  </Link>
+              {demoActive && (
+                <div className={`transition-opacity duration-200 ${demo.visible ? "opacity-100" : "opacity-0"}`}>
+                  <ExampleCard key={demo.index} phrase={demo.card} index={demo.index} currency={currency} />
                 </div>
               )}
 
@@ -410,7 +395,7 @@ export const QuickAddBar = forwardRef<QuickAddBarHandle, QuickAddBarProps>(funct
               onFocus={() => { setFocused(true); setOpen(true); }}
               onBlur={() => setFocused(false)}
               onKeyDown={(e) => { if (e.key === "Escape") reset(); }}
-              placeholder={ghost || "Tell Spliiit anything…"}
+              placeholder={demoActive ? demo.typed : ghost || "Tell Spliiit anything…"}
               enterKeyHint="done"
               autoComplete="off"
               autoCorrect="off"
@@ -443,6 +428,16 @@ export const QuickAddBar = forwardRef<QuickAddBarHandle, QuickAddBarProps>(funct
           )}
           {listening && (
             <p className="text-center text-[11.5px] text-muted-foreground mt-2">Listening… tap the mic to stop</p>
+          )}
+          {demoActive && (
+            <p className="text-center text-[11.5px] text-muted-foreground mt-2">
+              or{" "}
+              <Link href="/ai">
+                <button type="button" onMouseDown={(e) => e.preventDefault()} className="underline underline-offset-2 text-secondary-foreground" data-testid="quick-add-ai-link">
+                  scan a receipt
+                </button>
+              </Link>
+            </p>
           )}
         </div>
       </div>
@@ -491,144 +486,185 @@ function useGhostTyping(phrases: string[], active: boolean): string {
   return ghost;
 }
 
-/**
- * "What it can do" — a swipeable row of tiny previews of the real cards each
- * kind of phrase creates, with the phrase underneath. Built from the user's own
- * friends, groups and balances, so tapping any card fills a phrase that works.
- * Only shows things the pill actually does today.
- */
-function Showcase({ friends, groups, balances, currency, avatarColor, nameOf, onPick, onTalk }: {
-  friends: SafeUser[]; groups: Group[]; balances: QuickAddBalance[]; currency?: string | null;
-  avatarColor: (id: string) => string; nameOf: (id: string) => string;
-  onPick: (phrase: string) => void; onTalk?: () => void;
-}) {
-  const [active, setActive] = useState(0);
-  const money = (n: number) => formatMoney(n, currency);
-  const first = (id: string) => nameOf(id);
-  const low = (id: string) => nameOf(id).toLowerCase();
-  const [fa, fb] = friends;
-  const group = groups.find((g) => g.memberIds.length > 2) ?? groups[0];
-  const owesMe = [...balances].filter((b) => b.amount > 0).sort((a, b) => b.amount - a.amount)[0];
-  const iOwe = [...balances].filter((b) => b.amount < 0).sort((a, b) => a.amount - b.amount)[0];
-  const meId = "__me__";
+// ── "Watch it work" examples ─────────────────────────────────────────────────
+// Made-up people and groups only: this plays on screen (and in screenshots and
+// screen recordings), so it must never use the user's real friends or groups.
+const DEMO_ME = "__demo_me__";
+const DEMO_PEOPLE = [
+  { id: "__maya__", name: "Maya", color: "#A6674A" },
+  { id: "__leo__", name: "Leo", color: "#7A3E32" },
+  { id: "__sam__", name: "Sam", color: "#8C5A3C" },
+  { id: "__jordan__", name: "Jordan", color: "#9A4A2A" },
+  { id: "__ava__", name: "Ava", color: "#B04A34" },
+];
+const DEMO_CTX = {
+  meId: DEMO_ME,
+  friends: DEMO_PEOPLE.slice(0, 4),
+  people: DEMO_PEOPLE,
+  groups: [{ id: "__ski__", name: "Ski crew", memberIds: [DEMO_ME, "__maya__", "__sam__", "__jordan__", "__ava__"] }],
+};
+const DEMO_BALANCES: Record<string, number> = { "__jordan__": -35, "__maya__": 48 }; // + = they owe you
+const DEMO_PHRASES = [
+  "sushi night 96 with maya and leo",
+  "cabin weekend 900 ski crew",
+  "sam paid 64 for tacos",
+  "paid jordan back 35",
+  "what does maya owe",
+];
+// What each example becomes, so a half-typed phrase still shows the right empty card.
+const DEMO_KINDS: Array<"expense" | "settle" | "balance"> = ["expense", "expense", "expense", "settle", "balance"];
 
-  const Avs = ({ ids }: { ids: string[] }) => (
-    <span className="flex">
-      {ids.slice(0, 4).map((id) => (
-        <span key={id} className="w-[18px] h-[18px] -mr-1 rounded-full ring-[1.5px] ring-card flex items-center justify-center text-white text-[10px] font-serif" style={{ backgroundColor: id === meId ? "#292624" : avatarColor(id) }}>
-          {id === meId ? "Y" : first(id).charAt(0)}
-        </span>
-      ))}
-      {ids.length > 4 && <span className="ml-2 text-[10px] text-muted-foreground">+{ids.length - 4}</span>}
+/**
+ * Types each example into the pill, holds it, deletes it, moves on.
+ * - `typed`: what the pill shows (letter by letter).
+ * - `card`: what the card is built from. It only advances at word boundaries
+ *   and stays frozen while the pill deletes, so the card doesn't rebuild dozens
+ *   of times a second (on iOS that also repaints the blur behind it: flicker).
+ * - `visible`: false briefly between examples so the card fades out and in.
+ * Static for reduced motion.
+ */
+type DemoState = { index: number; typed: string; card: string; visible: boolean };
+function useDemoLoop(phrases: string[], active: boolean): DemoState {
+  const [state, setState] = useState<DemoState>({ index: 0, typed: "", card: "", visible: true });
+  useEffect(() => {
+    setState({ index: 0, typed: "", card: "", visible: true });
+    if (!active) return;
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+      setState({ index: 0, typed: phrases[0], card: phrases[0], visible: true });
+      return;
+    }
+    let cancelled = false;
+    const timers: number[] = [];
+    const later = (ms: number) => new Promise<void>((r) => { timers.push(window.setTimeout(r, ms)); });
+    (async () => {
+      await later(450);
+      for (let k = 0; !cancelled; k = (k + 1) % phrases.length) {
+        const phrase = phrases[k];
+        let card = "";
+        setState({ index: k, typed: "", card, visible: true });
+        for (let i = 1; i <= phrase.length && !cancelled; i++) {
+          const typed = phrase.slice(0, i);
+          if (phrase[i] === " " || i === phrase.length) card = typed; // a word just finished
+          setState({ index: k, typed, card, visible: true });
+          await later(phrase[i - 1] === " " ? 110 : 62);
+        }
+        await later(2600);
+        for (let i = phrase.length - 1; i >= 0 && !cancelled; i--) {
+          setState({ index: k, typed: phrase.slice(0, i), card, visible: true });
+          await later(16);
+        }
+        setState({ index: k, typed: "", card, visible: false }); // fade the card out
+        await later(280);
+      }
+    })();
+    return () => { cancelled = true; timers.forEach(clearTimeout); };
+  }, [active, phrases]);
+  return state;
+}
+
+/**
+ * One example, rendered like the real card, built live from the half-typed
+ * phrase by the real parser (against the made-up people above). Read-only:
+ * no buttons, so nobody thinks they saved a pretend expense.
+ */
+function ExampleCard({ phrase, index, currency }: { phrase: string; index: number; currency?: string | null }) {
+  const money = (n: number) => formatMoney(n, currency);
+  const person = (id: string) => DEMO_PEOPLE.find((p) => p.id === id);
+  const nameOf = (id: string) => (id === DEMO_ME ? "You" : person(id)?.name ?? "");
+  // A plain render function, not a component: a component defined in here would
+  // be a new type every keystroke, remounting (and re-animating) each avatar.
+  const av = (id: string) => (
+    <span key={id} className="w-8 h-8 rounded-full flex items-center justify-center text-white text-[13px] font-serif ring-2 ring-background animate-in zoom-in-75 fade-in-0 duration-200" style={{ backgroundColor: id === DEMO_ME ? "#292624" : person(id)?.color }}>
+      {nameOf(id).charAt(0)}
     </span>
   );
-  const Each = ({ ids, amount }: { ids: string[]; amount: string }) => (
-    <div className="flex items-end justify-between mt-2">
-      <Avs ids={ids} />
-      <span className="text-right">
-        <span className="block text-[9.5px] text-muted-foreground">each</span>
-        <span className="font-mono tabular-nums text-[14px]">{amount}</span>
-      </span>
+
+  const parsed = parseQuickAdd(phrase, DEMO_CTX);
+  const kind = parsed && parsed.type !== "unknown" ? parsed.type : DEMO_KINDS[index];
+
+  const head = (icon: React.ComponentType<{ className?: string }>, label: string) => (
+    <div className="flex items-start justify-between gap-2">
+      <CardHead icon={icon} label={label} />
+      <span className="rounded-full border border-card-border px-2 py-0.5 text-[11px] text-muted-foreground">Example {index + 1} of {DEMO_PHRASES.length}</span>
     </div>
   );
-  const Pair = ({ from, to, label }: { from: string; to: string; label: string }) => (
-    <div className="flex items-center gap-1.5 mt-0.5">
-      <Avs ids={[from]} />
-      <ArrowRight className="w-3 h-3 ml-1.5 text-muted-foreground" />
-      <Avs ids={[to]} />
-      <span className="ml-1.5 text-[12px] truncate">{label}</span>
-    </div>
-  );
+  const foot = <p className="mt-3.5 text-[12.5px] text-muted-foreground">Your turn: start typing</p>;
 
-  type Item = { key: string; icon: React.ComponentType<{ className?: string }>; kind: string; phrase: string; body: React.ReactNode; action?: () => void };
-  const items: Item[] = [];
-
-  if (fa) {
-    const ids = [meId, fa.id, ...(fb ? [fb.id] : [])];
-    const phrase = fb ? `dinner 120 with ${low(fa.id)} and ${low(fb.id)}` : `dinner 120 with ${low(fa.id)}`;
-    items.push({ key: "friends", icon: Receipt, kind: "Split with friends", phrase, body: (
-      <><p className="font-serif text-[18px] leading-tight">Dinner</p><p className="text-[10.5px] text-muted-foreground">{money(120)} · paid by you</p><Each ids={ids} amount={money(120 / ids.length)} /></>
-    ) });
-  }
-  if (group) {
-    const ids = group.memberIds.map((id) => (nameOf(id) === "You" ? meId : id));
-    const members = group.memberIds.length;
-    items.push({ key: "group", icon: Users2, kind: "A whole group, by name", phrase: `uber 45 ${group.name.toLowerCase()}`, body: (
-      <><p className="font-serif text-[18px] leading-tight">Uber</p><p className="text-[10.5px] text-muted-foreground truncate">{money(45)} · {group.name}</p><Each ids={ids} amount={money(45 / Math.max(members, 1))} /></>
-    ) });
-  }
-  if (fa) {
-    items.push({ key: "paid", icon: Wallet, kind: "When someone else paid", phrase: `${low(fa.id)} paid 180 for groceries`, body: (
-      <><p className="font-serif text-[18px] leading-tight">Groceries</p><p className="text-[10.5px] text-[#2F5E43]">Paid by {first(fa.id)}</p><Each ids={[meId, fa.id]} amount={money(90)} /></>
-    ) });
-  }
-  const settleWith = iOwe?.personId ?? fa?.id;
-  if (settleWith && friends.some((f) => f.id === settleWith)) {
-    const amt = iOwe ? Math.abs(iOwe.amount) : 20;
-    items.push({ key: "settle", icon: ArrowLeftRight, kind: "Settle up", phrase: `paid ${low(settleWith)} ${amt % 1 ? amt.toFixed(2) : amt}`, body: (
-      <><Pair from={meId} to={settleWith} label={`You paid ${first(settleWith)}`} /><p className="font-mono tabular-nums text-[20px] mt-2">{money(amt)}</p></>
-    ) });
-  }
-  const askAbout = owesMe?.personId ?? fa?.id;
-  if (askAbout) {
-    const bal = balances.find((b) => b.personId === askAbout)?.amount ?? 0;
-    items.push({ key: "ask", icon: Scale, kind: "Ask who owes what", phrase: `what does ${low(askAbout)} owe`, body: (
-      <><div className="flex items-center gap-1.5 mt-0.5"><Avs ids={[askAbout]} /><span className="ml-1 text-[12px] truncate">{bal > 0 ? `${first(askAbout)} owes you` : bal < 0 ? `You owe ${first(askAbout)}` : `You're settled up`}</span></div>
-        <p className={`font-mono tabular-nums text-[20px] mt-2 ${bal > 0 ? AMOUNT_IN_CLASS : bal < 0 ? AMOUNT_OUT_CLASS : "text-muted-foreground"}`}>{money(Math.abs(bal))}</p></>
-    ) });
-  }
-  if (onTalk) {
-    const who = fa ? first(fa.id) : "Sam";
-    items.push({ key: "talk", icon: AudioLinesIcon, kind: "Talk it through", phrase: "Tap to talk to Spliiit", action: onTalk, body: (
-      <><p className="font-serif italic text-[13px] leading-snug text-secondary-foreground">“Who had the steak?”</p>
-        <div className="flex gap-1.5 mt-2 text-[10.5px] whitespace-nowrap"><span className="rounded-full bg-accent/70 px-2 py-0.5">You <span className="font-mono">{currencySymbol(currency)}50</span></span><span className="rounded-full bg-accent/70 px-2 py-0.5">{who} <span className="font-mono">{currencySymbol(currency)}70</span></span></div>
-        <p className="text-[10px] text-[#2F5E43] mt-2 flex items-center gap-1"><Check className="w-3 h-3" />Uneven splits, by voice</p></>
-    ) });
-  }
-
-  return (
-    <div>
-      <div className="flex items-center justify-between">
-        <p className="text-[11px] font-mono uppercase tracking-[0.14em] text-muted-foreground">What it can do</p>
-        <p className="text-[11px] text-muted-foreground">Swipe ›</p>
-      </div>
-      <div
-        className="-mx-4 px-4 mt-2.5 flex gap-2.5 overflow-x-auto snap-x snap-mandatory pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-        onScroll={(e) => setActive(Math.round(e.currentTarget.scrollLeft / 214))}
-        data-testid="quick-add-showcase"
-      >
-        {items.map((it) => (
-          <button
-            key={it.key}
-            type="button"
-            onClick={it.action ?? (() => onPick(it.phrase))}
-            className="snap-start shrink-0 w-[204px] flex flex-col justify-start rounded-[18px] bg-background px-3 pt-2.5 pb-2.5 text-left active:scale-[0.97] transition-transform"
-            data-testid={`quick-add-showcase-${it.key}`}
-          >
-            <span className="w-full flex items-center gap-1.5 text-[11.5px] text-secondary-foreground mb-2">
-              <span className="w-[22px] h-[22px] rounded-[7px] bg-card flex items-center justify-center"><it.icon className="w-3.5 h-3.5 text-accent-foreground" /></span>
-              {it.kind}
-            </span>
-            <span className="block w-full flex-1 rounded-xl bg-card px-2.5 py-2 min-h-[80px]">{it.body}</span>
-            <span className="block w-full font-serif italic text-[14px] text-secondary-foreground mt-2 truncate">
-              {it.action ? it.phrase : `“${it.phrase}”`}
-            </span>
-          </button>
-        ))}
-      </div>
-      {items.length > 1 && (
-        <div className="flex justify-center gap-1 mt-2" aria-hidden>
-          {items.map((it, i) => (
-            <span key={it.key} className={`h-[5px] rounded-full transition-all ${i === Math.min(active, items.length - 1) ? "w-3.5 bg-foreground" : "w-[5px] bg-border"}`} />
-          ))}
+  if (kind === "settle") {
+    const s = parsed?.type === "settle" ? parsed : null;
+    const bal = s ? DEMO_BALANCES[s.friendId] ?? 0 : 0;
+    return (
+      <div className="animate-in fade-in-0 slide-in-from-bottom-1 duration-300" data-testid="quick-add-example">
+        {head(ArrowLeftRight, "Settle up")}
+        <div className="rounded-2xl bg-background px-3.5 py-3 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-[15px] min-w-0">
+            {av(DEMO_ME)}
+            <ArrowRight className="w-4 h-4 text-muted-foreground shrink-0" />
+            {s ? <>{av(s.friendId)}<span className="truncate">You paid {nameOf(s.friendId)}</span></> : <span className="text-muted-foreground">Who did you pay?</span>}
+          </div>
+          <p className="font-mono tabular-nums text-[24px] shrink-0">{s?.amount ? money(s.amount) : <span className="text-muted-foreground">—</span>}</p>
         </div>
-      )}
+        {s && bal < 0 && <p className="text-xs text-muted-foreground mt-2 px-1">You owe {nameOf(s.friendId)} {money(Math.abs(bal))} in total.</p>}
+        {foot}
+      </div>
+    );
+  }
+
+  if (kind === "balance") {
+    const b = parsed?.type === "balance" ? parsed : null;
+    const bal = b?.personId ? DEMO_BALANCES[b.personId] ?? 0 : 0;
+    return (
+      <div className="animate-in fade-in-0 slide-in-from-bottom-1 duration-300" data-testid="quick-add-example">
+        {head(Scale, "Balance")}
+        <div className="rounded-2xl bg-background px-3.5 py-3 flex items-center gap-3">
+          {b?.personId ? (
+            <>
+              {av(b.personId)}
+              <p className="flex-1 text-[15px]">{bal > 0 ? `${nameOf(b.personId)} owes you` : `You owe ${nameOf(b.personId)}`}</p>
+              <p className={`font-mono tabular-nums text-[24px] ${bal > 0 ? AMOUNT_IN_CLASS : AMOUNT_OUT_CLASS}`}>{money(Math.abs(bal))}</p>
+            </>
+          ) : (
+            <p className="flex-1 text-[15px] text-muted-foreground py-1">Ask about anyone…</p>
+          )}
+        </div>
+        {foot}
+      </div>
+    );
+  }
+
+  const e = parsed?.type === "expense" ? parsed : null;
+  const splitIds = e?.splitIds ?? [DEMO_ME];
+  const ready = !!e?.amount && splitIds.length > 1;
+  const group = e?.groupId ? DEMO_CTX.groups.find((g) => g.id === e.groupId) : null;
+  return (
+    <div className="animate-in fade-in-0 slide-in-from-bottom-1 duration-300" data-testid="quick-add-example">
+      {head(Receipt, "Expense")}
+      <p className={`font-serif text-[26px] leading-[1.1] mb-2.5 ${e?.description ? "" : "text-muted-foreground"}`}>{e?.description ?? "Add a description"}</p>
+      <div className="flex flex-wrap gap-1.5 mb-3.5">
+        {e?.amount ? <Chip><span className="font-mono tabular-nums">{money(e.amount)}</span></Chip> : <Chip ghost>+ Amount</Chip>}
+        {e && e.payerId !== DEMO_ME
+          ? <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12.5px] bg-[#E3EEE6] text-[#2F5E43]"><Wallet className="w-3.5 h-3.5" />Paid by {nameOf(e.payerId)}</span>
+          : <Chip icon={Wallet}>Paid by you</Chip>}
+        {group && <Chip icon={Users2}>{group.name}</Chip>}
+        <Chip icon={CalendarDays}>Today</Chip>
+      </div>
+      <div className="rounded-2xl bg-background px-3.5 py-3">
+        <div className="flex items-end justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[11px] text-muted-foreground mb-2">Split equally · {splitIds.length}</p>
+            <div className="flex flex-wrap gap-1.5">{splitIds.map(av)}</div>
+            <p className="text-[11px] text-muted-foreground mt-1.5 truncate">{splitIds.map(nameOf).join(", ")}</p>
+          </div>
+          <div className="text-right shrink-0">
+            <p className="text-[11px] text-muted-foreground">Each pays</p>
+            <p className="font-mono tabular-nums text-[24px] leading-tight">{ready ? money(e!.amount! / splitIds.length) : <span className="text-muted-foreground">—</span>}</p>
+          </div>
+        </div>
+      </div>
+      {foot}
     </div>
   );
 }
-
-// lucide's AudioLines, typed to match the other card icons.
-const AudioLinesIcon = AudioLines as React.ComponentType<{ className?: string }>;
 
 // Frosted pill shell, shared by the resting/typing pill and the in-pill call.
 const PILL = "flex items-center gap-2 h-[60px] rounded-full pr-2 bg-card/60 backdrop-blur-2xl backdrop-saturate-150 border transition-colors shadow-[0_10px_30px_-12px_rgba(41,38,36,0.22),0_1px_4px_-1px_rgba(41,38,36,0.06),inset_0_1px_0_rgba(255,255,255,0.9)]";
