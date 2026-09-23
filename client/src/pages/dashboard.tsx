@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import type { Group, Expense, SafeUser, RecurringExpense } from "@shared/schema";
 import { Card } from "@/components/ui/card";
@@ -13,6 +13,8 @@ import { useToast } from "@/hooks/use-toast";
 import { CelebrationBanner } from "@/components/CelebrationBanner";
 import { WhatsNewModal } from "@/components/WhatsNewModal";
 import { formatMoney } from "@/components/CurrencySelector";
+import { QuickAddBar, type QuickAddBarHandle } from "@/components/QuickAddBar";
+import { WhatsNewQuickAdd } from "@/components/WhatsNewQuickAdd";
 
 // Warm, on-brand avatar colour derived from a person's id — ignores any stale
 // teal/blue values still stored on legacy accounts from the old theme, so
@@ -46,6 +48,8 @@ export default function Dashboard() {
   const { user } = useAuth();
   const { toast } = useToast();
   const userCurrency = user?.defaultCurrency;
+  const quickAddRef = useRef<QuickAddBarHandle>(null);
+  const [whatsNewOpen, setWhatsNewOpen] = useState(false);
   const { data: groups = [] } = useQuery<Group[]>({ queryKey: ["/api/groups"] });
   const { data: expenses = [] } = useQuery<Expense[]>({ queryKey: ["/api/expenses"] });
   const { data: friendsList = [] } = useQuery<SafeUser[]>({ queryKey: ["/api/friends"] });
@@ -291,35 +295,41 @@ export default function Dashboard() {
           <StatCard label="Groups" value={String(groups.length)} href="/groups" />
         </div>
 
-        {/* AI Mode tile — grouped tightly under the overview cards (matches mockup). */}
+        {/* What's new tile — grouped tightly under the overview cards. Opens a
+            short tour of the quick-add pill (it used to open AI Mode). */}
         <div className="mt-3">
-        <Link href="/ai">
           <button
             type="button"
+            onClick={() => setWhatsNewOpen(true)}
             className="w-full group rounded-2xl border border-[#E4D8C6] bg-gradient-to-b from-[#F6EFE4] to-[#F1E7D8] p-5 text-left transition-all active:scale-[0.99] hover:border-foreground/20"
-            data-testid="dashboard-ai-mode-tile"
+            data-testid="dashboard-whats-new-tile"
           >
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-xl bg-foreground flex items-center justify-center shrink-0">
-              <Sparkles className="w-5 h-5 text-background" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <h3 className="text-lg font-serif">Split it by just saying it</h3>
-                <span className="text-[9px] uppercase tracking-wider font-mono font-semibold text-background bg-accent-foreground px-1.5 py-0.5 rounded">
-                  New
-                </span>
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-xl bg-foreground flex items-center justify-center shrink-0">
+                <Sparkles className="w-5 h-5 text-background" />
               </div>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Describe a split, drop a PDF receipt, or send a screenshot.
-              </p>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-lg font-serif">What's new</h3>
+                  <span className="text-[9px] uppercase tracking-wider font-mono font-semibold text-background bg-accent-foreground px-1.5 py-0.5 rounded">
+                    New
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Tell Spliiit anything. Type it, say it, or talk it through.
+                </p>
+              </div>
+              <ArrowRight className="w-4 h-4 text-muted-foreground shrink-0 group-hover:translate-x-0.5 transition-transform" />
             </div>
-            <ArrowRight className="w-4 h-4 text-muted-foreground shrink-0 group-hover:translate-x-0.5 transition-transform" />
-          </div>
           </button>
-        </Link>
         </div>
       </div>
+
+      <WhatsNewQuickAdd
+        open={whatsNewOpen}
+        onOpenChange={setWhatsNewOpen}
+        onTryIt={() => quickAddRef.current?.focus()}
+      />
 
       {/* Your settlements — two-column rows: person left, amount right (tabular). */}
       {mySettlements.length > 0 && (
@@ -409,6 +419,20 @@ export default function Dashboard() {
           your first group" CTA on Dashboard is a second nag — and the 4 stat
           cards above are already tappable nav (Friends 0 → /friends,
           Groups 0 → /groups). Trust the user's choice. */}
+
+      {/* Quick add — floats above the bottom nav. AI Mode is reached from the
+          bar's hint card. The spacer keeps the last row clear of it. */}
+      <div aria-hidden className="h-20" />
+      <QuickAddBar
+        ref={quickAddRef}
+        friends={friendsList}
+        groups={groups}
+        people={allMembers}
+        balances={mySettlements.map((s) => s.to === user?.id
+          ? { personId: s.from, amount: s.amount }
+          : { personId: s.to, amount: -s.amount })}
+        avatarColor={(id) => id === user?.id ? "#292624" : warmAvatar(id)}
+      />
     </div>
   );
 }

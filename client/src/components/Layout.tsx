@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { UsersRound, Receipt, LayoutDashboard, Users2, LogOut, Shield } from "lucide-react";
 import { useAuth } from "@/lib/auth";
@@ -8,6 +7,8 @@ import { apiRequest } from "@/lib/queryClient";
 import { SupportDrawer } from "@/components/SupportDrawer";
 import { PushPermissionPrompt } from "@/components/PushPermissionPrompt";
 import { GetAppBanner } from "@/components/GetAppBanner";
+import { useKeyboardOpen } from "@/hooks/use-keyboard-open";
+import { BottomFade } from "@/components/BottomFade";
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
@@ -36,16 +37,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
   // Hide the bottom nav whenever the on-screen keyboard is open (renaming a
   // group, adding an expense, AI Mode, …) — a floating Dashboard/Friends bar
   // over the keyboard is clutter and you can't navigate mid-edit anyway. We
-  // detect the keyboard via the visual viewport shrinking on mobile.
-  const [keyboardOpen, setKeyboardOpen] = useState(false);
-  useEffect(() => {
-    const vv = window.visualViewport;
-    if (!vv) return;
-    const onResize = () => setKeyboardOpen(window.innerHeight - vv.height > 120);
-    vv.addEventListener("resize", onResize);
-    onResize();
-    return () => vv.removeEventListener("resize", onResize);
-  }, []);
+  // detect it via the Capacitor Keyboard plugin on native, and the visual
+  // viewport shrinking on web (see useKeyboardOpen).
+  const keyboardOpen = useKeyboardOpen();
 
   // AI Mode is always a focused, full-screen chat, so hide the nav there
   // regardless of keyboard state too.
@@ -121,10 +115,15 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <PushPermissionPrompt />
 
       {/* Bottom navigation — pb-[env(safe-area-inset-bottom)] lifts the nav
-          content above the home-indicator zone. The nav bg fills the safe
-          area so the home-indicator area looks intentional, not like a gap. */}
+          content above the home-indicator zone. On the dashboard the nav has no
+          bar of its own: it sits with the quick-add pill on one feathered
+          frosted fade (no border, no hard edge). Every other page keeps the
+          solid bar, whose bg fills the safe area. */}
+      {!hideNav && location === "/" && (
+        <BottomFade height="calc(4rem + env(safe-area-inset-bottom) + 150px)" />
+      )}
       {!hideNav && (
-      <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-background/90 backdrop-blur-md pb-[env(safe-area-inset-bottom)]">
+      <nav className={`fixed bottom-0 left-0 right-0 z-50 pb-[env(safe-area-inset-bottom)] ${location === "/" ? "" : "border-t border-border bg-background/90 backdrop-blur-md"}`}>
         <div className="max-w-3xl mx-auto flex items-center justify-around h-16">
           {navItems.map((item) => {
             const isActive = location === item.path ||

@@ -13,7 +13,7 @@
  * user hasn't seen this version yet.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Wallet, Check, ArrowRight, Eye } from "lucide-react";
@@ -35,13 +35,14 @@ function markSeen() {
   try { localStorage.setItem(SEEN_KEY, WHATS_NEW_VERSION); } catch { /* ignore */ }
 }
 
-interface Slide {
+export interface WhatsNewSlide {
   icon: React.ReactNode;
   title: string;
   body: React.ReactNode;
+  media?: React.ReactNode; // optional video/image above the icon
 }
 
-const SLIDES: Slide[] = [
+const SLIDES: WhatsNewSlide[] = [
   {
     icon: <Wallet className="w-7 h-7 text-emerald-500" />,
     title: "New: tell friends how to pay you back",
@@ -66,10 +67,91 @@ const SLIDES: Slide[] = [
   },
 ];
 
+/**
+ * The shared "What's new" carousel: icon, title, body per slide, progress
+ * dots, Skip/Next, and a final action. Used by the one-time announcement
+ * below and by the dashboard's What's New tile (WhatsNewQuickAdd).
+ */
+export function WhatsNewDialog({
+  open, slides, onClose, laterLabel = "Maybe later", finishLabel, finishIcon, finishTrailingIcon, onFinish, onCloseAutoFocus,
+}: {
+  open: boolean;
+  slides: WhatsNewSlide[];
+  onClose: () => void;
+  laterLabel?: string;
+  finishLabel: string;
+  finishIcon?: React.ReactNode;          // before the label
+  finishTrailingIcon?: React.ReactNode;  // after the label (e.g. an arrow)
+  onFinish: () => void;
+  onCloseAutoFocus?: (e: Event) => void;
+}) {
+  const [step, setStep] = useState(0);
+  useEffect(() => { if (open) setStep(0); }, [open]);
+
+  const isLast = step === slides.length - 1;
+  const slide = slides[step];
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="max-w-sm" onCloseAutoFocus={onCloseAutoFocus}>
+        <div className="flex flex-col items-center text-center pt-2 pb-1">
+          {slide.media && <div className="w-full mb-4 overflow-hidden rounded-2xl">{slide.media}</div>}
+          <div className="w-14 h-14 rounded-2xl bg-muted/60 flex items-center justify-center mb-4">
+            {slide.icon}
+          </div>
+          <h2 className="text-lg font-semibold mb-2">{slide.title}</h2>
+          <p className="text-sm text-muted-foreground leading-relaxed px-1">
+            {slide.body}
+          </p>
+
+          {/* Progress dots */}
+          {slides.length > 1 && (
+            <div className="flex items-center gap-1.5 mt-5">
+              {slides.map((_, i) => (
+                <span
+                  key={i}
+                  className={`h-1.5 rounded-full transition-all ${
+                    i === step ? "w-5 bg-primary" : "w-1.5 bg-muted-foreground/30"
+                  }`}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Actions */}
+          <div className="flex items-center gap-2 mt-6 w-full">
+            {!isLast ? (
+              <>
+                <Button variant="ghost" className="flex-1" onClick={onClose}>
+                  Skip
+                </Button>
+                <Button className="flex-1" onClick={() => setStep((s) => s + 1)}>
+                  Next
+                  <ArrowRight className="w-4 h-4 ml-1.5" />
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button variant="ghost" className="flex-1" onClick={onClose}>
+                  {laterLabel}
+                </Button>
+                <Button className="flex-1" onClick={onFinish}>
+                  {finishIcon}
+                  {finishLabel}
+                  {finishTrailingIcon}
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function WhatsNewModal() {
   // Decide once on mount whether to show — avoids flicker if storage changes.
   const [open, setOpen] = useState(() => shouldShowWhatsNew());
-  const [step, setStep] = useState(0);
 
   const close = () => {
     markSeen();
@@ -86,61 +168,14 @@ export function WhatsNewModal() {
     }, 150);
   };
 
-  const isLast = step === SLIDES.length - 1;
-  const slide = SLIDES[step];
-
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) close(); }}>
-      <DialogContent className="max-w-sm">
-        <div className="flex flex-col items-center text-center pt-2 pb-1">
-          <div className="w-14 h-14 rounded-2xl bg-muted/60 flex items-center justify-center mb-4">
-            {slide.icon}
-          </div>
-          <h2 className="text-lg font-semibold mb-2">{slide.title}</h2>
-          <p className="text-sm text-muted-foreground leading-relaxed px-1">
-            {slide.body}
-          </p>
-
-          {/* Progress dots */}
-          {SLIDES.length > 1 && (
-            <div className="flex items-center gap-1.5 mt-5">
-              {SLIDES.map((_, i) => (
-                <span
-                  key={i}
-                  className={`h-1.5 rounded-full transition-all ${
-                    i === step ? "w-5 bg-primary" : "w-1.5 bg-muted-foreground/30"
-                  }`}
-                />
-              ))}
-            </div>
-          )}
-
-          {/* Actions */}
-          <div className="flex items-center gap-2 mt-6 w-full">
-            {!isLast ? (
-              <>
-                <Button variant="ghost" className="flex-1" onClick={close}>
-                  Skip
-                </Button>
-                <Button className="flex-1" onClick={() => setStep((s) => s + 1)}>
-                  Next
-                  <ArrowRight className="w-4 h-4 ml-1.5" />
-                </Button>
-              </>
-            ) : (
-              <>
-                <Button variant="ghost" className="flex-1" onClick={close}>
-                  Maybe later
-                </Button>
-                <Button className="flex-1" onClick={finishAndOpen}>
-                  <Check className="w-4 h-4 mr-1.5" />
-                  Set it up now
-                </Button>
-              </>
-            )}
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
+    <WhatsNewDialog
+      open={open}
+      slides={SLIDES}
+      onClose={close}
+      finishLabel="Set it up now"
+      finishIcon={<Check className="w-4 h-4 mr-1.5" />}
+      onFinish={finishAndOpen}
+    />
   );
 }
