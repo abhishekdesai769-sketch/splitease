@@ -44,6 +44,34 @@ import {
 const SUPPORTED_FX = ["USD", "EUR", "GBP", "AUD", "INR", "MXN", "JPY", "CHF", "NZD", "SGD", "HKD"];
 let _fxCache: { rates: Record<string, number>; fetchedAt: number } | null = null;
 
+/** AI / voice proposals carry the amount in the currency the user SAID. Store
+ *  it like the manual form does: amount in CAD, original kept as metadata.
+ *  Custom shares are scaled by the same rate (last share absorbs rounding) so
+ *  they still sum to the stored amount. Falls back to CAD if rates are down. */
+async function toStoredCurrency(amount: number, currency: string | undefined, splitAmounts?: Record<string, number>) {
+  const plain = { amount, currency: null as string | null, originalAmount: null as number | null, splitAmounts: splitAmounts ? JSON.stringify(splitAmounts) : null };
+  if (!currency || currency.toUpperCase() === "CAD") return plain;
+  try {
+    const rate = (await getExchangeRates())[currency.toUpperCase()];
+    if (!rate || rate <= 0) return plain;
+    const stored = Math.round((amount / rate) * 100) / 100;
+    let shares: string | null = null;
+    if (splitAmounts) {
+      const entries = Object.entries(splitAmounts);
+      const scaled: Record<string, number> = {};
+      let used = 0;
+      entries.forEach(([id, v], i) => {
+        const cad = i === entries.length - 1 ? Math.round((stored - used) * 100) / 100 : Math.round((v / rate) * 100) / 100;
+        scaled[id] = cad; used += cad;
+      });
+      shares = JSON.stringify(scaled);
+    }
+    return { amount: stored, currency: currency.toUpperCase(), originalAmount: amount, splitAmounts: shares };
+  } catch {
+    return plain;
+  }
+}
+
 async function getExchangeRates(): Promise<Record<string, number>> {
   const SIX_HOURS = 6 * 60 * 60 * 1000;
   if (_fxCache && Date.now() - _fxCache.fetchedAt < SIX_HOURS) return _fxCache.rates;
@@ -3648,9 +3676,10 @@ setInterval(loadAll,30000);
     }
 
     try {
+      const fx = await toStoredCurrency(Number(p.amount), p.currency, p.splitAmounts);
       const expense = await storage.createExpense({
         description: sanitize(p.description, 200),
-        amount: Number(p.amount),
+        amount: fx.amount,
         paidById: p.paidByUserId,
         splitAmongIds: p.splitAmongUserIds,
         groupId: p.groupId || null,
@@ -3658,9 +3687,9 @@ setInterval(loadAll,30000);
         addedById: user.id,
         isSettlement: false,
         notes: null,
-        splitAmounts: p.splitAmounts ? JSON.stringify(p.splitAmounts) : null,
-        currency: p.currency && p.currency !== "CAD" ? p.currency : null,
-        originalAmount: null,
+        splitAmounts: fx.splitAmounts,
+        currency: fx.currency,
+        originalAmount: fx.originalAmount,
       });
       res.json({ created: [expense], summary: resolved.summary });
 
@@ -4018,9 +4047,10 @@ setInterval(loadAll,30000);
     const failed: any[] = [];
     for (const p of proposals) {
       try {
+        const fx = await toStoredCurrency(Number(p.amount), p.currency, p.splitAmounts);
         const expense = await storage.createExpense({
           description: sanitize(p.description, 200),
-          amount: Number(p.amount),
+          amount: fx.amount,
           paidById: p.paidByUserId,
           splitAmongIds: p.splitAmongUserIds,
           groupId: p.groupId || null,
@@ -4028,9 +4058,9 @@ setInterval(loadAll,30000);
           addedById: guard.user.id,
           isSettlement: false,
           notes: null,
-          splitAmounts: p.splitAmounts ? JSON.stringify(p.splitAmounts) : null,
-          currency: p.currency && p.currency !== "CAD" ? p.currency : null,
-          originalAmount: null,
+          splitAmounts: fx.splitAmounts,
+          currency: fx.currency,
+          originalAmount: fx.originalAmount,
         });
         created.push(expense);
       } catch (err: any) {
