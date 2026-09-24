@@ -6,8 +6,9 @@ import { Button } from "@/components/ui/button";
 import { UsersRound, Users2, TrendingDown, TrendingUp, MailPlus, Check, X, Repeat, Trash2, Sparkles, ArrowRight } from "lucide-react";
 import { Link } from "wouter";
 import { useAuth } from "@/lib/auth";
-import { calculateGroupBalances, calculatePairwiseBalances, simplifyDebts } from "@/lib/simplify";
-import { displayBalance, isEffectivelySettled, AMOUNT_IN_CLASS, AMOUNT_OUT_CLASS } from "@/lib/balance-display";
+import { calculateGroupBalances } from "@/lib/simplify";
+import { computeMyNetBalances } from "@/lib/my-balances";
+import { displayBalance, AMOUNT_IN_CLASS, AMOUNT_OUT_CLASS } from "@/lib/balance-display";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { CelebrationBanner } from "@/components/CelebrationBanner";
@@ -142,46 +143,12 @@ export default function Dashboard() {
   const youAreOwed = rawAmount > 0 ? displayBalance(rawAmount) : 0;
 
   // Per-group settlements: use simplified or pairwise based on each group's setting
-  const mySettlements = (() => {
-    const allSettlements: { from: string; to: string; amount: number }[] = [];
-
-    // Group expenses — respect each group's simplifyDebts setting
-    for (const group of groups) {
-      const groupExpenses = expenses.filter(e => e.groupId === group.id);
-      if (groupExpenses.length === 0) continue;
-      const settlements = group.simplifyDebts
-        ? simplifyDebts(calculateGroupBalances(groupExpenses))
-        : calculatePairwiseBalances(groupExpenses);
-      allSettlements.push(...settlements);
-    }
-
-    // Direct (non-group) expenses — always pairwise
-    const directExpenses = expenses.filter(e => !e.groupId);
-    if (directExpenses.length > 0) {
-      allSettlements.push(...calculatePairwiseBalances(directExpenses));
-    }
-
-    // Merge all settlements with the same person into one net balance per person
-    const netMap = new Map<string, number>();
-    for (const s of allSettlements) {
-      if (s.from === user?.id) {
-        const cur = netMap.get(s.to) ?? 0;
-        netMap.set(s.to, cur - s.amount);      // you owe them → negative
-      } else if (s.to === user?.id) {
-        const cur = netMap.get(s.from) ?? 0;
-        netMap.set(s.from, cur + s.amount);    // they owe you → positive
-      }
-    }
-    const merged: { from: string; to: string; amount: number }[] = [];
-    for (const [otherId, net] of netMap) {
-      // Skip phantom-cent residuals from rounding so the dashboard's
-      // "Your Balances" doesn't list "You owe X $0.01" rows.
-      if (isEffectivelySettled(net)) continue;
-      if (net > 0) merged.push({ from: otherId, to: user!.id, amount: Math.round(net * 100) / 100 });
-      else merged.push({ from: user!.id, to: otherId, amount: Math.round(Math.abs(net) * 100) / 100 });
-    }
-    return merged;
-  })();
+  // (Shared with the quick-add pill + Voice Mode via computeMyNetBalances.)
+  const mySettlements = user?.id
+    ? computeMyNetBalances(expenses, groups, user.id).map((b) => b.amount > 0
+      ? { from: b.personId, to: user.id, amount: b.amount }
+      : { from: user.id, to: b.personId, amount: -b.amount })
+    : [];
 
   // Batch-fetch all group members in one request (avoids N+1)
   const { data: groupMembersData } = useQuery<SafeUser[]>({
