@@ -15,11 +15,13 @@
  *   6. On Confirm → POST /api/voice/commit (server resolves names→IDs and
  *      creates the expense through the SAME trusted path the manual form uses),
  *      then a "saved" bubble appears and the call continues.
+ *   7. Settling up (propose_settle_up) shows a payment card; Record payment →
+ *      POST /api/settle-up. Balance + history questions are answered by voice.
  *
  * The model never writes to the DB — it only proposes; the user taps Confirm.
  */
 
-import { Loader2, Check, Users, Pencil, Paperclip, X } from "lucide-react";
+import { Loader2, Check, Users, Pencil, Paperclip, X, ArrowRight } from "lucide-react";
 import { useVoiceCall, money, WEAK_LABEL } from "@/hooks/use-voice-call";
 
 // Same warm avatar palette + hash the rest of the app uses (dashboard/friends).
@@ -40,6 +42,7 @@ function shortDate(iso: string): string {
 export default function VoiceCall({ onClose }: { onClose: () => void }) {
   const {
     state, error, turns, proposal, setProposal, preview, setPreview, previewing, committing,
+    settle, setSettle, settling, commitSettle,
     editing, setEditing, edit, setEdit, ending, speaking, userSpeaking, uploadingReceipt,
     audioRef, bottomRef, meterRef, fileInputRef,
     hangUp, commit, beginEdit, saveEdit, onPickReceipt,
@@ -98,9 +101,9 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
           </div>
         )}
 
-        {state === "live" && turns.length === 0 && !proposal && !preview && !previewing && (
+        {state === "live" && turns.length === 0 && !proposal && !preview && !settle && !previewing && (
           <div className="h-full flex items-center justify-center text-center px-8">
-            <p className="text-muted-foreground text-lg">Tell me the bill — like you'd tell a friend. 🎙️</p>
+            <p className="text-muted-foreground text-lg">Tell me the bill, a payment, or ask who owes what. 🎙️</p>
           </div>
         )}
 
@@ -200,7 +203,7 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
                     )}
                   </div>
                   <p className="font-serif text-2xl text-foreground mt-1 capitalize leading-tight">{preview.description}</p>
-                  <p className="text-xs text-muted-foreground mt-1">{shortDate(preview.date)} · you paid · {preview.splitLabel}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{shortDate(preview.date)} · {preview.paidByYou === false && preview.paidByName ? `${preview.paidByName.split(" ")[0]} paid` : "you paid"} · {preview.splitLabel}</p>
                 </>
               )}
 
@@ -218,7 +221,7 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
                     <span className="h-8 w-8 rounded-full text-white text-[11px] font-medium flex items-center justify-center shrink-0" style={{ backgroundColor: warmAvatar(p.id) }}>{initials(p.name)}</span>
                     <div className="flex-1 min-w-0">
                       <p className="text-[14px] text-foreground truncate">{p.name}{p.isYou && <span className="text-muted-foreground text-xs"> you</span>}</p>
-                      <p className="text-xs text-muted-foreground">{p.isYou ? `paid ${money(preview.amount, preview.currency)}` : "their share"}</p>
+                      <p className="text-xs text-muted-foreground">{p.id === (preview.paidById ?? (p.isYou ? p.id : "")) ? `paid ${money(preview.amount, preview.currency)}` : p.isYou ? "your share" : "their share"}</p>
                     </div>
                     <span className="font-mono tabular-nums text-[13.5px] text-foreground shrink-0">{money(p.share, preview.currency)}</span>
                   </div>
@@ -229,6 +232,11 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
               {!editing && preview.youGetBack > 0 && (
                 <div className="mt-3 rounded-xl bg-accent/60 px-3.5 py-2.5 text-[13.5px] text-foreground">
                   You get back <span className="font-mono tabular-nums font-medium text-accent-foreground">{money(preview.youGetBack, preview.currency)}</span>
+                </div>
+              )}
+              {!editing && (preview.youOwe ?? 0) > 0 && (
+                <div className="mt-3 rounded-xl bg-muted px-3.5 py-2.5 text-[13.5px] text-foreground">
+                  You owe {preview.paidByName?.split(" ")[0] ?? "them"} <span className="font-mono tabular-nums font-medium">{money(preview.youOwe!, preview.currency)}</span>
                 </div>
               )}
 
@@ -257,6 +265,46 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
                   >{committing ? <Loader2 className="w-5 h-5 animate-spin" /> : <><Check className="w-[18px] h-[18px]" />Confirm split</>}</button>
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* settle-up card */}
+        {settle && (
+          <div className="flex justify-start">
+            <div className="w-[92%] max-w-sm rounded-[24px] border border-border bg-card p-5" data-testid="voice-settle-card">
+              <p className="text-[11px] font-mono uppercase tracking-[0.14em] text-muted-foreground mb-2">Record payment</p>
+              <div className="flex items-end justify-between gap-3">
+                <span className="font-mono tabular-nums text-foreground leading-none" style={{ fontSize: "2.5rem" }}>{money(settle.amount, settle.currency)}</span>
+                {settle.groupName && (
+                  <span className="mb-1 inline-flex items-center gap-1 rounded-full bg-accent px-3 py-1 text-xs text-accent-foreground">
+                    <Users className="w-3.5 h-3.5" />{settle.groupName}
+                  </span>
+                )}
+              </div>
+              <div className="mt-3 flex items-center gap-2 text-[15px] text-foreground">
+                <span className="h-8 w-8 rounded-full text-white text-[11px] font-medium flex items-center justify-center shrink-0" style={{ backgroundColor: warmAvatar(settle.friendIsPayer ? settle.personId : "you") }}>{settle.friendIsPayer ? initials(settle.name) : "YOU"}</span>
+                <ArrowRight className="w-4 h-4 text-muted-foreground shrink-0" />
+                <span className="h-8 w-8 rounded-full text-white text-[11px] font-medium flex items-center justify-center shrink-0" style={{ backgroundColor: warmAvatar(settle.friendIsPayer ? "you" : settle.personId) }}>{settle.friendIsPayer ? "YOU" : initials(settle.name)}</span>
+                <span className="truncate">{settle.friendIsPayer ? `${settle.name} paid you` : `You paid ${settle.name}`}</span>
+              </div>
+              <div className="mt-3 rounded-xl bg-accent/60 px-3.5 py-2.5 text-[13.5px] text-foreground">
+                {Math.abs(settle.balanceAfter) < 0.01
+                  ? "This settles you up."
+                  : <>After this, {settle.balanceAfter > 0 ? `${settle.name.split(" ")[0]} owes you` : `you owe ${settle.name.split(" ")[0]}`} <span className="font-mono tabular-nums font-medium">{money(Math.abs(settle.balanceAfter), settle.currency)}</span></>}
+              </div>
+              <div className="flex gap-3 mt-4">
+                <button
+                  disabled={settling}
+                  onClick={() => setSettle(null)}
+                  className="flex-1 h-12 rounded-full border border-border bg-card text-foreground font-medium disabled:opacity-50"
+                >Not quite</button>
+                <button
+                  disabled={settling}
+                  onClick={commitSettle}
+                  className="flex-[1.35] h-12 rounded-full bg-accent-foreground text-white font-medium flex items-center justify-center gap-1.5 disabled:opacity-70"
+                >{settling ? <Loader2 className="w-5 h-5 animate-spin" /> : <><Check className="w-[18px] h-[18px]" />Record payment</>}</button>
+              </div>
             </div>
           </div>
         )}
