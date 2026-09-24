@@ -1,8 +1,10 @@
 // server/voice.ts — Talk-back voice mode (OpenAI Realtime).
 //
 // Mints a short-lived ephemeral session token (client_secrets) scoped to
-// bill-splitting, with the user's friends + groups injected as context and a
-// `propose_split` tool the model calls once it has enough to act. The real
+// bill-splitting + balance questions, with the user's friends + groups injected
+// as context, a `propose_split` tool the model calls once it has enough to act,
+// and a `get_balances` tool the CLIENT answers from the same balance math the
+// dashboard uses (so "what do I owe?" is always live, never stale). The real
 // OPENAI_API_KEY NEVER leaves the server; the client connects to the Realtime
 // API using the `ek_…` token this returns.
 //
@@ -31,7 +33,7 @@ function buildInstructions(ctx: UserContext): string {
     : "(no groups yet)";
   const today = new Date().toISOString().slice(0, 10);
   return [
-    `You are Spliiit's voice assistant. You ONLY help ${ctx.userName} split bills with friends — nothing else.`,
+    `You are Spliiit's voice assistant. You help ${ctx.userName} with two things: splitting bills with friends, and answering questions about their balances (who owes whom, how much).`,
     `Talk naturally and briefly, like a friend helping out. One short sentence at a time.`,
     `Be precise and practical. NEVER fill silence — if the user pauses or hasn't said anything new, stay quiet and wait. Do not say things like "I'm here whenever you're ready." Never repeat a line you already said. Only speak when you have a real question or something useful to say.`,
     `The current user (the person talking) is "${ctx.userName}". Today is ${today}.`,
@@ -47,7 +49,8 @@ function buildInstructions(ctx: UserContext): string {
     `If something essential is missing or a name is ambiguous, ask ONE short question — never guess amounts or names.`,
     `Call propose_split with your best full understanding. If the user then CHANGES anything (amount, people, who pays what, date, description), call propose_split AGAIN with the updated details — don't just repeat that it's ready.`,
     `After I confirm the split was saved, say one short friendly line and ask if there's anything else. If they say no / that's all / thanks, FIRST say a short warm goodbye out loud (like "Sounds good — have a great day!"), and THEN call end_call. Always say the goodbye before ending; never hang up silently.`,
-    `If the user asks anything unrelated to splitting a bill, say in one sentence you can only help with splitting bills.`,
+    `BALANCES: when the user asks what they owe, who owes them, their balance with someone, or what's outstanding in a group, call get_balances FIRST and answer ONLY from what it returns — never guess or reuse an earlier number (balances change as splits are saved). Answer the exact question in one or two short sentences with the amounts: overall → say both totals; a person → that one person; a group → just that group. If there are several people, name the top few and the total rather than reading a long list. If they're all settled, say so. You can't settle up or record payments by voice — if asked, say they can do that from the friend's page.`,
+    `If the user asks anything unrelated to splitting bills or their balances, say in one sentence you can only help with splitting bills and balances.`,
   ].join(" ");
 }
 
@@ -91,6 +94,13 @@ const TOOLS = [
       },
       required: ["amount", "paidByName", "splitAmongNames", "splitType"],
     },
+  },
+  {
+    type: "function",
+    name: "get_balances",
+    description:
+      "Look up the user's CURRENT balances: totals they owe and are owed, each person's net balance, and a per-group breakdown. Call this for any question about what's owed — never answer balances from memory.",
+    parameters: { type: "object", properties: {} },
   },
   {
     type: "function",

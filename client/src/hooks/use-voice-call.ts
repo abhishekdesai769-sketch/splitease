@@ -20,6 +20,9 @@ import { useEffect, useRef, useState, useCallback, type ChangeEvent } from "reac
 import { useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { isIosNative } from "@/lib/iap";
+import { useAuth } from "@/lib/auth";
+import { computeMyNetBalances } from "@/lib/my-balances";
+import type { Expense, Group, SafeUser } from "@shared/schema";
 
 const IOS_QS = isIosNative ? "?platform=ios" : "";
 
@@ -61,6 +64,9 @@ export function money(v: number, currency: string): string {
 
 export function useVoiceCall({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient();
+  const { user } = useAuth();
+  const userRef = useRef(user);
+  userRef.current = user;
   const [state, setState] = useState<CallState>("connecting");
   const [error, setError] = useState<string | null>(null);
   const [turns, setTurns] = useState<Turn[]>([]);
@@ -202,6 +208,49 @@ export function useVoiceCall({ onClose }: { onClose: () => void }) {
       setPreviewing(false);
     }
   }, [addSystemTurn, answerTool]);
+
+  // ── get_balances: answer "what do I owe?" from the SAME math the dashboard
+  // and quick-add pill use (computeMyNetBalances), fetched fresh so a split
+  // saved earlier in this call is already counted. ─────────────────────────
+  const answerBalances = useCallback(async (callId: string | undefined) => {
+    const me = userRef.current;
+    try {
+      if (!me?.id) throw new Error("not signed in");
+      const fresh = <T,>(key: string) => qc.fetchQuery<T>({ queryKey: [key], staleTime: 0 });
+      const [expenses, groups, friends, members] = await Promise.all([
+        fresh<Expense[]>("/api/expenses"),
+        fresh<Group[]>("/api/groups"),
+        fresh<SafeUser[]>("/api/friends"),
+        fresh<SafeUser[]>("/api/members/all").catch(() => [] as SafeUser[]),
+      ]);
+      const names = new Map<string, string>();
+      for (const p of [...members, ...friends]) names.set(p.id, p.name);
+      const describe = (b: { personId: string; amount: number }) => ({
+        name: names.get(b.personId) || "someone",
+        direction: b.amount > 0 ? "owes_you" : "you_owe",
+        amount: Math.abs(b.amount),
+      });
+
+      const people = computeMyNetBalances(expenses, groups, me.id).sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount));
+      const byGroup = groups
+        .map((g) => ({ group: g.name, people: computeMyNetBalances(expenses.filter((e) => e.groupId === g.id), [g], me.id).map(describe) }))
+        .filter((g) => g.people.length > 0);
+      const direct = computeMyNetBalances(expenses.filter((e) => !e.groupId), [], me.id).map(describe);
+      const round2 = (n: number) => Math.round(n * 100) / 100;
+
+      answerTool(callId, {
+        currency: me.defaultCurrency || "CAD",
+        total_you_are_owed: round2(people.filter((b) => b.amount > 0).reduce((s, b) => s + b.amount, 0)),
+        total_you_owe: round2(people.filter((b) => b.amount < 0).reduce((s, b) => s - b.amount, 0)),
+        by_person: people.map(describe),          // net across all groups + direct splits
+        by_group: byGroup,                        // just what's outstanding inside each group
+        direct_splits: direct,                    // non-group splits with friends
+        all_settled: people.length === 0,
+      });
+    } catch {
+      answerTool(callId, { error: "balances_unavailable", instruction: "Say in one short line you couldn't load their balances right now and they can check the dashboard." });
+    }
+  }, [qc, answerTool]);
 
   // ── Commit a proposal via the server (reuses trusted createExpense) ────────
   const commit = useCallback(async (args: ProposalArgs) => {
@@ -353,6 +402,10 @@ export function useVoiceCall({ onClose }: { onClose: () => void }) {
           window.setTimeout(() => hangUp(), 4000);
           break;
         }
+        if (msg.name === "get_balances") {
+          answerBalances(msg.call_id);
+          break;
+        }
         try {
           const args = JSON.parse(msg.arguments || "{}") as ProposalArgs;
           setProposal(args);
@@ -361,7 +414,7 @@ export function useVoiceCall({ onClose }: { onClose: () => void }) {
         break;
       }
     }
-  }, [upsertTurn, loadPreview, hangUp, resetIdle]);
+  }, [upsertTurn, loadPreview, answerBalances, hangUp, resetIdle]);
 
   // Live mic-level meter: drives the footer bars via a CSS var, no re-renders.
   const attachMeter = useCallback((stream: MediaStream) => {
