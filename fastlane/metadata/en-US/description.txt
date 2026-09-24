@@ -1,36 +1,28 @@
-Spliiit makes splitting expenses with friends and groups effortless.
+Spliiit is your AI bill-splitting assistant. Tell it what happened — type it, say it, or snap the receipt — and it works out who owes what. No calculator. No tapping through forms.
 
-Whether you're sharing rent, splitting a dinner bill, tracking road trip costs, or managing household expenses, Spliiit keeps everyone on the same page.
+JUST TELL IT
+• Type it like you'd text a friend: "dinner 120 with Dev and Sara" becomes a split, right there
+• Tap the mic to dictate, or start a talk-back voice call and sort it out out loud
+• Works for groups, "someone else paid" and settle-ups
 
-KEY FEATURES:
+SNAP THE RECEIPT
+• AI reads every item on the receipt — tap who had what, and Spliiit does the math
+• Try 3 AI scans free; unlimited with Premium
 
-Groups & Friends
-Create groups for trips, households, or events. Add friends for 1-on-1 expense tracking. Invite anyone via email.
+IT CHASES THE MONEY BACK
+• Auto reminders: Spliiit emails the people who owe you, on schedule, in the tone you pick — friendly, firm or funny
+• No more awkward "hey, about that dinner…" texts
 
-Smart Expense Splitting
-Split equally or with custom amounts. Track who paid what and who owes whom. Simplified debt calculations minimize the number of payments needed.
+THE BASICS ARE FREE
+• Unlimited groups, friends and expenses
+• Split equally or set custom amounts per person
+• See who owes who across every group and friend, always up to date
+• Attach receipt photos to any expense
+• Dark mode and light mode
 
-Settle Up
-See exactly what you owe and what you're owed. Settle up with one tap. Keep a clear record of all settlements.
+PREMIUM
+Unlimited AI receipt scans, AI Mode, auto reminders, recurring expenses (set rent or groceries once) and multi-currency (log in USD, EUR, GBP and more, converted to your home currency).
 
-Import from Splitwise
-Moving from Splitwise? Import your CSV export directly. All members, expenses, and balances transfer seamlessly.
-
-Receipt Scanner
-Snap a photo of your receipt to attach it to any expense. Keep a visual record of what you spent.
-
-Export Your Data
-Export expenses as CSV via email. Works with Excel, Google Sheets, or any spreadsheet app.
-
-Email Notifications
-Get notified when someone adds an expense involving you, invites you to a group, or settles up.
-
-Privacy First
-Your data stays yours. We don't sell or share your information. Passwords are securely hashed. All connections are encrypted.
-
-Spliiit Premium is an auto-renewable subscription (monthly or yearly). Payment is charged to your Apple ID at confirmation of purchase and renews automatically unless cancelled at least 24 hours before the end of the period. Manage or cancel anytime in your App Store account settings.
+CA$3.99/month or CA$34.99/year. Payment is charged to your Apple ID. Subscriptions renew automatically unless cancelled at least 24 hours before the end of the current period. Manage or cancel anytime in your App Store account settings.
 
 Terms of Use (EULA): https://www.apple.com/legal/internet-services/itunes/dev/stdeula/
-Privacy Policy: https://spliiit.ca/privacy
-
-Built by Klarity IT Corp in Canada.

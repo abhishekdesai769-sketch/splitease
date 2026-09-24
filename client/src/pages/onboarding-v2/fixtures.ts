@@ -245,6 +245,6 @@ export const PAYWALL_PRIME_BY_PERSONA: Record<Persona, {
 // Premium pricing (CAD). Display-only in the preview.
 export const PREMIUM_PRICE = {
   monthly: "CA$3.99",
-  yearly: "CA$29.99",
+  yearly: "CA$34.99",
   trialDays: 30,
 };
