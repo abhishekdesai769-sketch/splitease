@@ -61,7 +61,7 @@ Set all of these in Render → Spliiit service → Environment → Add Environme
 |---|---|---|
 | `ADMIN_EMAIL` | hardcoded fallback | Email of the super-admin user. Override on Render to a less-discoverable address. |
 | `CAMPAIGN_1K_ENABLED` | unset | Set to `true` only when you're ready to fire the 1k milestone campaign. |
-| `VITE_ENABLE_ONBOARDING_V2` | unset | Set to `true` to re-enable onboarding-v2 flow (currently OFF — hurt sign-up conversion). |
+| `VITE_ENABLE_ONBOARDING_V2` | unset | **No longer read.** All onboarding is unhooked (Sep 2026) while it's rebuilt from PostHog data — new users go straight to the dashboard, currency is auto-set from the device. The old screens stay in `pages/onboarding-v2/`, `pages/first-run.tsx` for reference. |
 
 ---
 

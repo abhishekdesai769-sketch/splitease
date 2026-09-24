@@ -1,14 +1,15 @@
 import { Switch, Route, Router, Redirect } from "wouter";
 import { useHashLocation } from "wouter/use-hash-location";
-import { useEffect, useState } from "react";
-import { queryClient } from "./lib/queryClient";
+import { useEffect, useRef, useState } from "react";
+import { queryClient, apiRequest } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/lib/theme";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { useTheme } from "@/lib/theme";
-import { trackPageView } from "@/lib/analytics";
+import { trackPageView, track } from "@/lib/analytics";
+import { detectCurrency } from "@/lib/detect-currency";
 import { recordReferralClick, matchReferralClick, isNativeApp } from "@/lib/referralFingerprint";
 import { Layout } from "@/components/Layout";
 import Dashboard from "@/pages/dashboard";
@@ -24,9 +25,10 @@ import NotFound from "@/pages/not-found";
 import Import from "@/pages/import";
 import Upgrade from "@/pages/upgrade";
 import AiMode from "@/pages/ai-mode";
+// Only a fallback now — shown if the silent currency auto-set fails (see AppRouter).
+// Onboarding is intentionally off while it's rebuilt from PostHog data; the
+// first-run wizard (pages/first-run) and onboarding-v2 are kept but unhooked.
 import OnboardingPreferences from "@/pages/onboarding";
-import FirstRunWizard from "@/pages/first-run";
-import OnboardingV2 from "@/pages/onboarding-v2";
 import InvitePage from "@/pages/invite";
 import { ReviewPromptSheet } from "@/components/ReviewPromptSheet";
 import { ForceUpdateGate } from "@/components/ForceUpdateGate";
@@ -34,20 +36,27 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { isInTWA } from "@/lib/platform";
 import { initDeepLinkHandling } from "@/lib/deeplink";
 
-// Cutover flag for onboarding v2. OFF by default — set VITE_ENABLE_ONBOARDING_V2
-// to "true" in the Render environment to turn the new onboarding on for new
-// users. While OFF, behaviour is exactly as before (new users get the old
-// FirstRunWizard). Build-time flag (Vite), so flipping it triggers a rebuild.
-const ENABLE_ONBOARDING_V2 =
-  import.meta.env.VITE_ENABLE_ONBOARDING_V2 === "true";
-
-// localStorage key that records the onboarding demo has been shown on this
-// device. Set once, on first install — survives logout (logout never clears
-// localStorage), so the demo shows exactly ONCE per install and never again.
-const ONBOARDING_SEEN_KEY = "spliiit_seen_onboarding";
+function BootLoader() {
+  return (
+    <div className="min-h-screen bg-background flex items-center justify-center">
+      <div className="flex flex-col items-center gap-3">
+        <svg width="36" height="36" viewBox="0 0 32 32" fill="none" aria-label="Loading" className="animate-pulse">
+          <rect width="32" height="32" rx="8" fill="hsl(30 6% 15%)" fillOpacity="0.06" />
+          <circle cx="10" cy="8.8" r="1.5" fill="hsl(30 6% 15%)" />
+          <path d="M10 13.6V23.8" stroke="hsl(30 6% 15%)" strokeWidth="3" strokeLinecap="round" />
+          <circle cx="16" cy="8.8" r="1.5" fill="hsl(30 6% 15%)" />
+          <path d="M16 13.6V23.8" stroke="hsl(30 6% 15%)" strokeWidth="3" strokeLinecap="round" />
+          <circle cx="22" cy="8.8" r="1.5" fill="hsl(30 6% 15%)" />
+          <path d="M22 13.6V23.8" stroke="hsl(30 6% 15%)" strokeWidth="3" strokeLinecap="round" />
+        </svg>
+        <span className="text-sm text-muted-foreground">Loading...</span>
+      </div>
+    </div>
+  );
+}
 
 function AppRouter() {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, refreshUser } = useAuth();
   const { syncFromDb } = useTheme();
   // Subscribe to hash changes so this component re-renders on navigation.
   // The body below reads window.location.hash directly, but without this
@@ -55,25 +64,28 @@ function AppRouter() {
   // the invite page sets hash="#/" to send a logged-out user to AuthPage).
   useHashLocation();
 
-  // Whether to show the onboarding-v2 demo. DECIDED ONCE, on first mount —
-  // a useState initializer, never re-read from localStorage on later renders.
-  // That matters: OnboardingV2 forces light mode, which re-renders AppRouter;
-  // if we re-read the (now-set) flag we'd boot the user out of the demo
-  // mid-flow. It only flips false via the two setStates below.
-  const [showOnboardingDemo, setShowOnboardingDemo] = useState(
-    () => ENABLE_ONBOARDING_V2 && !localStorage.getItem(ONBOARDING_SEEN_KEY),
-  );
-
-  // The moment we know a user is logged in, they're an established user —
-  // mark onboarding as seen and never show the demo this session. This is
-  // what stops an EXISTING user seeing the demo when they later log out:
-  // their first logged-in app-open after this ships sets the flag for good.
+  // No onboarding screens: a new user's home currency (locked server-side once
+  // set) is picked silently from the device — see lib/detect-currency. Tried
+  // once per session; if the save fails, the old currency picker is shown as a
+  // fallback so nobody gets stuck on the loader.
+  const currencyAutoSetTried = useRef(false);
+  const [currencyAutoSetFailed, setCurrencyAutoSetFailed] = useState(false);
   useEffect(() => {
-    if (user) {
-      try { localStorage.setItem(ONBOARDING_SEEN_KEY, "true"); } catch { /* storage off */ }
-      setShowOnboardingDemo(false);
-    }
-  }, [user]);
+    if (!user || user.defaultCurrency || currencyAutoSetTried.current) return;
+    currencyAutoSetTried.current = true;
+    const guess = detectCurrency();
+    apiRequest("POST", "/api/user/currency", { currency: guess.currency })
+      .then(() => {
+        track("currency_auto_set", { ...guess });
+        return refreshUser();
+      })
+      .catch(async () => {
+        // A 403 means it was already locked and our user object is stale.
+        await refreshUser().catch(() => {});
+        setCurrencyAutoSetFailed(true);
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, user?.defaultCurrency]);
 
   // Capture UTM params and referral codes from URL on first load.
   // Both survive the OTP step because they're stored in localStorage.
@@ -104,7 +116,7 @@ function AppRouter() {
   }, [user?.id]);
 
   // Pending invite redirect — if a logged-out user clicked an invite link and then signed up,
-  // we stashed the code in localStorage. Once they're authenticated AND past onboarding,
+  // we stashed the code in localStorage. Once they're authenticated AND their currency is set,
   // bounce them back to the invite page so they can complete the join.
   useEffect(() => {
     if (!user || !user.defaultCurrency) return;
@@ -117,32 +129,8 @@ function AppRouter() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, user?.defaultCurrency]);
 
-  // Hidden preview route for onboarding v2 — bypasses all auth/onboarding gates
-  // so we can dogfood the new flow without affecting production users. Reachable
-  // at #/onboarding-v2-preview from any state (logged in, logged out, anything).
-  // Once the new flow is ready for real users, Wave 2 wires it as the real
-  // onboarding behind a feature flag — this preview route stays for QA.
-  if (window.location.hash.startsWith("#/onboarding-v2-preview")) {
-    return <OnboardingV2 />;
-  }
-
   if (isLoading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <svg width="36" height="36" viewBox="0 0 32 32" fill="none" aria-label="Loading" className="animate-pulse">
-            <rect width="32" height="32" rx="8" fill="hsl(30 6% 15%)" fillOpacity="0.06" />
-            <circle cx="10" cy="8.8" r="1.5" fill="hsl(30 6% 15%)" />
-            <path d="M10 13.6V23.8" stroke="hsl(30 6% 15%)" strokeWidth="3" strokeLinecap="round" />
-            <circle cx="16" cy="8.8" r="1.5" fill="hsl(30 6% 15%)" />
-            <path d="M16 13.6V23.8" stroke="hsl(30 6% 15%)" strokeWidth="3" strokeLinecap="round" />
-            <circle cx="22" cy="8.8" r="1.5" fill="hsl(30 6% 15%)" />
-            <path d="M22 13.6V23.8" stroke="hsl(30 6% 15%)" strokeWidth="3" strokeLinecap="round" />
-          </svg>
-          <span className="text-sm text-muted-foreground">Loading...</span>
-        </div>
-      </div>
-    );
+    return <BootLoader />;
   }
 
   if (!user) {
@@ -156,41 +144,13 @@ function AppRouter() {
     if (hash.startsWith("#/invite/")) {
       return <InvitePage />;
     }
-    // First-ever open of the app on this device → show the onboarding demo.
-    // showOnboardingDemo was decided once at mount; OnboardingV2 also writes
-    // ONBOARDING_SEEN_KEY on mount so a future launch won't re-show it. When
-    // the demo finishes, onFinish flips showOnboardingDemo false → AuthPage.
-    // reset-password / invite links above are checked first so a deep link is
-    // never interrupted by onboarding.
-    if (showOnboardingDemo) {
-      return (
-        <OnboardingV2
-          markSeenOnMount
-          onFinish={() => setShowOnboardingDemo(false)}
-        />
-      );
-    }
     return <LandingGate />;
   }
 
-  // Onboarding gate — show once for new users (and legacy users with no currency set)
+  // New users (and legacy users with no currency) wait a beat while the
+  // currency is auto-set above; the picker only appears if that failed.
   if (!user.defaultCurrency) {
-    return <OnboardingPreferences />;
-  }
-
-  // First-run wizard gate — shown once between onboarding and dashboard, drives the
-  // empty-app → real-group activation. Existing users were backfilled on startup
-  // migration so they skip this. Wizard itself POSTs /api/user/first-run + refreshes
-  // user, which falls back through to the routed Layout below.
-  //
-  // Exception: users who signed up via an invite link already have a "first group"
-  // waiting for them on the next screen — showing them the "Create your first group"
-  // wizard would be redundant and confusing. Skip the wizard; the invite acceptance
-  // endpoint will flip firstRunCompletedAt for them server-side. The pending-invite
-  // useEffect above is about to redirect them to #/invite/<code> anyway.
-  const hasPendingInvite = !!localStorage.getItem("spliiit_pending_invite");
-  if (!user.firstRunCompletedAt && !hasPendingInvite) {
-    return <FirstRunWizard />;
+    return currencyAutoSetFailed ? <OnboardingPreferences /> : <BootLoader />;
   }
 
   return (
