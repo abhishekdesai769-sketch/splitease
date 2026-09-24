@@ -12,6 +12,9 @@
  *   5. When it has enough, it calls propose_split → server preview (Jev-checked).
  *   6. commit() → POST /api/voice/commit (server resolves names→IDs and creates
  *      the expense through the SAME trusted path the manual form uses).
+ *   7. propose_settle_up → a payment card built here from live balances;
+ *      commitSettle() → POST /api/settle-up (same as the friend page + pill).
+ *   8. get_balances / get_recent_expenses → answered here from fresh data.
  *
  * The model never writes to the DB — it only proposes; the user taps to save.
  */
@@ -22,6 +25,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { isIosNative } from "@/lib/iap";
 import { useAuth } from "@/lib/auth";
 import { computeMyNetBalances } from "@/lib/my-balances";
+import { track } from "@/lib/analytics";
 import type { Expense, Group, SafeUser } from "@shared/schema";
 
 const IOS_QS = isIosNative ? "?platform=ios" : "";
@@ -50,7 +54,35 @@ export interface PreviewCard {
   amount: number; currency: string; description: string; date: string;
   groupId: string | null; groupName: string | null; splitLabel: string;
   perPerson: number; people: ResolvedPerson[]; youGetBack: number;
+  paidById?: string; paidByName?: string; paidByYou?: boolean; youOwe?: number;
   verdict?: "high" | "check"; confidence?: number; weakField?: string | null;
+}
+
+export interface SettleArgs { personName: string; amount?: number; direction?: "i_paid_them" | "they_paid_me"; }
+/** A payment ready to record (settle up), built from live balances. */
+export interface SettleCard {
+  personId: string; name: string; amount: number; currency: string;
+  friendIsPayer: boolean;              // true = they paid you
+  groupId: string | null; groupName: string | null;
+  balanceBefore: number;               // > 0 they owe you, < 0 you owe them
+  balanceAfter: number;
+}
+
+const normName = (s: string) => s.trim().toLowerCase();
+/** Spoken name → the people it could be (full name, then first name, then prefix). */
+function matchPeople(people: Array<{ id: string; name: string }>, raw: string): Array<{ id: string; name: string }> {
+  const n = normName(raw);
+  if (!n) return [];
+  const first = (s: string) => normName(s).split(/\s+/)[0] || "";
+  for (const test of [
+    (p: { name: string }) => normName(p.name) === n,
+    (p: { name: string }) => first(p.name) === n,
+    (p: { name: string }) => normName(p.name).startsWith(n) || first(p.name).startsWith(n),
+  ]) {
+    const hits = people.filter(test);
+    if (hits.length) return hits;
+  }
+  return [];
 }
 
 export const WEAK_LABEL: Record<string, string> = {
@@ -71,6 +103,8 @@ export function useVoiceCall({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [proposal, setProposal] = useState<ProposalArgs | null>(null);
+  const [settle, setSettle] = useState<SettleCard | null>(null);
+  const [settling, setSettling] = useState(false);
   const [preview, setPreview] = useState<PreviewCard | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [committing, setCommitting] = useState(false);
@@ -166,6 +200,7 @@ export function useVoiceCall({ onClose }: { onClose: () => void }) {
   const loadPreview = useCallback(async (args: ProposalArgs, callId?: string) => {
     setPreviewing(true);
     setPreview(null);
+    setSettle(null);
     try {
       const r = await apiRequest("POST", `/api/voice/preview${IOS_QS}`, { ...args, transcript: transcriptRef.current, callId: callIdRef.current });
       const card = await r.json() as PreviewCard;
@@ -212,19 +247,25 @@ export function useVoiceCall({ onClose }: { onClose: () => void }) {
   // ── get_balances: answer "what do I owe?" from the SAME math the dashboard
   // and quick-add pill use (computeMyNetBalances), fetched fresh so a split
   // saved earlier in this call is already counted. ─────────────────────────
-  const answerBalances = useCallback(async (callId: string | undefined) => {
+  const loadWorld = useCallback(async () => {
     const me = userRef.current;
+    if (!me?.id) throw new Error("not signed in");
+    const fresh = <T,>(key: string) => qc.fetchQuery<T>({ queryKey: [key], staleTime: 0 });
+    const [expenses, groups, friends, members] = await Promise.all([
+      fresh<Expense[]>("/api/expenses"),
+      fresh<Group[]>("/api/groups"),
+      fresh<SafeUser[]>("/api/friends"),
+      fresh<SafeUser[]>("/api/members/all").catch(() => [] as SafeUser[]),
+    ]);
+    const names = new Map<string, string>();
+    for (const p of [...members, ...friends]) if (p.id !== me.id) names.set(p.id, p.name);
+    const people = Array.from(names, ([id, name]) => ({ id, name }));
+    return { me, expenses, groups, friends, names, people };
+  }, [qc]);
+
+  const answerBalances = useCallback(async (callId: string | undefined) => {
     try {
-      if (!me?.id) throw new Error("not signed in");
-      const fresh = <T,>(key: string) => qc.fetchQuery<T>({ queryKey: [key], staleTime: 0 });
-      const [expenses, groups, friends, members] = await Promise.all([
-        fresh<Expense[]>("/api/expenses"),
-        fresh<Group[]>("/api/groups"),
-        fresh<SafeUser[]>("/api/friends"),
-        fresh<SafeUser[]>("/api/members/all").catch(() => [] as SafeUser[]),
-      ]);
-      const names = new Map<string, string>();
-      for (const p of [...members, ...friends]) names.set(p.id, p.name);
+      const { me, expenses, groups, names } = await loadWorld();
       const describe = (b: { personId: string; amount: number }) => ({
         name: names.get(b.personId) || "someone",
         direction: b.amount > 0 ? "owes_you" : "you_owe",
@@ -250,7 +291,156 @@ export function useVoiceCall({ onClose }: { onClose: () => void }) {
     } catch {
       answerTool(callId, { error: "balances_unavailable", instruction: "Say in one short line you couldn't load their balances right now and they can check the dashboard." });
     }
-  }, [qc, answerTool]);
+  }, [loadWorld, answerTool]);
+
+  // ── propose_settle_up: build a payment card from live balances ────────────
+  const answerSettle = useCallback(async (callId: string | undefined, args: SettleArgs) => {
+    try {
+      const { me, expenses, groups, friends, people } = await loadWorld();
+      const hits = matchPeople(people, args.personName || "");
+      if (hits.length === 0) {
+        answerTool(callId, { error: "unknown_person", instruction: `Say you couldn't find anyone called ${args.personName} and ask who they meant.` });
+        return;
+      }
+      if (hits.length > 1) {
+        answerTool(callId, { error: "ambiguous_person", options: hits.map((h) => h.name), instruction: "Ask which of these people they mean, naming them." });
+        return;
+      }
+      const person = hits[0];
+      const round2 = (n: number) => Math.round(n * 100) / 100;
+      const balWith = (exps: Expense[], gs: Group[]) =>
+        computeMyNetBalances(exps, gs, me.id).find((b) => b.personId === person.id)?.amount ?? 0;
+      const bal = balWith(expenses, groups);
+
+      // Friends settle directly (like the friend page). Someone you only share
+      // a group with settles inside that group — the one with an open balance.
+      let groupId: string | null = null;
+      let groupName: string | null = null;
+      if (!friends.some((f) => f.id === person.id)) {
+        const shared = groups.filter((g) => g.memberIds.includes(person.id) && g.memberIds.includes(me.id));
+        const open = shared.find((g) => balWith(expenses.filter((e) => e.groupId === g.id), [g]) !== 0) ?? shared[0];
+        if (!open) {
+          answerTool(callId, { error: "not_connected", instruction: `Say ${person.name} isn't a friend or in any of their groups, so there's nothing to settle.` });
+          return;
+        }
+        groupId = open.id; groupName = open.name;
+      }
+
+      let friendIsPayer: boolean;
+      if (args.direction) friendIsPayer = args.direction === "they_paid_me";
+      else if (bal !== 0) friendIsPayer = bal > 0;
+      else {
+        answerTool(callId, {
+          error: args.amount ? "direction_unknown" : "already_settled",
+          instruction: args.amount
+            ? `They're currently settled with ${person.name}. Ask in one short line who paid whom.`
+            : `Say they and ${person.name} are already settled up.`,
+        });
+        return;
+      }
+      const amount = round2(args.amount && args.amount > 0 ? args.amount : Math.abs(bal));
+      if (!(amount > 0)) {
+        answerTool(callId, { error: "no_amount", instruction: `There's no open balance with ${person.name}. Ask how much was paid.` });
+        return;
+      }
+      const after = round2(friendIsPayer ? bal - amount : bal + amount);
+      setProposal(null); setPreview(null);
+      setSettle({
+        personId: person.id, name: person.name, amount, currency: me.defaultCurrency || "CAD",
+        friendIsPayer, groupId, groupName, balanceBefore: bal, balanceAfter: after,
+      });
+      const overpay = Math.abs(after) > 0.009 && Math.sign(after) !== Math.sign(bal) && bal !== 0;
+      answerTool(callId, {
+        shown: true,
+        payment: friendIsPayer ? `${person.name} paid you ${amount}` : `you paid ${person.name} ${amount}`,
+        balance_before: bal, balance_after: after,
+        instruction: overpay
+          ? "Say in one short line the payment is ready, and point out it's more than what was owed so the balance will flip. Tell them to tap Record payment if that's right."
+          : "Say in one short line the payment is ready and to tap Record payment.",
+      });
+    } catch {
+      answerTool(callId, { error: "settle_unavailable", instruction: "Say in one short line you couldn't load their balances right now." });
+    }
+  }, [loadWorld, answerTool]);
+
+  const commitSettle = useCallback(async () => {
+    if (!settle) return;
+    setSettling(true);
+    try {
+      await apiRequest("POST", "/api/settle-up", {
+        friendId: settle.personId, amount: settle.amount, friendIsPayer: settle.friendIsPayer,
+        ...(settle.groupId ? { groupId: settle.groupId } : {}),
+      });
+      qc.invalidateQueries({ queryKey: ["/api/expenses"] });
+      qc.invalidateQueries({ queryKey: ["/api/friends/expenses"] });
+      qc.invalidateQueries({ queryKey: ["/api/friends"] });
+      qc.invalidateQueries({ queryKey: ["/api/groups"] });
+      if (settle.groupId) qc.invalidateQueries({ queryKey: ["/api/expenses/group", settle.groupId] });
+      track("expense_settled", { context: "voice", amount: settle.amount });
+      addSystemTurn(`✅ Payment recorded · ${money(settle.amount, settle.currency)} · ${settle.friendIsPayer ? `${settle.name} → you` : `you → ${settle.name}`}`);
+      setSettle(null);
+      const dc = dcRef.current;
+      if (dc && dc.readyState === "open") {
+        dc.send(JSON.stringify({ type: "response.create", response: { instructions: "The payment was just recorded. In one short, friendly line tell them it's recorded, then ask if there's anything else." } }));
+      }
+    } catch (e: any) {
+      let clean = "Couldn't record that payment — try again.";
+      const m = String(e?.message || "").match(/^\s*(\d{3}):\s*([\s\S]*)$/);
+      if (m) { try { const p = JSON.parse(m[2]); clean = p?.message || p?.error || clean; } catch { /* keep */ } }
+      addSystemTurn(`⚠️ ${clean}`);
+    } finally {
+      setSettling(false);
+    }
+  }, [settle, qc, addSystemTurn]);
+
+  // ── get_recent_expenses: "what did Raj and I split last week?" ─────────────
+  const answerRecent = useCallback(async (callId: string | undefined, args: { personName?: string; groupName?: string; limit?: number }) => {
+    try {
+      const { me, expenses, groups, people, names } = await loadWorld();
+      let list = expenses.slice();
+      if (args.personName) {
+        const ids = new Set(matchPeople(people, args.personName).map((p) => p.id));
+        if (ids.size === 0) { answerTool(callId, { error: "unknown_person", instruction: `Say you couldn't find anyone called ${args.personName}.` }); return; }
+        list = list.filter((e) => ids.has(e.paidById) || e.splitAmongIds.some((id) => ids.has(id)));
+      }
+      if (args.groupName) {
+        const gn = normName(args.groupName);
+        const g = groups.find((x) => normName(x.name) === gn) || groups.find((x) => normName(x.name).startsWith(gn) || normName(x.name).includes(gn));
+        if (!g) { answerTool(callId, { error: "unknown_group", groups: groups.map((x) => x.name), instruction: `Say there's no group called ${args.groupName} and name their groups.` }); return; }
+        list = list.filter((e) => e.groupId === g.id);
+      }
+      list.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+      const round2 = (n: number) => Math.round(n * 100) / 100;
+      const who = (id: string) => (id === me.id ? "you" : names.get(id) || "someone");
+      const groupNameOf = (id?: string | null) => (id ? groups.find((g) => g.id === id)?.name ?? null : null);
+      const yourShare = (e: Expense) => {
+        if (!e.splitAmongIds.includes(me.id)) return 0;
+        if (e.splitAmounts) { try { const m = JSON.parse(e.splitAmounts); if (typeof m[me.id] === "number") return round2(m[me.id]); } catch { /* equal */ } }
+        return round2(e.amount / Math.max(e.splitAmongIds.length, 1));
+      };
+      const spend = list.filter((e) => !e.isSettlement);
+      const limit = Math.min(Math.max(Math.round(args.limit || 10), 1), 25);
+      answerTool(callId, {
+        currency: me.defaultCurrency || "CAD",
+        count: list.length,
+        total_spent: round2(spend.reduce((s, e) => s + e.amount, 0)),
+        your_total_share: round2(spend.reduce((s, e) => s + yourShare(e), 0)),
+        expenses: list.slice(0, limit).map((e) => ({
+          date: (e.date || "").slice(0, 10),
+          description: e.isSettlement ? "payment" : e.description,
+          amount: e.currency && e.originalAmount ? e.originalAmount : e.amount,
+          currency: e.currency || undefined,
+          paid_by: who(e.paidById),
+          people: e.splitAmongIds.map(who),
+          group: groupNameOf(e.groupId),
+          your_share: e.isSettlement ? undefined : yourShare(e),
+          is_payment: e.isSettlement || undefined,
+        })),
+      });
+    } catch {
+      answerTool(callId, { error: "history_unavailable", instruction: "Say in one short line you couldn't load their expenses right now." });
+    }
+  }, [loadWorld, answerTool]);
 
   // ── Commit a proposal via the server (reuses trusted createExpense) ────────
   const commit = useCallback(async (args: ProposalArgs) => {
@@ -406,6 +596,13 @@ export function useVoiceCall({ onClose }: { onClose: () => void }) {
           answerBalances(msg.call_id);
           break;
         }
+        if (msg.name === "propose_settle_up" || msg.name === "get_recent_expenses") {
+          let args: any = {};
+          try { args = JSON.parse(msg.arguments || "{}"); } catch { /* empty args */ }
+          if (msg.name === "propose_settle_up") answerSettle(msg.call_id, args);
+          else answerRecent(msg.call_id, args);
+          break;
+        }
         try {
           const args = JSON.parse(msg.arguments || "{}") as ProposalArgs;
           setProposal(args);
@@ -414,7 +611,7 @@ export function useVoiceCall({ onClose }: { onClose: () => void }) {
         break;
       }
     }
-  }, [upsertTurn, loadPreview, answerBalances, hangUp, resetIdle]);
+  }, [upsertTurn, loadPreview, answerBalances, answerSettle, answerRecent, hangUp, resetIdle]);
 
   // Live mic-level meter: drives the footer bars via a CSS var, no re-renders.
   const attachMeter = useCallback((stream: MediaStream) => {
@@ -485,7 +682,7 @@ export function useVoiceCall({ onClose }: { onClose: () => void }) {
         // Greet first (only on the initial connect, not on a reconnect).
         if (!greetedRef.current) {
           greetedRef.current = true;
-          dc.send(JSON.stringify({ type: "response.create", response: { instructions: "Open with one short, warm line greeting the user and asking what they'd like to split. E.g. \"Hey! What are we splitting today?\"" } }));
+          dc.send(JSON.stringify({ type: "response.create", response: { instructions: "Open with one short, warm line greeting the user and asking what they need. E.g. \"Hey! Splitting something, or checking who owes what?\"" } }));
         }
       };
       dc.onmessage = (ev) => { try { handleEvent(JSON.parse(ev.data)); } catch {} };
@@ -532,11 +729,12 @@ export function useVoiceCall({ onClose }: { onClose: () => void }) {
   // Auto-scroll the transcript to the newest turn / card.
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [turns, preview, previewing, committing, userSpeaking]);
+  }, [turns, preview, settle, previewing, committing, userSpeaking]);
 
 
   return {
     state, error, turns, proposal, setProposal, preview, setPreview, previewing, committing,
+    settle, setSettle, settling, commitSettle,
     editing, setEditing, edit, setEdit, ending, speaking, userSpeaking, uploadingReceipt,
     audioRef, bottomRef, meterRef, fileInputRef,
     hangUp, commit, beginEdit, saveEdit, onPickReceipt,

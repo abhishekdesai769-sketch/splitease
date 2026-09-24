@@ -614,8 +614,10 @@ function PillCall({ onClose, currency, avatarColor, groups }: {
 }) {
   const {
     state, error, turns, proposal, setProposal, preview, setPreview, previewing, committing,
+    settle, setSettle, settling, commitSettle,
     ending, speaking, userSpeaking, audioRef, meterRef, hangUp, commit,
   } = useVoiceCall({ onClose });
+  const { user } = useAuth();
 
   // The single live line: whatever was said last (you or Spliiit), tail-trimmed
   // so a long sentence shows its newest words.
@@ -654,7 +656,7 @@ function PillCall({ onClose, currency, avatarColor, groups }: {
           <p className="font-serif text-[26px] leading-[1.1] mb-2.5">{preview.description.charAt(0).toUpperCase() + preview.description.slice(1)}</p>
           <div className="flex flex-wrap gap-1.5 mb-3.5">
             <Chip><span className="font-mono tabular-nums">{formatMoney(preview.amount, currency)}</span></Chip>
-            <Chip icon={Wallet}>Paid by you</Chip>
+            <Chip icon={Wallet}>Paid by {preview.paidByYou === false && preview.paidByName ? preview.paidByName.split(" ")[0] : "you"}</Chip>
             {groupName && <Chip icon={Users2}>{groupName}</Chip>}
             <Chip icon={CalendarDays}>{new Date(preview.date).toDateString() === new Date().toDateString() ? "Today" : new Date(preview.date).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</Chip>
           </div>
@@ -691,6 +693,28 @@ function PillCall({ onClose, currency, avatarColor, groups }: {
             onClear={() => { setPreview(null); setProposal(null); }}
             onSubmit={() => proposal && commit(proposal)}
           />
+        </div>
+      )}
+
+      {settle && user && (
+        <div className="absolute bottom-full left-4 right-4 mb-3 rounded-[24px] border border-card-border bg-card p-4 shadow-[0_18px_48px_-16px_rgba(41,38,36,0.32),0_2px_8px_-2px_rgba(41,38,36,0.08)] animate-in fade-in-0 slide-in-from-bottom-2 duration-200" data-testid="quick-add-call-settle-card">
+          <CardHead icon={ArrowLeftRight} label="Settle up" />
+          <div className="rounded-2xl bg-background px-3.5 py-3 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-[15px] min-w-0">
+              <Avatar id={settle.friendIsPayer ? settle.personId : user.id} name={settle.friendIsPayer ? settle.name : "You"} color={avatarColor} />
+              <ArrowRight className="w-4 h-4 text-muted-foreground shrink-0" />
+              <Avatar id={settle.friendIsPayer ? user.id : settle.personId} name={settle.friendIsPayer ? "You" : settle.name} color={avatarColor} />
+              <span className="truncate">{settle.friendIsPayer ? `${settle.name.split(" ")[0]} paid you` : `You paid ${settle.name.split(" ")[0]}`}</span>
+            </div>
+            <p className="font-mono tabular-nums text-[24px] shrink-0">{formatMoney(settle.amount, currency)}</p>
+          </div>
+          <p className="text-xs text-muted-foreground mt-2 px-1">
+            {settle.groupName ? `In ${settle.groupName}. ` : ""}
+            {Math.abs(settle.balanceAfter) < 0.01
+              ? "This settles you up."
+              : `After this, ${settle.balanceAfter > 0 ? `${settle.name.split(" ")[0]} owes you` : `you owe ${settle.name.split(" ")[0]}`} ${formatMoney(Math.abs(settle.balanceAfter), currency)}.`}
+          </p>
+          <CardFoot label="Record payment" ready pending={settling} clearLabel="Not quite" onClear={() => setSettle(null)} onSubmit={commitSettle} />
         </div>
       )}
 

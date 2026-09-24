@@ -3592,6 +3592,7 @@ setInterval(loadAll,30000);
       description: card.description,
       date: card.date.slice(0, 10),
       group: card.groupName,
+      paid_by: card.paidByName,
       split: card.splitLabel,
       people: card.people.map((p) => ({ name: p.name, share: p.share })),
     };
@@ -3639,9 +3640,11 @@ setInterval(loadAll,30000);
     }
 
     const p = resolved.proposal;
-    // Server backstop for the current-user-paid lock (defense in depth).
-    if (p.paidByUserId !== user.id) {
-      return res.status(400).json({ error: "ai_mode_payer_locked", message: "Voice only logs expenses you paid for." });
+    // Backstop: the speaker must be involved (paid, or has a share). The
+    // resolver already enforces this and that the payer is a friend / group
+    // member — this is defense in depth.
+    if (p.paidByUserId !== user.id && !p.splitAmongUserIds.includes(user.id)) {
+      return res.status(400).json({ error: "voice_not_involved", message: "You're not part of that split." });
     }
 
     try {
