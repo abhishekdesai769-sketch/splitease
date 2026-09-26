@@ -303,7 +303,7 @@ ${ok
     <p>Your data is stored on secure servers. Passwords are hashed and never stored in plain text. We use HTTPS encryption for all data in transit.</p>
 
     <h2>Data Retention</h2>
-    <p>Your expense data is retained for as long as your account is active. You can delete your account and all associated data directly from the app by opening the menu and selecting Delete Account.</p>
+    <p>Your expense data is retained for as long as your account is active. You can delete your account and all associated data directly from the app: open the menu, tap your name, then tap Delete account.</p>
 
     <h2>Children's Privacy</h2>
     <p>Spliiit is not intended for children under 13. We do not knowingly collect information from children under 13.</p>
@@ -5659,6 +5659,19 @@ setInterval(loadAll,30000);
       paymentNote: note.length > 0 ? note : null,
     });
     res.json({ methods, note });
+  });
+
+  // ── Edit my own display name (menu → Account → Name) ────────────────
+  app.patch("/api/user/name", requireAuth, async (req: any, res) => {
+    const userId = (req.session as any).userId;
+    const user = await storage.getUser(userId);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const name = sanitize(typeof req.body?.name === "string" ? req.body.name : "", 60);
+    if (name.length < 1) return res.status(400).json({ error: "Enter your name." });
+    const updated = await storage.updateUser(userId, { name });
+    if (!updated) return res.status(500).json({ error: "Couldn't save your name." });
+    const { password: _, ...safeUser } = updated;
+    res.json(safeUser);
   });
 
   // ── Notification switches (menu → Notifications) ─────────────────────

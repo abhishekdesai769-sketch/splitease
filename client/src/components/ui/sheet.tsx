@@ -68,14 +68,16 @@ interface SheetContentProps
     VariantProps<typeof sheetVariants> {
   /** Omit the built-in X — for sheets the user must not be able to dismiss. */
   hideClose?: boolean
+  /** Extra classes for the backdrop (e.g. the menu drawer's soft blur). */
+  overlayClassName?: string
 }
 
 const SheetContent = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Content>,
   SheetContentProps
->(({ side = "right", className, children, hideClose, ...props }, ref) => (
+>(({ side = "right", className, children, hideClose, overlayClassName, ...props }, ref) => (
   <SheetPortal>
-    <SheetOverlay />
+    <SheetOverlay className={overlayClassName} />
     <SheetPrimitive.Content
       ref={ref}
       className={cn(sheetVariants({ side }), className)}

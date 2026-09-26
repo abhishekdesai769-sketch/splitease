@@ -10,12 +10,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { apiRequest } from "@/lib/queryClient";
-import { Headphones, Send, Loader2, CheckCircle2, UserPlus, Copy, Check, MessageCircle, Mail, Trash2, AlertTriangle, Upload, HelpCircle, ChevronDown, Bell, BellRing, Crown, Lock, Monitor, Moon, Settings, Sun, Star, Wallet } from "lucide-react";
+import { Send, Loader2, CheckCircle2, Trash2, AlertTriangle, Upload, ChevronDown, Crown, Settings } from "lucide-react";
 import { PaymentMethodsEditor } from "@/components/PaymentMethods";
 import { NotificationSettings } from "@/components/NotificationSettings";
-import { getStorePlatform, getStoreLink } from "@/lib/reviewPrompt";
-import { useTheme, type ThemePref } from "@/lib/theme";
-import { CURRENCIES } from "@/components/CurrencySelector";
+import { DrawerHome, AccountView } from "@/components/DrawerMenu";
 import { useLocation } from "wouter";
 import { UpgradePromptSheet } from "@/components/UpgradePromptSheet";
 import { ShareChannels } from "@/components/ShareChannels";
@@ -60,8 +58,7 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const [open, setOpen] = useState(false);
-  const [view, setView] = useState<"menu" | "support" | "invite" | "delete" | "sent" | "faq" | "reminders" | "preferences" | "payment" | "notifications">("menu");
-  const { themePref, setThemePref } = useTheme();
+  const [view, setView] = useState<"menu" | "account" | "support" | "invite" | "delete" | "sent" | "faq" | "reminders" | "payment" | "notifications">("menu");
   const [faqOpen, setFaqOpen] = useState<number | null>(null);
 
   // Support form state
@@ -206,7 +203,11 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
         // close-auto-focus stops the ring from ever landing there. Keyboard
         // users still get focus-visible rings on the controls themselves.
         onCloseAutoFocus={(e) => e.preventDefault()}
-        className="w-[85vw] max-w-[320px] sm:w-[360px] sm:max-w-[360px] flex flex-col p-0"
+        // Paper-on-beige drawer: rounded outer edge + the same soft shadow as
+        // the quick-add card, over a softened (not blacked-out) app.
+        className="w-[85vw] max-w-[330px] sm:w-[360px] sm:max-w-[360px] flex flex-col gap-0 p-0 bg-sidebar border-0 rounded-r-[28px] shadow-[0_18px_48px_-16px_rgba(40,30,20,0.35)]"
+        overlayClassName="bg-background/70 backdrop-blur-[3px]"
+        hideClose
         // Inline style because p-0 above zeros out the sheet variant's
         // padding (CSS shorthand vs longhand source-order resolution makes
         // class-based safe-area unreliable when there's also a `p-0`).
@@ -216,217 +217,31 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
           paddingBottom: "env(safe-area-inset-bottom)",
         }}
       >
-        {/* Header */}
-        <SheetHeader className="px-5 pt-5 pb-3">
-          <div className="flex items-center gap-2.5">
-            <svg width="28" height="28" viewBox="0 0 32 32" fill="none" aria-label="Spliiit logo">
-              <rect width="32" height="32" rx="8" fill="hsl(30 6% 15%)" fillOpacity="0.06" />
-              <circle cx="10" cy="8.8" r="1.5" fill="hsl(30 6% 15%)" />
-              <path d="M10 13.6V23.8" stroke="hsl(30 6% 15%)" strokeWidth="3" strokeLinecap="round" />
-              <circle cx="16" cy="8.8" r="1.5" fill="hsl(30 6% 15%)" />
-              <path d="M16 13.6V23.8" stroke="hsl(30 6% 15%)" strokeWidth="3" strokeLinecap="round" />
-              <circle cx="22" cy="8.8" r="1.5" fill="hsl(30 6% 15%)" />
-              <path d="M22 13.6V23.8" stroke="hsl(30 6% 15%)" strokeWidth="3" strokeLinecap="round" />
-            </svg>
-            <SheetTitle className="text-base font-semibold tracking-tight">
-              Spl<span className="text-foreground">iii</span>t
-            </SheetTitle>
-          </div>
+        {/* Title for screen readers — the visible top of the drawer is the name row. */}
+        <SheetHeader className="sr-only">
+          <SheetTitle>Menu</SheetTitle>
         </SheetHeader>
 
         {/* ===== MENU VIEW ===== */}
         {view === "menu" && (
-          <div className="flex-1 flex flex-col px-5">
-            {/* User info */}
-            {user && (
-              <div className="mb-5 p-3 rounded-lg bg-muted/40 border border-border">
-                <p className="text-sm font-medium truncate">{user.name}</p>
-                <p className="text-xs text-muted-foreground truncate">{user.email}</p>
-              </div>
-            )}
+          <DrawerHome
+            onAccount={() => setView("account")}
+            onPayment={() => setView("payment")}
+            onReminders={() => setView("reminders")}
+            onNotifications={() => setView("notifications")}
+            onImport={() => { setOpen(false); setLocation("/import"); }}
+            onFaq={() => setView("faq")}
+            onSupport={() => setView("support")}
+            onInvite={() => setView("invite")}
+          />
+        )}
 
-            {/* Contact Support */}
-            <button
-              onClick={() => setView("support")}
-              className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-muted/50 transition-colors text-left group"
-              data-testid="menu-contact-support"
-            >
-              <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                <Headphones className="w-4.5 h-4.5 text-primary" />
-              </div>
-              <div>
-                <p className="text-sm font-medium">Contact Support</p>
-                <p className="text-xs text-muted-foreground">Report issues or ask questions</p>
-              </div>
-            </button>
-
-            {/* Invite a Friend */}
-            <button
-              onClick={() => setView("invite")}
-              className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-muted/50 transition-colors text-left group"
-              data-testid="menu-invite-friend"
-            >
-              <div className="w-9 h-9 rounded-lg bg-foreground/5 flex items-center justify-center flex-shrink-0">
-                <UserPlus className="w-4.5 h-4.5 text-foreground" />
-              </div>
-              <div>
-                <p className="text-sm font-medium">Invite a Friend</p>
-                <p className="text-xs text-muted-foreground">Share Spliiit with your friends</p>
-              </div>
-            </button>
-
-            {/* Leave a Review */}
-            <button
-              onClick={() => window.open(getStoreLink(getStorePlatform()), "_blank", "noopener,noreferrer")}
-              className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-muted/50 transition-colors text-left group"
-              data-testid="menu-leave-review"
-            >
-              <div className="w-9 h-9 rounded-lg bg-foreground/5 flex items-center justify-center flex-shrink-0">
-                <Star className="w-4.5 h-4.5 text-foreground fill-foreground" />
-              </div>
-              <div>
-                <p className="text-sm font-medium">Leave a Review ⭐</p>
-                <p className="text-xs text-muted-foreground">Takes 30 seconds · means the world to us</p>
-              </div>
-            </button>
-
-            {/* Import from Splitwise */}
-            <button
-              onClick={() => { setOpen(false); setLocation("/import"); }}
-              className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-muted/50 transition-colors text-left group"
-              data-testid="menu-import-splitwise"
-            >
-              <div className="w-9 h-9 rounded-lg bg-foreground/5 flex items-center justify-center flex-shrink-0">
-                <Upload className="w-4.5 h-4.5 text-foreground" />
-              </div>
-              <div>
-                <p className="text-sm font-medium">Import from Splitwise</p>
-                <p className="text-xs text-muted-foreground">Import expenses from a CSV file</p>
-              </div>
-            </button>
-
-            {/* Auto Reminders — hidden for non-premium users inside the
-                Android TWA (Google Play policy: no premium teaser UI).
-                Web + iOS continue showing the locked entrypoint. */}
-            {!(isInTWA && !user?.isPremium) && (
-            <button
-              onClick={() => setView("reminders")}
-              className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-muted/50 transition-colors text-left group"
-              data-testid="menu-auto-reminders"
-            >
-              <div className="w-9 h-9 rounded-lg bg-foreground/5 flex items-center justify-center flex-shrink-0">
-                <Bell className="w-4.5 h-4.5 text-foreground" />
-              </div>
-              <div className="flex-1">
-                <div className="flex items-center gap-1.5">
-                  <p className="text-sm font-medium">Auto Reminders</p>
-                  {!user?.isPremium && (
-                    <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-foreground bg-foreground/5 px-1.5 py-0.5 rounded-full">
-                      <Crown className="w-2.5 h-2.5" /> Premium
-                    </span>
-                  )}
-                </div>
-                <p className="text-xs text-muted-foreground">Auto-email people who owe you</p>
-              </div>
-            </button>
-            )}
-
-            {/* How I get paid */}
-            <button
-              onClick={() => setView("payment")}
-              className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-muted/50 transition-colors text-left group"
-              data-testid="menu-payment"
-            >
-              <div className="w-9 h-9 rounded-lg bg-foreground/5 flex items-center justify-center flex-shrink-0">
-                <Wallet className="w-4.5 h-4.5 text-foreground" />
-              </div>
-              <div>
-                <p className="text-sm font-medium">How I get paid</p>
-                <p className="text-xs text-muted-foreground">Interac, PayPal, etc. — friends see this when they settle up</p>
-              </div>
-            </button>
-
-            {/* Notifications */}
-            <button
-              onClick={() => setView("notifications")}
-              className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-muted/50 transition-colors text-left group"
-              data-testid="menu-notifications"
-            >
-              <div className="w-9 h-9 rounded-lg bg-foreground/5 flex items-center justify-center flex-shrink-0">
-                <BellRing className="w-4.5 h-4.5 text-foreground" />
-              </div>
-              <div>
-                <p className="text-sm font-medium">Notifications</p>
-                <p className="text-xs text-muted-foreground">Choose what Spliiit tells you about</p>
-              </div>
-            </button>
-
-            {/* Preferences */}
-            <button
-              onClick={() => setView("preferences")}
-              className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-muted/50 transition-colors text-left group"
-              data-testid="menu-preferences"
-            >
-              <div className="w-9 h-9 rounded-lg bg-foreground/5 flex items-center justify-center flex-shrink-0">
-                <Settings className="w-4.5 h-4.5 text-foreground" />
-              </div>
-              <div>
-                <p className="text-sm font-medium">Preferences</p>
-                <p className="text-xs text-muted-foreground">Currency & appearance</p>
-              </div>
-            </button>
-
-            {/* FAQs */}
-            <button
-              onClick={() => setView("faq")}
-              className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-muted/50 transition-colors text-left group"
-              data-testid="menu-faq"
-            >
-              <div className="w-9 h-9 rounded-lg bg-foreground/5 flex items-center justify-center flex-shrink-0">
-                <HelpCircle className="w-4.5 h-4.5 text-foreground" />
-              </div>
-              <div>
-                <p className="text-sm font-medium">FAQs</p>
-                <p className="text-xs text-muted-foreground">How to use Spliiit</p>
-              </div>
-            </button>
-
-            {/* Upgrade to Premium — only shown to non-premium users, softly.
-                Hidden inside the Android TWA (Google Play policy). */}
-            {!isInTWA && !user?.isPremium && (
-              <button
-                onClick={() => { setOpen(false); setLocation("/upgrade"); }}
-                className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-foreground/5 transition-colors text-left group"
-                data-testid="menu-upgrade"
-              >
-                <div className="w-9 h-9 rounded-lg bg-foreground/5 flex items-center justify-center flex-shrink-0">
-                  <Crown className="w-4.5 h-4.5 text-foreground" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-foreground">Upgrade to Premium</p>
-                  <p className="text-xs text-muted-foreground">Unlock all features</p>
-                </div>
-              </button>
-            )}
-
-            {/* Delete Account */}
-            <button
-              onClick={() => { setDeleteStep(1); setView("delete"); }}
-              className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-red-500/10 transition-colors text-left group"
-              data-testid="menu-delete-account"
-            >
-              <div className="w-9 h-9 rounded-lg bg-red-500/10 flex items-center justify-center flex-shrink-0">
-                <Trash2 className="w-4.5 h-4.5 text-red-500" />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-red-500">Delete Account</p>
-                <p className="text-xs text-muted-foreground">Permanently remove your account</p>
-              </div>
-            </button>
-
-            {/* Spacer */}
-            <div className="flex-1" />
-          </div>
+        {/* ===== ACCOUNT VIEW ===== */}
+        {view === "account" && (
+          <AccountView
+            onBack={() => setView("menu")}
+            onDelete={() => { setDeleteStep(1); setView("delete"); }}
+          />
         )}
 
         {/* ===== SUPPORT FORM VIEW ===== */}
@@ -539,7 +354,7 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
         {view === "delete" && (
           <div className="flex-1 flex flex-col px-5">
             <button
-              onClick={() => { setDeleteStep(0); setView("menu"); }}
+              onClick={() => { setDeleteStep(0); setView("account"); }}
               className="text-xs text-muted-foreground hover:text-foreground mb-3 self-start"
             >
               ← Back
@@ -562,7 +377,7 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
                   <Button
                     variant="outline"
                     className="flex-1"
-                    onClick={() => { setDeleteStep(0); setView("menu"); }}
+                    onClick={() => { setDeleteStep(0); setView("account"); }}
                     data-testid="delete-cancel-1"
                   >
                     Cancel
@@ -594,7 +409,7 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
                   <Button
                     variant="outline"
                     className="flex-1"
-                    onClick={() => { setDeleteStep(0); setView("menu"); }}
+                    onClick={() => { setDeleteStep(0); setView("account"); }}
                     data-testid="delete-cancel-2"
                   >
                     Cancel
@@ -857,74 +672,6 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
           <PaymentMethodsEditor onBack={() => setView("menu")} />
         )}
 
-        {view === "preferences" && (() => {
-          const currencyInfo = CURRENCIES.find((c) => c.code === user?.defaultCurrency);
-          const themeOptions: { pref: ThemePref; icon: React.ReactNode; label: string }[] = [
-            { pref: "light",  icon: <Sun className="w-4 h-4" />,     label: "Light"  },
-            { pref: "dark",   icon: <Moon className="w-4 h-4" />,    label: "Dark"   },
-            { pref: "system", icon: <Monitor className="w-4 h-4" />, label: "System" },
-          ];
-          return (
-            <div className="flex-1 flex flex-col px-5 overflow-y-auto pb-6">
-              <button
-                onClick={() => setView("menu")}
-                className="text-xs text-muted-foreground hover:text-foreground mb-3 self-start flex-shrink-0"
-              >
-                ← Back
-              </button>
-
-              <h3 className="text-sm font-semibold mb-1 flex-shrink-0">Preferences</h3>
-              <p className="text-xs text-muted-foreground mb-5 flex-shrink-0">
-                Manage your currency and appearance settings.
-              </p>
-
-              {/* Currency (locked) */}
-              <div className="mb-5">
-                <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">Default Currency</p>
-                <div className="px-3 py-3 rounded-lg border border-border bg-muted/20">
-                  <div className="flex items-center gap-1.5">
-                    <p className="text-sm font-medium text-foreground">
-                      {currencyInfo ? `${currencyInfo.name} (${currencyInfo.code})` : user?.defaultCurrency ?? "Not set"}
-                    </p>
-                    <Lock className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-0.5">Set at account setup · cannot be changed</p>
-                </div>
-                <p className="text-[11px] text-muted-foreground mt-1.5 leading-relaxed">
-                  Need to change it?{" "}
-                  <button onClick={() => setView("support")} className="text-primary underline">Contact support</button>.
-                </p>
-              </div>
-
-              {/* Theme */}
-              <div>
-                <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">Appearance</p>
-                <div className="grid grid-cols-3 gap-2">
-                  {themeOptions.map(({ pref, icon, label }) => (
-                    <button
-                      key={pref}
-                      type="button"
-                      onClick={() => setThemePref(pref)}
-                      className={`flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border transition-all ${
-                        themePref === pref
-                          ? "border-primary bg-primary/10 text-primary"
-                          : "border-border text-muted-foreground hover:bg-muted/50"
-                      }`}
-                    >
-                      {icon}
-                      <span className="text-xs font-semibold">{label}</span>
-                    </button>
-                  ))}
-                </div>
-                <p className="text-[11px] text-muted-foreground mt-2">
-                  System follows your device's dark/light setting automatically.
-                </p>
-              </div>
-            </div>
-          );
-        })()}
-
-        {/* ===== SENT CONFIRMATION VIEW ===== */}
         {view === "sent" && (
           <div className="flex-1 flex flex-col items-center justify-center px-5 text-center">
             <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center mb-4">
