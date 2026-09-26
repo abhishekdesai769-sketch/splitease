@@ -28,6 +28,7 @@ import { PILL, PillButton, Bars, SpeakGlyph, CardHead, Chip } from "@/components
 import { DEMO_KINDS, DEMO_PHRASES, ExampleCard, useDemoLoop } from "@/components/quick-add-demo";
 import { useVoiceMode } from "@/hooks/useVoiceMode";
 import { useVoiceCall, WEAK_LABEL } from "@/hooks/use-voice-call";
+import { FitText } from "@/components/FitText";
 
 export interface QuickAddBalance { personId: string; amount: number } // + = they owe you
 
@@ -318,7 +319,7 @@ export const QuickAddBar = forwardRef<QuickAddBarHandle, QuickAddBarProps>(funct
               {expense && (
                 <div>
                   <CardHead icon={Receipt} label="Expense" />
-                  <p className={`font-serif text-[26px] leading-[1.1] mb-2.5 ${expense.description ? "" : "text-muted-foreground"}`}>
+                  <p className={`font-serif text-[26px] leading-[1.1] mb-2.5 break-words ${expense.description ? "" : "text-muted-foreground"}`}>
                     {expense.description ?? "Add a description"}
                   </p>
                   <div className="flex flex-wrap gap-1.5 mb-3.5">
@@ -370,7 +371,7 @@ export const QuickAddBar = forwardRef<QuickAddBarHandle, QuickAddBarProps>(funct
                         {expense.custom ? (
                           <>
                             <p className="text-[11px] text-muted-foreground">You pay</p>
-                            <p className="font-mono tabular-nums text-[24px] leading-tight">
+                            <p className="font-mono tabular-nums text-[clamp(18px,6vw,24px)] leading-tight whitespace-nowrap">
                               {expense.amounts && user && expense.amounts[user.id] != null
                                 ? formatMoney(expense.amounts[user.id], currency)
                                 : <span className="text-muted-foreground">—</span>}
@@ -379,7 +380,7 @@ export const QuickAddBar = forwardRef<QuickAddBarHandle, QuickAddBarProps>(funct
                         ) : (
                           <>
                             <p className="text-[11px] text-muted-foreground">Each pays</p>
-                            <p className="font-mono tabular-nums text-[24px] leading-tight">
+                            <p className="font-mono tabular-nums text-[clamp(18px,6vw,24px)] leading-tight whitespace-nowrap">
                               {expense.each ? formatMoney(expense.each, currency) : <span className="text-muted-foreground">—</span>}
                             </p>
                           </>
@@ -417,7 +418,7 @@ export const QuickAddBar = forwardRef<QuickAddBarHandle, QuickAddBarProps>(funct
                         <Avatar id={to} name={nameOf(to)} color={avatarColor} />
                         <span className="truncate">{intent.friendIsPayer ? `${name} paid you` : `You paid ${name}`}</span>
                       </div>
-                      <p className="font-mono tabular-nums text-[24px] shrink-0">
+                      <p className="font-mono tabular-nums text-[clamp(18px,6vw,24px)] shrink-0 whitespace-nowrap">
                         {intent.amount ? formatMoney(intent.amount, currency) : <span className="text-muted-foreground">—</span>}
                       </p>
                     </div>
@@ -446,8 +447,8 @@ export const QuickAddBar = forwardRef<QuickAddBarHandle, QuickAddBarProps>(funct
                     <div>
                       <CardHead icon={Scale} label="Balance" />
                       <div className="grid grid-cols-2 gap-2">
-                        <div className="rounded-2xl bg-background px-3.5 py-3"><p className="text-[11px] text-muted-foreground">You're owed</p><p className={`font-mono tabular-nums text-[22px] ${AMOUNT_IN_CLASS}`}>{formatMoney(owed, currency)}</p></div>
-                        <div className="rounded-2xl bg-background px-3.5 py-3"><p className="text-[11px] text-muted-foreground">You owe</p><p className={`font-mono tabular-nums text-[22px] ${AMOUNT_OUT_CLASS}`}>{formatMoney(owe, currency)}</p></div>
+                        <div className="rounded-2xl bg-background px-3.5 py-3 min-w-0"><p className="text-[11px] text-muted-foreground">You're owed</p><FitText max={22} syncGroup="qa-balance" className={`font-mono tabular-nums ${AMOUNT_IN_CLASS}`}>{formatMoney(owed, currency)}</FitText></div>
+                        <div className="rounded-2xl bg-background px-3.5 py-3 min-w-0"><p className="text-[11px] text-muted-foreground">You owe</p><FitText max={22} syncGroup="qa-balance" className={`font-mono tabular-nums ${AMOUNT_OUT_CLASS}`}>{formatMoney(owe, currency)}</FitText></div>
                       </div>
                     </div>
                   );
@@ -460,12 +461,14 @@ export const QuickAddBar = forwardRef<QuickAddBarHandle, QuickAddBarProps>(funct
                     <CardHead icon={Scale} label="Balance" />
                     <div className="rounded-2xl bg-background px-3.5 py-3 flex items-center gap-3">
                       <Avatar id={id} name={name} color={avatarColor} />
-                      <p className="flex-1 text-[15px]">{bal > 0 ? `${name} owes you` : bal < 0 ? `You owe ${name}` : `You and ${name} are settled`}</p>
-                      <p className={`font-mono tabular-nums text-[24px] ${bal > 0 ? AMOUNT_IN_CLASS : bal < 0 ? AMOUNT_OUT_CLASS : "text-muted-foreground"}`}>{formatMoney(Math.abs(bal), currency)}</p>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[15px] break-words">{bal > 0 ? `${name} owes you` : bal < 0 ? `You owe ${name}` : `You and ${name} are settled`}</p>
+                        <FitText max={24} className={`font-mono tabular-nums leading-tight ${bal > 0 ? AMOUNT_IN_CLASS : bal < 0 ? AMOUNT_OUT_CLASS : "text-muted-foreground"}`}>{formatMoney(Math.abs(bal), currency)}</FitText>
+                      </div>
                     </div>
                     <div className="flex justify-between items-center mt-3.5">
                       <button type="button" onClick={reset} className="text-[13px] text-muted-foreground px-1">Clear</button>
-                      <button type="button" onClick={() => { reset(); setLocation(`/friends/${id}`); }} className="h-9 rounded-full bg-foreground px-4 text-[13px] font-medium text-background">
+                      <button type="button" onClick={() => { reset(); setLocation(`/friends/${id}`); }} className="h-9 max-w-[60%] truncate rounded-full bg-foreground px-4 text-[13px] font-medium text-background">
                         Open {name}
                       </button>
                     </div>
@@ -653,7 +656,7 @@ function PillCall({ onClose, currency, avatarColor, groups }: {
               <span className="inline-flex items-center gap-1 rounded-full bg-[#F4E7D3] px-2.5 py-1 text-[12px] text-[#8A5A1A]">Check {WEAK_LABEL[preview.weakField ?? ""] ?? "this"}</span>
             )}
           </div>
-          <p className="font-serif text-[26px] leading-[1.1] mb-2.5">{preview.description.charAt(0).toUpperCase() + preview.description.slice(1)}</p>
+          <p className="font-serif text-[26px] leading-[1.1] mb-2.5 break-words">{preview.description.charAt(0).toUpperCase() + preview.description.slice(1)}</p>
           <div className="flex flex-wrap gap-1.5 mb-3.5">
             <Chip><span className="font-mono tabular-nums">{formatMoney(preview.amount, currency)}</span></Chip>
             <Chip icon={Wallet}>Paid by {preview.paidByYou === false && preview.paidByName ? preview.paidByName.split(" ")[0] : "you"}</Chip>
@@ -680,7 +683,7 @@ function PillCall({ onClose, currency, avatarColor, groups }: {
               {equal && (
                 <div className="text-right shrink-0">
                   <p className="text-[11px] text-muted-foreground">Each pays</p>
-                  <p className="font-mono tabular-nums text-[24px] leading-tight">{formatMoney(preview.perPerson, currency)}</p>
+                  <p className="font-mono tabular-nums text-[clamp(18px,6vw,24px)] leading-tight whitespace-nowrap">{formatMoney(preview.perPerson, currency)}</p>
                 </div>
               )}
             </div>
@@ -706,7 +709,7 @@ function PillCall({ onClose, currency, avatarColor, groups }: {
               <Avatar id={settle.friendIsPayer ? user.id : settle.personId} name={settle.friendIsPayer ? "You" : settle.name} color={avatarColor} />
               <span className="truncate">{settle.friendIsPayer ? `${settle.name.split(" ")[0]} paid you` : `You paid ${settle.name.split(" ")[0]}`}</span>
             </div>
-            <p className="font-mono tabular-nums text-[24px] shrink-0">{formatMoney(settle.amount, currency)}</p>
+            <p className="font-mono tabular-nums text-[clamp(18px,6vw,24px)] shrink-0 whitespace-nowrap">{formatMoney(settle.amount, currency)}</p>
           </div>
           <p className="text-xs text-muted-foreground mt-2 px-1">
             {settle.groupName ? `In ${settle.groupName}. ` : ""}

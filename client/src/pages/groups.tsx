@@ -136,13 +136,13 @@ export default function Groups() {
               <Link key={group.id} href={`/groups/${group.id}`}>
                 <Card className="p-[18px] rounded-[26px] flex items-center gap-3 hover-elevate cursor-pointer" data-testid={`group-card-${group.id}`}>
                   <div className="flex-1 min-w-0">
-                    <p className="text-[17px] font-semibold tracking-tight leading-tight">{group.name}</p>
+                    <p className="text-[17px] font-semibold tracking-tight leading-tight line-clamp-2 break-words">{group.name}</p>
                     <p className="text-xs text-muted-foreground font-mono mt-1.5 truncate">
-                      {group.memberIds.length} members · {expenseCount} expenses
+                      {group.memberIds.length} {group.memberIds.length === 1 ? "member" : "members"} · {expenseCount} {expenseCount === 1 ? "expense" : "expenses"}
                     </p>
                   </div>
                   {netBalance !== 0 ? (
-                    <span className={`text-base font-semibold shrink-0 font-mono ${netBalance > 0 ? AMOUNT_IN_CLASS : AMOUNT_OUT_CLASS}`}>
+                    <span className={`text-base font-semibold shrink-0 whitespace-nowrap font-mono ${netBalance > 0 ? AMOUNT_IN_CLASS : AMOUNT_OUT_CLASS}`}>
                       {formatMoney(Math.abs(netBalance), userCurrency)}
                     </span>
                   ) : expenseCount > 0 ? (

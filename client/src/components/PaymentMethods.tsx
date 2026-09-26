@@ -232,7 +232,7 @@ export function PaymentMethodsView({
         <PaymentMethodRow key={i} method={m} />
       ))}
       {data!.note.trim().length > 0 && (
-        <p className="text-xs text-muted-foreground leading-relaxed pt-0.5">
+        <p className="text-xs text-muted-foreground leading-relaxed pt-0.5 break-words [overflow-wrap:anywhere]">
           “{data!.note}”
         </p>
       )}

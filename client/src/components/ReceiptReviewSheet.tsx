@@ -327,7 +327,7 @@ export function ReceiptReviewSheet({ open, data, members, onConfirm, onItemSplit
                     className="flex-1 h-8 border-0 px-1 text-sm focus-visible:ring-0 focus-visible:ring-offset-0 bg-transparent"
                     placeholder="Item name"
                   />
-                  <div className="relative w-[4.5rem] shrink-0">
+                  <div className="relative w-20 shrink-0">
                     <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none select-none">$</span>
                     <Input
                       type="number"
@@ -429,8 +429,8 @@ export function ReceiptReviewSheet({ open, data, members, onConfirm, onItemSplit
                       });
                     }}
                   />
-                  <span className="flex-1 text-sm">{item.name || <em className="text-muted-foreground">unnamed item</em>}</span>
-                  <span className="text-sm font-mono text-muted-foreground">${Number(item.price).toFixed(2)}</span>
+                  <span className="flex-1 min-w-0 break-words text-sm">{item.name || <em className="text-muted-foreground">unnamed item</em>}</span>
+                  <span className="text-sm font-mono text-muted-foreground shrink-0">${Number(item.price).toFixed(2)}</span>
                 </label>
               ))}
             </div>
@@ -584,10 +584,10 @@ export function ReceiptReviewSheet({ open, data, members, onConfirm, onItemSplit
               )}
 
               <div className="flex gap-3">
-                <Button variant="outline" className="flex-1" onClick={goBack}>
+                <Button variant="outline" className="shrink-0" onClick={goBack}>
                   <ArrowLeft className="w-4 h-4 mr-1" /> Back
                 </Button>
-                <Button className="flex-1" onClick={advanceFromAssignPerson}>
+                <Button className="flex-1 min-w-0" onClick={advanceFromAssignPerson}>
                   {selectedCount === 0 ? (
                     "Skip this person"
                   ) : isLastPerson ? (

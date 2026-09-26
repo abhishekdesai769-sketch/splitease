@@ -205,7 +205,7 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
         // close-auto-focus stops the ring from ever landing there. Keyboard
         // users still get focus-visible rings on the controls themselves.
         onCloseAutoFocus={(e) => e.preventDefault()}
-        className="w-[320px] sm:w-[360px] flex flex-col p-0"
+        className="w-[85vw] max-w-[320px] sm:w-[360px] sm:max-w-[360px] flex flex-col p-0"
         // Inline style because p-0 above zeros out the sheet variant's
         // padding (CSS shorthand vs longhand source-order resolution makes
         // class-based safe-area unreliable when there's also a `p-0`).
@@ -239,8 +239,8 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
             {/* User info */}
             {user && (
               <div className="mb-5 p-3 rounded-lg bg-muted/40 border border-border">
-                <p className="text-sm font-medium">{user.name}</p>
-                <p className="text-xs text-muted-foreground">{user.email}</p>
+                <p className="text-sm font-medium truncate">{user.name}</p>
+                <p className="text-xs text-muted-foreground truncate">{user.email}</p>
               </div>
             )}
 
@@ -912,7 +912,7 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
             </div>
             <h3 className="text-base font-semibold mb-1">Message Sent</h3>
             <p className="text-sm text-muted-foreground mb-6">
-              We'll get back to you at <span className="font-medium text-foreground">{email}</span> as soon as possible.
+              We'll get back to you at <span className="font-medium text-foreground break-all">{email}</span> as soon as possible.
             </p>
             <Button
               variant="outline"

@@ -750,7 +750,7 @@ function MessageBubble({
   if (message.role === "user") {
     return (
       <div className="flex justify-end">
-        <div className="max-w-[80%] rounded-2xl rounded-tr-sm bg-primary text-primary-foreground px-3.5 py-2 text-sm">
+        <div className="max-w-[80%] rounded-2xl rounded-tr-sm bg-primary text-primary-foreground px-3.5 py-2 text-sm whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
           {message.content}
         </div>
       </div>
@@ -761,7 +761,7 @@ function MessageBubble({
   return (
     <div className="flex flex-col items-start gap-2 max-w-[90%]">
       {message.content && (
-        <div className="rounded-2xl rounded-tl-sm bg-muted px-3.5 py-2 text-sm">
+        <div className="rounded-2xl rounded-tl-sm bg-muted px-3.5 py-2 text-sm min-w-0 max-w-full break-words [overflow-wrap:anywhere]">
           <AssistantMarkdown content={message.content} />
         </div>
       )}
@@ -914,7 +914,7 @@ function AssistantMarkdown({ content }: { content: string }) {
           ),
           // Links: open in new tab (rare in AI responses but safe default)
           a: ({ children, href }) => (
-            <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary underline">{children}</a>
+            <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary underline break-all">{children}</a>
           ),
           // Blockquotes
           blockquote: ({ children }) => (

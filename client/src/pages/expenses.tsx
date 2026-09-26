@@ -9,6 +9,7 @@ import { useAuth } from "@/lib/auth";
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { formatMoney } from "@/components/CurrencySelector";
+import { ExpenseAmount } from "@/components/ExpenseAmount";
 
 export default function Expenses() {
   const { user } = useAuth();
@@ -171,9 +172,13 @@ export default function Expenses() {
                           {getPayerLabel(expense.paidById)} · {getGroupName(expense.groupId)}
                         </p>
                       </div>
-                      <span className="font-mono text-base font-semibold text-foreground shrink-0">
-                        {formatMoney(expense.amount, userCurrency, expense.currency, expense.originalAmount)}
-                      </span>
+                      <ExpenseAmount
+                        amount={expense.amount}
+                        currency={expense.currency}
+                        originalAmount={expense.originalAmount}
+                        viewerCurrency={userCurrency}
+                        className="font-mono text-base font-semibold text-foreground"
+                      />
                     </div>
                   </Link>
                 );

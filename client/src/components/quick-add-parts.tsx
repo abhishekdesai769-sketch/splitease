@@ -58,7 +58,7 @@ export function CardHead({ icon: Icon, label }: { icon: React.ComponentType<{ cl
 }
 
 export function Chip({ children, icon: Icon, ghost, onClick }: { children: React.ReactNode; icon?: React.ComponentType<{ className?: string }>; ghost?: boolean; onClick?: () => void }) {
-  const cls = `inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12.5px] ${ghost ? "border border-dashed border-border text-muted-foreground" : "bg-accent/70 text-secondary-foreground"} ${onClick ? "active:scale-[0.97] transition-transform" : ""}`;
-  const inner = <>{Icon && <Icon className="w-3.5 h-3.5" />}{children}</>;
+  const cls = `inline-flex max-w-full items-center gap-1.5 rounded-full px-2.5 py-1 text-[12.5px] ${ghost ? "border border-dashed border-border text-muted-foreground" : "bg-accent/70 text-secondary-foreground"} ${onClick ? "active:scale-[0.97] transition-transform" : ""}`;
+  const inner = <>{Icon && <Icon className="w-3.5 h-3.5 shrink-0" />}<span className="truncate">{children}</span></>;
   return onClick ? <button type="button" onClick={onClick} className={cls}>{inner}</button> : <span className={cls}>{inner}</span>;
 }

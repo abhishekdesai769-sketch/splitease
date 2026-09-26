@@ -105,13 +105,13 @@ export default function InvitePage() {
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center px-4">
-      <Card className="w-full max-w-md p-8 space-y-6" data-testid="invite-preview-card">
+      <Card className="w-full max-w-md p-6 sm:p-8 space-y-6" data-testid="invite-preview-card">
         <div className="space-y-3 text-center">
           <div className="w-12 h-12 rounded-full bg-primary/10 mx-auto flex items-center justify-center">
             <Users className="w-6 h-6 text-primary" />
           </div>
           <p className="text-sm text-muted-foreground">You're invited to join</p>
-          <h1 className="text-2xl font-bold" data-testid="invite-group-name">{preview.groupName}</h1>
+          <h1 className="text-2xl font-bold break-words" data-testid="invite-group-name">{preview.groupName}</h1>
           <p className="text-sm text-muted-foreground">
             {preview.memberCount} {preview.memberCount === 1 ? "member" : "members"} already in this group
           </p>

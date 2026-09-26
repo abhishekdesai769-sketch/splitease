@@ -15,7 +15,9 @@ import { Switch } from "@/components/ui/switch";
 import { UpgradePromptSheet } from "@/components/UpgradePromptSheet";
 import { isInTWA } from "@/lib/platform";
 import { ScanReceiptButton } from "@/components/ScanReceiptButton";
-import { CurrencySelector, formatExpenseAmount, formatMoney } from "@/components/CurrencySelector";
+import { CurrencySelector, formatMoney } from "@/components/CurrencySelector";
+import { ExpenseAmount } from "@/components/ExpenseAmount";
+import { FitText } from "@/components/FitText";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
@@ -418,27 +420,30 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
 
   return (
     <div className="space-y-5">
-      {/* Header */}
-      <div className="flex items-center gap-3">
+      {/* Header — actions on the top row, the name on its own full-width row
+          below (order-last) so it never gets squeezed by the buttons. */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-3">
         <Link href="/friends">
           <Button size="icon" variant="ghost" data-testid="back-to-friends">
             <ArrowLeft className="w-4 h-4" />
           </Button>
         </Link>
-        <div
-          className="w-11 h-11 rounded-full flex items-center justify-center text-white text-base font-semibold shrink-0"
-          style={{ backgroundColor: warmAvatar(friend.id) }}
-        >
-          {friend.name[0]?.toUpperCase()}
-        </div>
-        <div className="flex-1 min-w-0">
-          <h1 className="font-serif text-2xl tracking-tight truncate">{friend.name}</h1>
-          <p className="text-xs text-muted-foreground truncate font-mono">{friend.email}</p>
+        <div className="order-last basis-full flex items-center gap-3 min-w-0">
+          <div
+            className="w-11 h-11 rounded-full flex items-center justify-center text-white text-base font-semibold shrink-0"
+            style={{ backgroundColor: warmAvatar(friend.id) }}
+          >
+            {friend.name[0]?.toUpperCase()}
+          </div>
+          <div className="flex-1 min-w-0">
+            <h1 className="font-serif text-[28px] leading-tight tracking-tight line-clamp-2 break-words">{friend.name}</h1>
+            <p className="text-xs text-muted-foreground truncate font-mono">{friend.email}</p>
+          </div>
         </div>
         {/* ⋮ Three-dot menu: Import + Remove Friend */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button size="icon" variant="ghost" data-testid="friend-detail-more-btn">
+            <Button size="icon" variant="ghost" className="ml-auto" data-testid="friend-detail-more-btn">
               <MoreVertical className="w-4 h-4" />
             </Button>
           </DropdownMenuTrigger>
@@ -979,9 +984,9 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
               ? <><span className="font-medium text-foreground">{friend.name}</span> owes you</>
               : <>You owe <span className="font-medium text-foreground">{friend.name}</span></>}
           </p>
-          <p className={`font-serif text-6xl leading-none tracking-tight ${myBalance > 0 ? AMOUNT_IN_CLASS : AMOUNT_OUT_CLASS}`}>
+          <FitText max={60} className={`font-serif leading-none tracking-tight ${myBalance > 0 ? AMOUNT_IN_CLASS : AMOUNT_OUT_CLASS}`}>
             {formatMoney(Math.abs(myBalance), userCurrency)}
-          </p>
+          </FitText>
         </div>
       )}
 
@@ -1134,16 +1139,19 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
             const ids = exp.splitAmongIds || [];
             const othersCount = ids.filter((id) => id !== user?.id && id !== friendId).length;
             const othersTotal = Math.max(0, exp.amount - yourShare - friendShare);
-            const totalDisplay = exp.currency && exp.currency !== "CAD" && exp.originalAmount
-              ? formatExpenseAmount(exp.amount, exp.currency, exp.originalAmount)
-              : formatMoney(exp.amount, userCurrency);
             return (
               <div className="space-y-4 pt-1">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm text-muted-foreground min-w-0 truncate">
                     {exp.paidById === user?.id ? "You" : (friend?.name || "Your friend")} paid
                   </span>
-                  <span className="font-mono font-semibold text-lg">{totalDisplay}</span>
+                  <ExpenseAmount
+                    amount={exp.amount}
+                    currency={exp.currency}
+                    originalAmount={exp.originalAmount}
+                    viewerCurrency={userCurrency}
+                    className="font-mono font-semibold text-lg"
+                  />
                 </div>
                 <div className="text-xs text-muted-foreground font-mono">
                   {new Date(exp.date).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })}
@@ -1158,9 +1166,9 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
                       <span>You</span>
                       <span className="font-mono">{formatMoney(yourShare, userCurrency)}</span>
                     </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span>{friend?.name || "Your friend"}</span>
-                      <span className="font-mono">{formatMoney(friendShare, userCurrency)}</span>
+                    <div className="flex items-center justify-between gap-3 text-sm">
+                      <span className="min-w-0 truncate">{friend?.name || "Your friend"}</span>
+                      <span className="font-mono shrink-0">{formatMoney(friendShare, userCurrency)}</span>
                     </div>
                     {othersCount > 0 && (
                       <div className="flex items-center justify-between text-sm text-muted-foreground">
@@ -1168,9 +1176,9 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
                         <span className="font-mono">{formatMoney(othersTotal, userCurrency)}</span>
                       </div>
                     )}
-                    <div className="border-t pt-2 flex items-center justify-between text-sm font-medium">
-                      <span>{exp.paidById === user?.id ? `${friend?.name || "Your friend"} owes you` : "You owe"}</span>
-                      <span className={`font-mono ${exp.paidById === user?.id ? AMOUNT_IN_CLASS : AMOUNT_OUT_CLASS}`}>
+                    <div className="border-t pt-2 flex items-center justify-between gap-3 text-sm font-medium">
+                      <span className="min-w-0 truncate">{exp.paidById === user?.id ? `${friend?.name || "Your friend"} owes you` : "You owe"}</span>
+                      <span className={`font-mono shrink-0 ${exp.paidById === user?.id ? AMOUNT_IN_CLASS : AMOUNT_OUT_CLASS}`}>
                         {formatMoney(exp.paidById === user?.id ? friendShare : yourShare, userCurrency)}
                       </span>
                     </div>
@@ -1255,7 +1263,7 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
                   Are you sure you want to remove <strong>{friend.name}</strong> from your friends?
                 </p>
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-col-reverse gap-2 sm:flex-row">
                 <Button
                   variant="outline"
                   className="flex-1"
@@ -1352,11 +1360,13 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
                             : `${paidByName} paid · ${splitLabel(expense)}`}
                         </p>
                       </div>
-                      <span className={`font-mono font-semibold shrink-0 ${expense.isSettlement ? "text-muted-foreground" : (iPaid ? AMOUNT_IN_CLASS : AMOUNT_OUT_CLASS)}`}>
-                        {expense.currency && expense.currency !== "CAD" && expense.originalAmount && expense.isSettlement
-                          ? formatExpenseAmount(expense.amount, expense.currency, expense.originalAmount)
-                          : formatMoney(expense.isSettlement ? expense.amount : share, userCurrency)}
-                      </span>
+                      <ExpenseAmount
+                        amount={expense.isSettlement ? expense.amount : share}
+                        currency={expense.isSettlement ? expense.currency : null}
+                        originalAmount={expense.isSettlement ? expense.originalAmount : null}
+                        viewerCurrency={userCurrency}
+                        className={`font-mono font-semibold ${expense.isSettlement ? "text-muted-foreground" : (iPaid ? AMOUNT_IN_CLASS : AMOUNT_OUT_CLASS)}`}
+                      />
                     </div>
                   );
                 })}

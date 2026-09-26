@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, Send } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
+import { formatMoney } from "@/components/CurrencySelector";
 
 type Tone = "friendly" | "funny" | "firm" | "passive-aggressive" | "awkward";
 
@@ -110,7 +111,7 @@ export function ReminderSheet({
       <SheetContent side="bottom" className="rounded-t-2xl pb-8 px-5">
         <SheetHeader className="text-left pt-2 pb-4">
           <SheetTitle className="text-lg">
-            Remind {recipientName.split(" ")[0]} · <span className="text-primary font-mono">${amount.toFixed(2)}</span>
+            Remind {recipientName.split(" ")[0]} · <span className="text-primary font-mono whitespace-nowrap">{formatMoney(amount)}</span>
           </SheetTitle>
         </SheetHeader>
 
@@ -153,7 +154,7 @@ export function ReminderSheet({
           ) : (
             <Send className="w-4 h-4 mr-2" />
           )}
-          {sendMutation.isPending ? "Sending..." : `Send to ${recipientName.split(" ")[0]}`}
+          <span className="truncate">{sendMutation.isPending ? "Sending..." : `Send to ${recipientName.split(" ")[0]}`}</span>
         </Button>
 
         <p className="text-xs text-center text-muted-foreground mt-3">

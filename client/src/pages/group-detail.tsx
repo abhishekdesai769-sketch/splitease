@@ -16,7 +16,9 @@ import { Switch } from "@/components/ui/switch";
 import { UpgradePromptSheet } from "@/components/UpgradePromptSheet";
 import { isInTWA } from "@/lib/platform";
 import { ScanReceiptButton } from "@/components/ScanReceiptButton";
-import { CurrencySelector, formatExpenseAmount, formatMoney } from "@/components/CurrencySelector";
+import { CurrencySelector, formatMoney } from "@/components/CurrencySelector";
+import { ExpenseAmount } from "@/components/ExpenseAmount";
+import { FitText } from "@/components/FitText";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
@@ -804,14 +806,15 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
 
   return (
     <div className="space-y-5">
-      {/* Header */}
-      <div className="flex items-center gap-3">
+      {/* Header — actions on the top row, the group name on its own
+          full-width row below (order-last) so the buttons never squeeze it. */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-3">
         <Link href="/groups">
           <Button size="icon" variant="ghost" data-testid="back-to-groups">
             <ArrowLeft className="w-4 h-4" />
           </Button>
         </Link>
-        <div className="flex-1 min-w-0">
+        <div className="order-last basis-full min-w-0">
           {renaming ? (
             <form className="flex items-center gap-1" onSubmit={async (e) => {
               e.preventDefault();
@@ -840,7 +843,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
             </form>
           ) : (
             <h1
-              className={`text-3xl leading-none tracking-tight truncate font-serif ${(isMeOwner || isMeAdmin || isMeGlobalAdmin) ? "cursor-pointer" : ""}`}
+              className={`text-3xl leading-tight tracking-tight line-clamp-2 break-words font-serif ${(isMeOwner || isMeAdmin || isMeGlobalAdmin) ? "cursor-pointer" : ""}`}
               onClick={() => {
                 if (isMeOwner || isMeAdmin || isMeGlobalAdmin) {
                   setNewGroupName(group.name);
@@ -858,7 +861,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
         {/* Three-dots group actions menu */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button size="icon" variant="ghost" data-testid="group-actions-menu">
+            <Button size="icon" variant="ghost" className="ml-auto" data-testid="group-actions-menu">
               <MoreVertical className="w-4 h-4" />
             </Button>
           </DropdownMenuTrigger>
@@ -1246,11 +1249,11 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                             checked={splitAmong.includes(m.id)}
                             onCheckedChange={() => toggleSplit(m.id)}
                           />
-                          <span className="text-base">
+                          <span className="text-base min-w-0 truncate">
                             {m.id === user?.id ? `${m.name} (You)` : m.name}
                           </span>
                           {showAmount && effectiveSplit.includes(m.id) && (
-                            <span className="text-sm text-muted-foreground ml-auto font-mono">
+                            <span className="text-sm text-muted-foreground ml-auto shrink-0 font-mono">
                               ${perPerson.toFixed(2)}
                             </span>
                           )}
@@ -1284,7 +1287,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                   <div className="space-y-2">
                     {members.map((m) => (
                       <div key={m.id} className="flex items-center gap-3 p-3 rounded-lg bg-muted/30">
-                        <span className="text-base flex-1">
+                        <span className="text-base flex-1 min-w-0 break-words">
                           {m.id === user?.id ? `${m.name} (You)` : m.name}
                         </span>
                         <div className="flex items-center gap-1.5 shrink-0">
@@ -1300,7 +1303,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                           />
                           {customSplitMode === "percent" && <span className="text-sm text-muted-foreground">%</span>}
                           {customSplitMode === "percent" && customSplitValues[m.id] && finalAmount > 0 && (
-                            <span className="text-xs text-muted-foreground font-mono w-16 text-right">
+                            <span className="text-xs text-muted-foreground font-mono min-w-16 whitespace-nowrap text-right">
                               ${(finalAmount * (parseFloat(customSplitValues[m.id]) || 0) / 100).toFixed(2)}
                             </span>
                           )}
@@ -1757,7 +1760,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                       {waitingInvitee && (
                         <>
                           <Clock className="w-3 h-3 text-blue-400" />
-                          <span className="text-xs text-blue-400">Waiting for {invite.inviteeName} to accept</span>
+                          <span className="text-xs text-blue-400 min-w-0 truncate">Waiting for {invite.inviteeName} to accept</span>
                         </>
                       )}
                     </div>
@@ -1811,9 +1814,9 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
             ) : (
               <div className="mb-5">
                 <p className="text-sm text-muted-foreground mb-1">{net > 0 ? "You're owed in this group" : "You owe in this group"}</p>
-                <p className={`font-serif text-5xl leading-none tracking-tight ${net > 0 ? AMOUNT_IN_CLASS : AMOUNT_OUT_CLASS}`}>
+                <FitText max={48} className={`font-serif leading-none tracking-tight ${net > 0 ? AMOUNT_IN_CLASS : AMOUNT_OUT_CLASS}`}>
                   {formatMoney(Math.abs(net), userCurrency)}
-                </p>
+                </FitText>
               </div>
             )}
 
@@ -1893,13 +1896,15 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                 const displayAmt = displayBalance(b.amount);
                 return (
                   <div key={b.personId} className="flex items-center justify-between gap-2 px-1 py-0.5">
-                    <span className="text-base">{getPersonName(b.personId)}</span>
+                    <span className="text-base min-w-0 truncate">{getPersonName(b.personId)}</span>
                     <span
-                      className={`text-base font-semibold ${
+                      className={`text-base font-semibold shrink-0 whitespace-nowrap ${
                         displayAmt > 0 ? AMOUNT_IN_CLASS : displayAmt < 0 ? AMOUNT_OUT_CLASS : "text-muted-foreground"
                       }`}
                     >
-                      {displayAmt > 0 ? "gets back" : displayAmt < 0 ? "pays" : "settled"}{" "}
+                      <span className="text-xs font-normal opacity-80">
+                        {displayAmt > 0 ? "gets back" : displayAmt < 0 ? "pays" : "settled"}
+                      </span>{" "}
                       {displayAmt !== 0 && formatMoney(Math.abs(displayAmt), userCurrency)}
                     </span>
                   </div>
@@ -2078,11 +2083,13 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                             : `${getPersonName(expense.paidById)} paid · split ${expense.splitAmongIds.length} ways`}
                         </p>
                       </div>
-                      <span className={`font-mono text-base font-semibold shrink-0 ${expenseAmountColor(expense)}`}>
-                        {expense.currency && expense.currency !== "CAD" && expense.originalAmount
-                          ? formatExpenseAmount(expense.amount, expense.currency, expense.originalAmount)
-                          : formatMoney(expense.amount, userCurrency)}
-                      </span>
+                      <ExpenseAmount
+                        amount={expense.amount}
+                        currency={expense.currency}
+                        originalAmount={expense.originalAmount}
+                        viewerCurrency={userCurrency}
+                        className={`font-mono text-base font-semibold ${expenseAmountColor(expense)}`}
+                      />
                       {canDeleteExpense(expense) && (
                         <button
                           className="text-muted-foreground shrink-0 p-1 opacity-60"
@@ -2124,9 +2131,15 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
           {detailExpense && (
             <div className="space-y-4 pt-2">
               {/* Amount + Date */}
-              <div className="flex items-center justify-between">
-                <span className="text-2xl font-bold text-primary">{formatMoney(detailExpense.amount, userCurrency, detailExpense.currency, detailExpense.originalAmount)}</span>
-                <span className="text-sm text-muted-foreground font-mono">{new Date(detailExpense.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
+              <div className="flex items-start justify-between gap-3">
+                <ExpenseAmount
+                  amount={detailExpense.amount}
+                  currency={detailExpense.currency}
+                  originalAmount={detailExpense.originalAmount}
+                  viewerCurrency={userCurrency}
+                  className="text-2xl font-bold text-primary text-left min-w-0"
+                />
+                <span className="text-sm text-muted-foreground font-mono shrink-0 pt-1.5">{new Date(detailExpense.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
               </div>
 
               {/* Paid by */}
@@ -2160,16 +2173,16 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                         : detailExpense.amount / detailExpense.splitAmongIds.length;
                       return (
                         <div key={personId} className="flex items-center justify-between gap-2 py-1">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
                             <div
                               className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-semibold shrink-0"
                               style={{ backgroundColor: getPersonColor(personId) }}
                             >
                               {getPersonName(personId)[0]?.toUpperCase()}
                             </div>
-                            <span className="text-sm">{getPersonName(personId)}</span>
+                            <span className="text-sm truncate">{getPersonName(personId)}</span>
                           </div>
-                          <span className="text-sm font-medium">{formatMoney(share, userCurrency)}</span>
+                          <span className="text-sm font-medium shrink-0 whitespace-nowrap">{formatMoney(share, userCurrency)}</span>
                         </div>
                       );
                     });
@@ -2181,7 +2194,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
               {(detailExpense as any).notes && (
                 <div className="rounded-lg bg-muted/50 p-3">
                   <p className="text-xs text-muted-foreground mb-1">Note</p>
-                  <p className="text-sm">{(detailExpense as any).notes}</p>
+                  <p className="text-sm break-words [overflow-wrap:anywhere]">{(detailExpense as any).notes}</p>
                 </div>
               )}
 
@@ -2210,7 +2223,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                   Are you sure you want to delete <strong>{group.name}</strong>?
                 </p>
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-col-reverse gap-2 sm:flex-row">
                 <Button
                   variant="outline"
                   className="flex-1"
@@ -2592,8 +2605,8 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
               ))}
 
               <div className="flex gap-2">
-                <Button variant="outline" className="flex-1" onClick={() => setImportStep("upload")}>Back</Button>
-                <Button className="flex-1" disabled={!importImporterName || importCsvNames.filter(n => n !== importImporterName).some(n => !importMapping[n] || (importMapping[n] === "__new__" && !importNewEmails[n]))} onClick={() => setImportStep("preview")}>
+                <Button variant="outline" className="shrink-0" onClick={() => setImportStep("upload")}>Back</Button>
+                <Button className="flex-1 min-w-0" disabled={!importImporterName || importCsvNames.filter(n => n !== importImporterName).some(n => !importMapping[n] || (importMapping[n] === "__new__" && !importNewEmails[n]))} onClick={() => setImportStep("preview")}>
                   Preview ({importPreview.length} expenses)
                 </Button>
               </div>

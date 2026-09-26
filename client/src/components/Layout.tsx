@@ -131,7 +131,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             return (
               <Link key={item.path} href={item.path}>
                 <button
-                  className={`flex flex-col items-center gap-1 px-3 py-1.5 rounded-lg transition-colors ${
+                  className={`flex flex-col items-center gap-1 px-1.5 sm:px-3 py-1.5 rounded-lg transition-colors ${
                     isActive ? "text-primary" : "text-muted-foreground"
                   }`}
                   data-testid={`nav-${item.label.toLowerCase()}`}

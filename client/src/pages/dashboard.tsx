@@ -16,6 +16,8 @@ import { WhatsNewModal } from "@/components/WhatsNewModal";
 import { formatMoney } from "@/components/CurrencySelector";
 import { QuickAddBar, type QuickAddBarHandle } from "@/components/QuickAddBar";
 import { WhatsNewQuickAdd } from "@/components/WhatsNewQuickAdd";
+import { FitText } from "@/components/FitText";
+import { ExpenseAmount } from "@/components/ExpenseAmount";
 
 // Warm, on-brand avatar colour derived from a person's id — ignores any stale
 // teal/blue values still stored on legacy accounts from the old theme, so
@@ -35,10 +37,21 @@ function StatCard({ label, value, href, variant = "count", tone }: { label: stri
   const inner = (
     <div className={`rounded-2xl p-5 border ${money ? "bg-foreground border-foreground" : `bg-card border-border ${href ? "hover-elevate cursor-pointer" : ""}`}`}>
       <p className={`text-[13px] font-medium ${money ? "text-background/70" : "text-muted-foreground"}`}>{label}</p>
-      <p
-        className={`mt-2 ${money ? `text-[28px] leading-none font-mono tabular-nums ${moneyColor}` : "text-[32px] leading-none font-serif text-foreground"}`}
-        data-testid={`stat-${label.toLowerCase().replace(/\s/g, "-")}`}
-      >{value}</p>
+      {money ? (
+        // Balances can be long ($12,345.67) and these cards are half-width —
+        // FitText keeps 28px when it fits and shrinks only when it doesn't.
+        <FitText
+          max={28}
+          syncGroup="dashboard-balances"
+          className={`mt-2 leading-none font-mono tabular-nums ${moneyColor}`}
+          data-testid={`stat-${label.toLowerCase().replace(/\s/g, "-")}`}
+        >{value}</FitText>
+      ) : (
+        <p
+          className="mt-2 text-[32px] leading-none font-serif text-foreground"
+          data-testid={`stat-${label.toLowerCase().replace(/\s/g, "-")}`}
+        >{value}</p>
+      )}
     </div>
   );
   if (href) return <Link href={href}>{inner}</Link>;
@@ -208,7 +221,7 @@ export default function Dashboard() {
             >
               <div className="flex items-center justify-between gap-2">
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium">
+                  <p className="text-sm font-medium break-words">
                     <span className="text-primary">{invite.inviterName}</span>
                     {" invited you to "}
                     <span className="font-semibold">{invite.groupName}</span>
@@ -245,7 +258,7 @@ export default function Dashboard() {
       )}
 
       <div>
-        <h1 className="text-4xl font-serif tracking-tight leading-none">
+        <h1 className="text-4xl font-serif tracking-tight leading-none break-words">
           Hey, <em className="italic text-accent-foreground">{user?.name?.split(" ")[0] || "there"}</em>
         </h1>
         <p className="text-[15px] text-muted-foreground mt-2">Here's where everyone stands.</p>
@@ -369,11 +382,17 @@ export default function Dashboard() {
               <Card key={expense.id} className="p-4 flex items-center justify-between gap-2">
                 <div className="flex-1 min-w-0">
                   <p className="text-base font-medium truncate">{expense.description}</p>
-                  <p className="text-sm text-muted-foreground font-mono mt-0.5">
-                    Paid by {getPersonName(expense.paidById)} · {new Date(expense.date).toLocaleDateString()}
+                  <p className="text-sm text-muted-foreground font-mono mt-0.5 truncate">
+                    Paid by {getPersonName(expense.paidById)} · {new Date(expense.date).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
                   </p>
                 </div>
-                <p className="text-base font-semibold text-primary shrink-0 font-mono">{formatMoney(expense.amount, userCurrency, expense.currency, expense.originalAmount)}</p>
+                <ExpenseAmount
+                  amount={expense.amount}
+                  currency={expense.currency}
+                  originalAmount={expense.originalAmount}
+                  viewerCurrency={userCurrency}
+                  className="text-base font-semibold text-primary font-mono"
+                />
               </Card>
             ))}
           </div>

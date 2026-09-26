@@ -296,7 +296,7 @@ export default function Friends() {
           <p className="text-[17px] font-semibold tracking-tight truncate">{f.name}</p>
         </div>
         {balance !== 0 ? (
-          <span className={`font-mono font-semibold shrink-0 ${balance > 0 ? AMOUNT_IN_CLASS : AMOUNT_OUT_CLASS}`}>
+          <span className={`font-mono font-semibold shrink-0 whitespace-nowrap ${balance > 0 ? AMOUNT_IN_CLASS : AMOUNT_OUT_CLASS}`}>
             {formatMoney(Math.abs(balance), userCurrency)}
           </span>
         ) : (

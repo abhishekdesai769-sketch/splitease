@@ -962,9 +962,9 @@ export default function Admin() {
               >
                 {selectedUser?.name[0]?.toUpperCase()}
               </div>
-              <div>
-                <p className="text-sm font-semibold leading-tight">{selectedUser?.name}</p>
-                <p className="text-xs text-muted-foreground font-normal">{selectedUser?.email}</p>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold leading-tight truncate">{selectedUser?.name}</p>
+                <p className="text-xs text-muted-foreground font-normal break-all">{selectedUser?.email}</p>
               </div>
             </DialogTitle>
           </DialogHeader>

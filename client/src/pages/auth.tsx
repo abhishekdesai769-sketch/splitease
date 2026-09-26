@@ -502,7 +502,7 @@ export default function AuthPage() {
                 </div>
                 <p className="text-sm text-muted-foreground">
                   We sent a 6-digit code to<br />
-                  <span className="font-medium text-foreground">{email}</span>
+                  <span className="font-medium text-foreground break-all">{email}</span>
                 </p>
               </div>
 
@@ -610,7 +610,7 @@ export default function AuthPage() {
             <div className="space-y-1">
               <h3 className="font-semibold">Check your email</h3>
               <p className="text-sm text-muted-foreground">
-                If an account exists for <span className="font-medium text-foreground">{email}</span>, we sent a password reset link.
+                If an account exists for <span className="font-medium text-foreground break-all">{email}</span>, we sent a password reset link.
               </p>
             </div>
             <Button variant="outline" className="w-full" onClick={() => switchTo("login")}>

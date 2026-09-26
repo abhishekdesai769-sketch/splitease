@@ -23,6 +23,7 @@
 
 import { Loader2, Check, Users, Pencil, Paperclip, X, ArrowRight } from "lucide-react";
 import { useVoiceCall, money, WEAK_LABEL } from "@/hooks/use-voice-call";
+import { FitText } from "@/components/FitText";
 
 // Same warm avatar palette + hash the rest of the app uses (dashboard/friends).
 const WARM_AVATARS = ["#7A3E32", "#8C5A3C", "#9A4A2A", "#A6674A", "#8A6A32", "#B04A34", "#6B4A3A", "#B5794A"];
@@ -120,7 +121,7 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
           return (
             <div key={t.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
               <div
-                className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-[15px] leading-snug ${
+                className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-[15px] leading-snug break-words ${
                   mine
                     ? "bg-accent-foreground text-white rounded-br-md"
                     : "bg-card border border-border text-foreground rounded-bl-md"
@@ -195,14 +196,16 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
               ) : (
                 <>
                   <div className="flex items-end justify-between gap-3">
-                    <span className="font-mono tabular-nums text-foreground leading-none" style={{ fontSize: "2.5rem" }}>{money(preview.amount, preview.currency)}</span>
+                    <div className="min-w-0 flex-1">
+                      <FitText max={40} className="font-mono tabular-nums text-foreground leading-none">{money(preview.amount, preview.currency)}</FitText>
+                    </div>
                     {preview.groupName && (
-                      <span className="mb-1 inline-flex items-center gap-1 rounded-full bg-accent px-3 py-1 text-xs text-accent-foreground">
-                        <Users className="w-3.5 h-3.5" />{preview.groupName}
+                      <span className="mb-1 inline-flex max-w-[45%] shrink-0 items-center gap-1 rounded-full bg-accent px-3 py-1 text-xs text-accent-foreground">
+                        <Users className="w-3.5 h-3.5 shrink-0" /><span className="truncate">{preview.groupName}</span>
                       </span>
                     )}
                   </div>
-                  <p className="font-serif text-2xl text-foreground mt-1 capitalize leading-tight">{preview.description}</p>
+                  <p className="font-serif text-2xl text-foreground mt-1 capitalize leading-tight break-words">{preview.description}</p>
                   <p className="text-xs text-muted-foreground mt-1">{shortDate(preview.date)} · {preview.paidByYou === false && preview.paidByName ? `${preview.paidByName.split(" ")[0]} paid` : "you paid"} · {preview.splitLabel}</p>
                 </>
               )}
@@ -275,10 +278,12 @@ export default function VoiceCall({ onClose }: { onClose: () => void }) {
             <div className="w-[92%] max-w-sm rounded-[24px] border border-border bg-card p-5" data-testid="voice-settle-card">
               <p className="text-[11px] font-mono uppercase tracking-[0.14em] text-muted-foreground mb-2">Record payment</p>
               <div className="flex items-end justify-between gap-3">
-                <span className="font-mono tabular-nums text-foreground leading-none" style={{ fontSize: "2.5rem" }}>{money(settle.amount, settle.currency)}</span>
+                <div className="min-w-0 flex-1">
+                  <FitText max={40} className="font-mono tabular-nums text-foreground leading-none">{money(settle.amount, settle.currency)}</FitText>
+                </div>
                 {settle.groupName && (
-                  <span className="mb-1 inline-flex items-center gap-1 rounded-full bg-accent px-3 py-1 text-xs text-accent-foreground">
-                    <Users className="w-3.5 h-3.5" />{settle.groupName}
+                  <span className="mb-1 inline-flex max-w-[45%] shrink-0 items-center gap-1 rounded-full bg-accent px-3 py-1 text-xs text-accent-foreground">
+                    <Users className="w-3.5 h-3.5 shrink-0" /><span className="truncate">{settle.groupName}</span>
                   </span>
                 )}
               </div>
