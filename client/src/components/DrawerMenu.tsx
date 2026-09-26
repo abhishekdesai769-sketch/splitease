@@ -15,6 +15,9 @@ import { CURRENCIES } from "@/components/CurrencySelector";
 
 const PRIVACY_URL = "https://spliiit.ca/privacy";
 const TERMS_URL = "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/";
+// "You" is always ink — same as the quick-add cards (dashboard passes #292624
+// for the signed-in user). Stored avatar colours on older accounts can be loud.
+const SELF_COLOR = "#292624";
 
 function errorText(err: Error): string {
   try { return JSON.parse(err.message.split(": ").slice(1).join(": ")).error || err.message; } catch { return err.message; }
@@ -40,7 +43,7 @@ function Row({ icon, title, sub, onClick, testId }: { icon: ReactNode; title: st
   return (
     <button
       onClick={onClick}
-      className="w-full flex items-center gap-3 px-3.5 py-3 min-h-[48px] rounded-[18px] text-left active:bg-foreground/[0.04] transition-colors"
+      className="w-full flex items-center gap-3 px-3.5 py-3 min-h-[48px] rounded-[18px] text-left active:bg-foreground/[0.04] transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring"
       data-testid={testId}
     >
       <span className="text-foreground/55 shrink-0">{icon}</span>
@@ -71,13 +74,16 @@ export function DrawerHome({
   const icon = "w-5 h-5";
 
   return (
-    <div className="flex-1 flex flex-col px-4 pt-7 pb-4 overflow-y-auto" data-testid="drawer-home">
+    <div className="flex-1 flex flex-col px-4 pt-4 pb-4 overflow-y-auto" data-testid="drawer-home">
+      {/* my-auto centres the menu in the space above the footer; when the
+          screen is too short it collapses to 0 so nothing gets clipped. */}
+      <div className="my-auto flex flex-col pb-4">
       <button
         onClick={onAccount}
-        className="flex items-center gap-3 px-1.5 pb-5 min-h-[48px] text-left"
+        className="flex items-center gap-3 px-1.5 pb-5 min-h-[48px] text-left rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-ring"
         data-testid="menu-account"
       >
-        <Initial name={user.name} color={user.avatarColor} size={48} />
+        <Initial name={user.name} color={SELF_COLOR} size={48} />
         <span className="flex-1 min-w-0">
           <span className="block font-serif text-[26px] leading-[1.1] text-foreground truncate">{user.name}</span>
           <span className="block text-[13px] text-muted-foreground">View account</span>
@@ -102,7 +108,7 @@ export function DrawerHome({
         <Row icon={<MessageCircle className={icon} />} title="Contact support" onClick={onSupport} testId="menu-contact-support" />
       </div>
 
-      <div className="rounded-[22px] bg-card p-[18px] flex flex-col items-start gap-3.5 mb-5">
+      <div className="rounded-[22px] bg-card p-[18px] flex flex-col items-start gap-3.5">
         <p className="font-serif text-[23px] leading-[1.15] text-foreground">Know someone who always fronts the bill?</p>
         <button
           onClick={onInvite}
@@ -112,8 +118,9 @@ export function DrawerHome({
           Invite a friend
         </button>
       </div>
+      </div>
 
-      <div className="mt-auto flex items-center justify-between px-2 text-[13px] text-muted-foreground">
+      <div className="flex items-center justify-between px-2 text-[13px] text-muted-foreground">
         <button onClick={() => logout()} className="py-3 px-1.5" data-testid="menu-sign-out">Sign out</button>
         <span className="flex items-center gap-3">
           <a href={PRIVACY_URL} target="_blank" rel="noopener noreferrer" className="py-3">Privacy</a>
@@ -165,7 +172,7 @@ export function AccountView({ onBack, onDelete }: { onBack: () => void; onDelete
       </button>
 
       <div className="flex flex-col items-center gap-2.5 mt-1 mb-6">
-        <Initial name={user.name} color={user.avatarColor} size={84} />
+        <Initial name={user.name} color={SELF_COLOR} size={84} />
         <p className="font-serif text-[32px] leading-[1.1] text-foreground text-center break-words max-w-full">{user.name}</p>
       </div>
 

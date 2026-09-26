@@ -203,6 +203,9 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
         // close-auto-focus stops the ring from ever landing there. Keyboard
         // users still get focus-visible rings on the controls themselves.
         onCloseAutoFocus={(e) => e.preventDefault()}
+        // Same WebKit issue on open: Radix focuses the first button (the name
+        // row) and iOS paints a blue box around it. Keep focus on the trigger.
+        onOpenAutoFocus={(e) => e.preventDefault()}
         // Paper-on-beige drawer: rounded outer edge + the same soft shadow as
         // the quick-add card, over a softened (not blacked-out) app.
         className="w-[85vw] max-w-[330px] sm:w-[360px] sm:max-w-[360px] flex flex-col gap-0 p-0 bg-sidebar border-0 rounded-r-[28px] shadow-[0_18px_48px_-16px_rgba(40,30,20,0.35)]"
