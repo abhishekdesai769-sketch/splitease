@@ -36,7 +36,6 @@ import {
 import type { SafeUser, Group } from "@shared/schema";
 import { UpgradePromptSheet } from "./UpgradePromptSheet";
 import { track } from "@/lib/analytics";
-import { recordExpenseAndCheck, triggerReview } from "@/lib/reviewPrompt";
 import { isIosNative } from "@/lib/iap";
 import { isInTWA } from "@/lib/platform";
 import { speak, stopSpeaking } from "@/lib/speech";
@@ -401,7 +400,6 @@ export function VoiceMicButton() {
         title: "Expense added ✓",
         description: `${d.description ?? "Expense"} — ${formatVoiceAmount(d.amount, voiceCtx.defaultCurrency)}`,
       });
-      if (recordExpenseAndCheck()) setTimeout(() => triggerReview("expense_6"), 2000);
     } catch {
       toast({ title: "Failed to add expense", description: "Try again or add it manually.", variant: "destructive" });
       track("voice_error", { reason: "api_failure" });

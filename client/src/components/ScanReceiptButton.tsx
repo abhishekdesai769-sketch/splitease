@@ -3,7 +3,6 @@ import { Camera, Crown, Loader2 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { ReceiptReviewSheet, type Member, type ItemSplit } from "@/components/ReceiptReviewSheet";
-import { triggerReview } from "@/lib/reviewPrompt";
 import { isInTWA } from "@/lib/platform";
 import { getDeviceId, getPlatformHint } from "@/lib/device-id";
 import { track } from "@/lib/analytics";
@@ -152,7 +151,6 @@ export function ScanReceiptButton({ isPremium, onUpgrade, members, onItemSplit, 
     // Pass scanId so the form can include it in the create payload — server
     // commits the free-quota counter ONLY when an expense gets created.
     onResult({ merchant, total, date }, reviewFile, reviewData?.scanId ?? null);
-    setTimeout(() => triggerReview("receipt"), 1500);
     setReviewData(null);
     setReviewFile(null);
   };

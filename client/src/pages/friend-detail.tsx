@@ -22,7 +22,6 @@ import { useAuth } from "@/lib/auth";
 import { calculateGroupBalances } from "@/lib/simplify";
 import { displayBalance, AMOUNT_IN_CLASS, AMOUNT_OUT_CLASS } from "@/lib/balance-display";
 import { PaymentMethodsView } from "@/components/PaymentMethods";
-import { recordExpenseAndCheck, triggerReview } from "@/lib/reviewPrompt";
 import { ReminderSheet } from "@/components/ReminderSheet";
 
 // Clamp friend avatars to the warm cream/terracotta palette (matches the
@@ -216,7 +215,6 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
       resetExpenseForm();
       setAddExpenseOpen(false);
       toast({ title: "Expense added" });
-      if (recordExpenseAndCheck()) setTimeout(() => triggerReview("expense_6"), 1500);
     },
     onError: (err: Error) => {
       let msg = err.message;
@@ -282,7 +280,6 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
       track("expense_settled", { context: "friend", amount: Math.abs(myBalance) });
       setSettleUpOpen(false);
       toast({ title: "Settled up", description: "Payment recorded" });
-      setTimeout(() => triggerReview("settled"), 1500);
     },
     onError: (err: Error) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });

@@ -1,42 +1,29 @@
 /**
- * reviewPrompt.ts — In-app review prompt logic
+ * reviewPrompt.ts — Mandatory in-app rating gate
  *
- * 3 triggers:
- *   "expense_6"    — name kept for localStorage compat, NOW fires on 2nd expense
- *                    (May 2026: shifted from 6 → 2 per product decision; users
- *                    are still fresh + novelty-driven, captures more 5-stars)
- *   "receipt"      — user uploads their first receipt photo
- *   "group"        — user creates a group with 3+ members
+ * Sep 2026 product decision: every user of the installed app (iOS Capacitor
+ * or Android TWA) is asked to rate on EVERY app open — cold launch and every
+ * return to the foreground — until they complete it. There is no skip, no
+ * cooldown and no cap. ReviewPromptSheet owns the when/UI; this file owns
+ * the "are we done with this user?" state and the store links.
  *
- * Rules:
- *   - Each trigger fires at most ONCE ever (tracked in localStorage)
- *   - If user taps "Leave a Review" → never show again
- *   - If user taps "Maybe later" → wait 7 days before showing next trigger
- *   - If user taps "Already did" → never show again (same as rated)
- *   - Max 3 prompts total across all triggers before we give up
+ * "Done" means one of:
+ *   - 4-5 stars and they tapped through to the App Store / Play Store
+ *   - 1-3 stars and they sent the in-app feedback note
+ *
+ * We cannot see whether a store review was actually posted — the tap-through
+ * is the strongest signal available.
+ *
+ * Plain web (browser) users are never prompted: a store review needs the app
+ * installed, so there's nothing for them to do.
  */
 
-export type ReviewTrigger = "expense_6" | "receipt" | "group" | "settled";
+import { isIosNative } from "@/lib/iap";
+import { isInTWA } from "@/lib/platform";
 
-// Tuning (Sep 2026 — push harder for reviews, but stay App-Store-safe):
-//   - MAX_PROMPTS raised 3 → 6 so we re-ask skippers more (still capped; we
-//     never gate app usage on a review — that would get us rejected).
-//   - SKIP_COOLDOWN_DAYS lowered 7 → 4 so a skip is re-asked sooner.
-//   - RECURRING triggers can fire again on repeat delight moments (settle-up),
-//     instead of once-ever like the milestone triggers.
-const MAX_PROMPTS = 6;
-const SKIP_COOLDOWN_DAYS = 4;
-const RECURRING = new Set<ReviewTrigger>(["settled"]);
-
-// ─── Storage keys ──────────────────────────────────────────────────────────────
-
-const K_RATED       = "spliiit_rv_rated";       // "1" = user left review
-const K_DISMISSED   = "spliiit_rv_dismissed_at"; // ISO — last "maybe later"
-const K_TOTAL       = "spliiit_rv_total";        // number of times shown
-const K_EXPENSE_CT  = "spliiit_rv_expense_ct";  // running expense count for trigger
-const K_FIRED       = (t: ReviewTrigger) => `spliiit_rv_fired_${t}`; // per-trigger flag
-
-// ─── Logic ────────────────────────────────────────────────────────────────────
+// v2 key: deliberately NOT the old "spliiit_rv_rated", which was also set by
+// "Maybe later" — everyone gets asked under the new rules.
+const K_DONE = "spliiit_rv2_done";
 
 function get(key: string): string | null {
   try { return localStorage.getItem(key); } catch { return null; }
@@ -45,56 +32,24 @@ function set(key: string, val: string) {
   try { localStorage.setItem(key, val); } catch {}
 }
 
-/** Has the user already tapped "Leave a Review" or "Already did"? */
+/** Has the user completed the rating flow on this install? */
 export function hasRated(): boolean {
-  return get(K_RATED) === "1";
+  return get(K_DONE) === "1";
 }
 
-/** Has this specific trigger already fired? */
-export function triggerFired(type: ReviewTrigger): boolean {
-  return get(K_FIRED(type)) === "1";
-}
-
-/** Should we show the prompt right now? */
-export function shouldShowReview(type: ReviewTrigger): boolean {
-  if (hasRated()) return false;                                     // already reviewed → never nag again
-  if (!RECURRING.has(type) && triggerFired(type)) return false;     // one-time milestones fire once; recurring can re-fire
-  if (parseInt(get(K_TOTAL) ?? "0") >= MAX_PROMPTS) return false;   // hit the overall cap — give up gracefully
-
-  const dismissedAt = get(K_DISMISSED);
-  if (dismissedAt) {
-    const daysSince = (Date.now() - new Date(dismissedAt).getTime()) / 86_400_000;
-    if (daysSince < SKIP_COOLDOWN_DAYS) return false; // cooldown after a skip
-  }
-
-  return true;
-}
-
-/** Track expense count and return true at the configured trigger point.
- *  Currently fires at the 2nd expense (shifted from 6 in May 2026 — see
- *  the file header for rationale). The trigger KEY ("expense_6") is kept
- *  for localStorage backwards-compat with users who already have it set. */
-export function recordExpenseAndCheck(): boolean {
-  if (triggerFired("expense_6") || hasRated()) return false;
-  const count = parseInt(get(K_EXPENSE_CT) ?? "0") + 1;
-  set(K_EXPENSE_CT, count.toString());
-  return count === 2; // fires exactly once at expense #2
-}
-
-/** Called when the prompt is shown. */
-export function markShown(type: ReviewTrigger) {
-  set(K_FIRED(type), "1");
-  set(K_TOTAL, (parseInt(get(K_TOTAL) ?? "0") + 1).toString());
-}
-
-/** Called when user taps "Leave a Review" or "Already did ✓". */
+/** Called when the user taps through to the store (4-5★) or sends feedback (1-3★). */
 export function markRated() {
-  set(K_RATED, "1");
+  set(K_DONE, "1");
 }
 
-/** Called when user taps "Maybe later". */
-export function markDismissed() {
-  set(K_DISMISSED, new Date().toISOString());
+/** Is this the installed app (where a store review is possible)? */
+export function isInstalledApp(): boolean {
+  return isIosNative || isInTWA;
+}
+
+/** Should the gate be up right now? */
+export function shouldShowReview(): boolean {
+  return isInstalledApp() && !hasRated();
 }
 
 // ─── Platform + store link ────────────────────────────────────────────────────
@@ -113,26 +68,4 @@ export function getStoreLink(platform: StorePlatform): string {
   }
   // Google Play
   return "https://play.google.com/store/apps/details?id=ca.klarityit.spliiit";
-}
-
-// ─── Global trigger callback (set by ReviewPromptSheet on mount) ───────────────
-// This avoids needing a React context — any module can call triggerReview().
-
-let _onTrigger: ((type: ReviewTrigger) => void) | null = null;
-
-export function registerReviewTrigger(fn: (type: ReviewTrigger) => void) {
-  _onTrigger = fn;
-}
-
-export function unregisterReviewTrigger() {
-  _onTrigger = null;
-}
-
-/**
- * Call this from anywhere after a triggering action succeeds.
- * Automatically checks all rules before showing the prompt.
- */
-export function triggerReview(type: ReviewTrigger) {
-  if (!shouldShowReview(type)) return;
-  _onTrigger?.(type);
 }

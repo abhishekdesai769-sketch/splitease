@@ -65,12 +65,15 @@ const sheetVariants = cva(
 
 interface SheetContentProps
   extends React.ComponentPropsWithoutRef<typeof SheetPrimitive.Content>,
-    VariantProps<typeof sheetVariants> {}
+    VariantProps<typeof sheetVariants> {
+  /** Omit the built-in X — for sheets the user must not be able to dismiss. */
+  hideClose?: boolean
+}
 
 const SheetContent = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Content>,
   SheetContentProps
->(({ side = "right", className, children, ...props }, ref) => (
+>(({ side = "right", className, children, hideClose, ...props }, ref) => (
   <SheetPortal>
     <SheetOverlay />
     <SheetPrimitive.Content
@@ -85,7 +88,7 @@ const SheetContent = React.forwardRef<
           `top` so it sits below the iOS status bar. Bottom sheets keep the
           plain top-4 since their sheet starts mid-screen (adding safe-area
           there would push the X down into the sheet's header content). */}
-      <SheetPrimitive.Close
+      {!hideClose && <SheetPrimitive.Close
         className={cn(
           "absolute right-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-secondary",
           side === "bottom"
@@ -95,7 +98,7 @@ const SheetContent = React.forwardRef<
       >
         <X className="h-4 w-4" />
         <span className="sr-only">Close</span>
-      </SheetPrimitive.Close>
+      </SheetPrimitive.Close>}
     </SheetPrimitive.Content>
   </SheetPortal>
 ))

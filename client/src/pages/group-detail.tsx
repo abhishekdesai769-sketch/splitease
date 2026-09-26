@@ -24,7 +24,6 @@ import { calculateGroupBalances, simplifyDebts, calculatePairwiseBalances } from
 import { isEffectivelySettled, displayBalance, AMOUNT_IN_CLASS, AMOUNT_OUT_CLASS } from "@/lib/balance-display";
 import { PaymentMethodsView } from "@/components/PaymentMethods";
 import { ShareChannels } from "@/components/ShareChannels";
-import { recordExpenseAndCheck, triggerReview } from "@/lib/reviewPrompt";
 import { track } from "@/lib/analytics";
 
 export default function GroupDetail({ groupId }: { groupId: string }) {
@@ -223,7 +222,6 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
       resetForm();
       setAddOpen(false);
       toast({ title: "Expense added" });
-      if (recordExpenseAndCheck()) setTimeout(() => triggerReview("expense_6"), 1500);
     },
     onError: (err: Error) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -430,7 +428,6 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
       setSettleReceiverId("");
       setSettleAmount("");
       toast({ title: "Settled up", description: "Payment recorded in this group" });
-      setTimeout(() => triggerReview("settled"), 1500);
     },
     onError: (err: Error) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });

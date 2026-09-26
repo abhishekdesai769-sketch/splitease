@@ -1,108 +1,100 @@
 /**
- * ReviewPromptSheet — 5-star in-app review prompt
+ * ReviewPromptSheet — mandatory 5-star rating gate
  *
- * Replaces the previous "long copy + Leave a Review button" approach with
- * a stars-only UI. User taps a star → smart routing:
+ * Shown on EVERY open of the installed app (cold launch + every return to
+ * the foreground) until the user completes it. No X, no "Maybe later", no
+ * tap-outside / Escape dismiss. See lib/reviewPrompt.ts for the done state.
  *
- *   4-5 stars  → "Thanks!" screen → tap to be redirected to App Store with
- *                a brief delay; SKStoreReviewController is attempted first
- *                in case Apple decides to render its native modal (zero
- *                friction when it works).
+ *   4-5 stars  → "Thank you" → only button sends them to the App Store /
+ *                Play Store write-review page. Tapping it = done.
  *
- *   1-3 stars  → in-app feedback form → submits via /api/feedback (emailed
- *                to support). Does NOT push them to the App Store — saves
- *                us from public bad reviews.
+ *   1-3 stars  → in-app feedback form → /api/feedback (emailed to support).
+ *                Sending it = done. They are not sent to the store.
  *
- * Trigger logic (lib/reviewPrompt.ts) is UNCHANGED:
- *   - 2nd expense (key kept as "expense_6" for localStorage compat)
- *   - first receipt
- *   - 3-member group
- * Plus the existing 3-prompt cap and 7-day cooldown.
+ * Stars stay tappable on every step so a mis-tap can be corrected.
+ * Only shown once the user is logged in and past the first-run wizard.
  */
 
-import { useEffect, useState } from "react";
-import { Star, X, Loader2, Heart } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Star, Loader2, Heart } from "lucide-react";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/lib/auth";
 import {
-  type ReviewTrigger,
-  registerReviewTrigger,
-  unregisterReviewTrigger,
-  markShown,
+  shouldShowReview,
   markRated,
-  markDismissed,
   getStorePlatform,
   getStoreLink,
 } from "@/lib/reviewPrompt";
 import { track } from "@/lib/analytics";
-import { requestNativeReview } from "@/lib/native-review";
 
 type SheetStep = "rate" | "thanks" | "feedback" | "feedback-sent";
+type OpenReason = "launch" | "resume";
+
+// Let the first screen paint before the gate slides up.
+const SHOW_DELAY_MS = 1200;
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function ReviewPromptSheet() {
+  const { user } = useAuth();
   const [open, setOpen] = useState(false);
-  const [trigger, setTrigger] = useState<ReviewTrigger>("expense_6");
   const [step, setStep] = useState<SheetStep>("rate");
   const [rating, setRating] = useState<number>(0);     // 0 = none yet, 1-5 = tapped
   const [feedbackText, setFeedbackText] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const { toast } = useToast();
+  const openRef = useRef(false);
+  openRef.current = open;
 
   const platform = getStorePlatform();
   const storeName = platform === "ios" ? "App Store" : "Play Store";
+  const eligible = !!user?.firstRunCompletedAt;
 
-  // Register the global trigger callback when this component mounts
+  const show = useCallback((reason: OpenReason) => {
+    if (openRef.current || !shouldShowReview()) return;
+    setStep("rate");
+    setRating(0);
+    setFeedbackText("");
+    setOpen(true);
+    track("review_prompt_shown", { trigger: reason, platform });
+  }, [platform]);
+
+  // Cold launch (or the moment the user becomes eligible this session)
   useEffect(() => {
-    registerReviewTrigger((type) => {
-      setTrigger(type);
-      setStep("rate");
-      setRating(0);
-      setFeedbackText("");
-      setOpen(true);
-      markShown(type);
-      track("review_prompt_shown", { trigger: type, platform });
-    });
-    return () => unregisterReviewTrigger();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (!eligible) {
+      setOpen(false);
+      return;
+    }
+    const t = setTimeout(() => show("launch"), SHOW_DELAY_MS);
+    return () => clearTimeout(t);
+  }, [eligible, show]);
 
-  // Star tap → branch by rating
+  // Every return to the foreground counts as an app open
+  useEffect(() => {
+    if (!eligible) return;
+    const onVisible = () => {
+      if (document.visibilityState === "visible") show("resume");
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [eligible, show]);
+
+  // Star tap → branch by rating (works from any step, so mis-taps can be fixed)
   const handleStarTap = (n: number) => {
     setRating(n);
-    track("review_prompt_rated", { trigger, rating: n, platform });
-    if (n >= 4) {
-      setStep("thanks");
-    } else {
-      setStep("feedback");
-    }
+    track("review_prompt_rated", { rating: n, platform });
+    setStep(n >= 4 ? "thanks" : "feedback");
   };
 
-  // 4-5 star path → try native prompt, fall back to App Store
-  const handleAppStoreRedirect = async () => {
-    markRated(); // Apple-side rating is happening; never re-prompt this user
-    track("review_prompt_clicked", { trigger, platform, rating });
-    // Try the native prompt first. If it fires, Apple's modal handles the
-    // submission (zero friction). If suppressed or unavailable, we fall
-    // back to the App Store write-review URL (~3 extra taps for the user
-    // but a guaranteed path to recording the review).
-    const nativeFired = await requestNativeReview();
-    if (!nativeFired) {
-      window.open(getStoreLink(platform), "_blank", "noopener,noreferrer");
-    }
-    setOpen(false);
-  };
-
-  // 4-5 star path → user said "maybe later" on the thanks screen
-  const handleThanksDismiss = () => {
-    // They tapped 4-5 stars, so they like us — mark rated to avoid pestering
-    // them again. The intent was positive even if they didn't follow through.
+  // 4-5 star path → straight to the store's write-review page
+  const handleAppStoreRedirect = () => {
     markRated();
-    track("review_prompt_dismissed", { trigger, action: "thanks_dismissed", rating });
+    track("review_prompt_clicked", { platform, rating });
+    window.open(getStoreLink(platform), "_blank", "noopener,noreferrer");
     setOpen(false);
   };
 
@@ -118,8 +110,8 @@ export function ReviewPromptSheet() {
         rating,
         comment: feedbackText.trim(),
       });
-      track("review_prompt_feedback_sent", { trigger, rating });
-      markRated(); // they gave us a 1-3, don't ask again — they were honest
+      track("review_prompt_feedback_sent", { rating });
+      markRated();
       setStep("feedback-sent");
       // Auto-close after a moment so they see the thank-you confirmation
       setTimeout(() => setOpen(false), 2200);
@@ -132,55 +124,47 @@ export function ReviewPromptSheet() {
     }
   };
 
-  // Top-right X — counts as "maybe later" before any rating is given
-  const handleClose = () => {
-    if (step === "rate") {
-      markDismissed();
-      track("review_prompt_dismissed", { trigger, action: "closed_without_rating" });
-    }
-    setOpen(false);
-  };
+  const stars = (size: string) => (
+    <div className="flex items-center justify-center gap-2">
+      {[1, 2, 3, 4, 5].map((n) => (
+        <button
+          key={n}
+          type="button"
+          onClick={() => handleStarTap(n)}
+          className="p-1 active:scale-95 transition-transform"
+          aria-label={`${n} star${n !== 1 ? "s" : ""}`}
+          data-testid={`review-star-${n}`}
+        >
+          <Star
+            className={`${size} transition-colors ${
+              rating >= n
+                ? "fill-amber-400 text-amber-400"
+                : "text-muted-foreground/40 hover:text-amber-400/60"
+            }`}
+          />
+        </button>
+      ))}
+    </div>
+  );
 
   return (
-    <Sheet open={open} onOpenChange={(o) => { if (!o) handleClose(); }}>
-      <SheetContent side="bottom" className="rounded-t-2xl">
-        <div className="pt-2 pb-6 px-1">
-
-          {/* Close X — top-right, present on every step */}
-          <div className="flex justify-end">
-            <button
-              onClick={handleClose}
-              className="text-muted-foreground hover:text-foreground transition-colors p-1"
-              aria-label="Dismiss"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
+    // Closing only ever happens from inside (store tap / feedback sent) — the
+    // sheet ignores every user-initiated dismiss.
+    <Sheet open={open} onOpenChange={() => {}}>
+      <SheetContent
+        side="bottom"
+        hideClose
+        className="rounded-t-2xl"
+        onInteractOutside={(e) => e.preventDefault()}
+        onEscapeKeyDown={(e) => e.preventDefault()}
+      >
+        <div className="pt-4 pb-6 px-1">
 
           {/* ─── STEP: rate (5 stars, minimal copy) ────────────────────────── */}
           {step === "rate" && (
             <div className="space-y-5 pt-1 pb-3 text-center">
               <h2 className="text-lg font-semibold">How's Spliiit?</h2>
-              <div className="flex items-center justify-center gap-2.5">
-                {[1, 2, 3, 4, 5].map((n) => (
-                  <button
-                    key={n}
-                    type="button"
-                    onClick={() => handleStarTap(n)}
-                    className="p-1 active:scale-95 transition-transform"
-                    aria-label={`${n} star${n !== 1 ? "s" : ""}`}
-                    data-testid={`review-star-${n}`}
-                  >
-                    <Star
-                      className={`w-10 h-10 transition-colors ${
-                        rating >= n
-                          ? "fill-amber-400 text-amber-400"
-                          : "text-muted-foreground/40 hover:text-amber-400/60"
-                      }`}
-                    />
-                  </button>
-                ))}
-              </div>
+              {stars("w-10 h-10")}
               <p className="text-xs text-muted-foreground">Tap a star to rate</p>
             </div>
           )}
@@ -188,41 +172,23 @@ export function ReviewPromptSheet() {
           {/* ─── STEP: thanks (4-5 stars) ──────────────────────────────────── */}
           {step === "thanks" && (
             <div className="space-y-5 pt-1 pb-3 text-center">
-              {/* Show the user's chosen rating, lit up */}
-              <div className="flex items-center justify-center gap-1">
-                {[1, 2, 3, 4, 5].map((n) => (
-                  <Star
-                    key={n}
-                    className={`w-7 h-7 ${
-                      n <= rating ? "fill-amber-400 text-amber-400" : "text-muted-foreground/30"
-                    }`}
-                  />
-                ))}
-              </div>
+              {stars("w-7 h-7")}
               <div className="space-y-1.5">
                 <h2 className="text-lg font-semibold flex items-center justify-center gap-1.5">
                   Thank you <Heart className="w-4 h-4 fill-red-400 text-red-400" />
                 </h2>
                 <p className="text-sm text-muted-foreground px-4">
-                  Would you mind sharing that on the {storeName}? Takes 10 seconds.
+                  Share that on the {storeName} — it takes 10 seconds and helps us a ton.
                 </p>
               </div>
-              <div className="space-y-2.5 pt-1">
-                <Button
-                  className="w-full"
-                  size="lg"
-                  onClick={handleAppStoreRedirect}
-                  data-testid="review-go-to-store"
-                >
-                  Sure, take me there
-                </Button>
-                <button
-                  onClick={handleThanksDismiss}
-                  className="block mx-auto text-xs text-muted-foreground hover:text-foreground transition-colors py-2"
-                >
-                  Maybe later
-                </button>
-              </div>
+              <Button
+                className="w-full"
+                size="lg"
+                onClick={handleAppStoreRedirect}
+                data-testid="review-go-to-store"
+              >
+                Rate on the {storeName}
+              </Button>
             </div>
           )}
 
@@ -230,16 +196,7 @@ export function ReviewPromptSheet() {
           {step === "feedback" && (
             <div className="space-y-4 pt-1 pb-3">
               <div className="text-center space-y-1.5">
-                <div className="flex items-center justify-center gap-1">
-                  {[1, 2, 3, 4, 5].map((n) => (
-                    <Star
-                      key={n}
-                      className={`w-6 h-6 ${
-                        n <= rating ? "fill-amber-400 text-amber-400" : "text-muted-foreground/30"
-                      }`}
-                    />
-                  ))}
-                </div>
+                {stars("w-6 h-6")}
                 <h2 className="text-base font-semibold">Sorry it's not great</h2>
                 <p className="text-xs text-muted-foreground">
                   What would make Spliiit better for you? We read every note.
