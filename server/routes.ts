@@ -1,4 +1,5 @@
 import type { Express, Request, Response } from "express";
+import { hasFullAccess, EVERYONE_HAS_FULL_ACCESS } from "@shared/access";
 import { type Server } from "http";
 import session from "express-session";
 import pgSession from "connect-pg-simple";
@@ -126,6 +127,10 @@ export async function registerRoutes(
     ]);
     const dest = req.params.dest;
     if (!allowed.has(dest)) {
+      return res.redirect(302, "/");
+    }
+    // No upgrade page any more (Sept 2026) — old email links go home.
+    if (dest === "upgrade" || dest === "premium") {
       return res.redirect(302, "/");
     }
     // Note: Express's res.redirect serializes the Location header. Browsers
@@ -840,7 +845,11 @@ setInterval(loadAll,30000);
             });
             await storage.markReferralRewardClaimed(referrer.id);
             console.log(`[referral] 🎉 granted 1 month premium to ${referrer.email} (5 referrals reached)`);
-            sendPremiumWelcomeEmail(referrer.email, referrer.name, premiumUntil.toISOString(), "free");
+            // While everyone has full access (shared/access.ts) a "You earned
+            // Premium" email means nothing to users — skip it.
+            if (!EVERYONE_HAS_FULL_ACCESS) {
+              sendPremiumWelcomeEmail(referrer.email, referrer.name, premiumUntil.toISOString(), "free");
+            }
           }
         }
       } catch (refErr) {
@@ -5418,20 +5427,54 @@ setInterval(loadAll,30000);
   // ========== Payment Reminders (premium) ==========
 
   // POST /api/reminders/send — send a tone-aware payment reminder email
+  // Manual reminders are free for everyone (Sept 2026). The Premium check
+  // used to be the only brake on this endpoint, so it now has its own:
+  // recipient must be a friend or share a group, one reminder per person
+  // per 24h, and at most 10 per sender per day (in memory; resets on deploy,
+  // which is fine for spam protection). Protects people's inboxes and the
+  // Resend daily quota.
+  const manualReminderLastSent = new Map<string, number>();            // "from:to" -> ms
+  const manualReminderDaily = new Map<string, { day: string; count: number }>(); // from -> today's count
   app.post("/api/reminders/send", requireAuth, async (req, res) => {
     const userId = (req.session as any).userId as string;
     const user = await storage.getUser(userId);
-    if (!user?.isPremium) return res.status(403).json({ error: "Premium required" });
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
 
     const { recipientId, message, tone, amount } = req.body;
     if (!recipientId || !message || !tone) {
       return res.status(400).json({ error: "Missing required fields" });
     }
+    if (String(message).length > 1000) {
+      return res.status(400).json({ error: "That message is too long." });
+    }
+
+    const toId = String(recipientId);
+    let related = await storage.areFriends(userId, toId);
+    if (!related) {
+      const myGroups = await storage.getGroupsForUser(userId);
+      related = myGroups.some((g) => g.memberIds.includes(toId));
+    }
+    if (!related) {
+      return res.status(403).json({ error: "You can only remind friends or people in your groups." });
+    }
+
+    const now = Date.now();
+    const pairKey = `${userId}:${toId}`;
+    const last = manualReminderLastSent.get(pairKey);
+    if (last && now - last < 24 * 60 * 60 * 1000) {
+      return res.status(429).json({ error: "You already reminded them today. Try again tomorrow." });
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    const daily = manualReminderDaily.get(userId);
+    const sentToday = daily && daily.day === today ? daily.count : 0;
+    if (sentToday >= 10) {
+      return res.status(429).json({ error: "You've sent 10 reminders today. Try again tomorrow." });
+    }
     if (!["friendly", "funny", "firm", "passive-aggressive", "awkward"].includes(tone)) {
       return res.status(400).json({ error: "Invalid tone" });
     }
 
-    const recipient = await storage.getUser(recipientId as string);
+    const recipient = await storage.getUser(toId);
     if (!recipient) return res.status(404).json({ error: "Recipient not found" });
     if (recipient.isGhost) return res.status(400).json({ error: "Cannot send email to a ghost user" });
 
@@ -5447,6 +5490,8 @@ setInterval(loadAll,30000);
       appUrl: APP_URL,
     });
 
+    manualReminderLastSent.set(pairKey, now);
+    manualReminderDaily.set(userId, { day: today, count: sentToday + 1 });
     res.json({ ok: true });
   });
 
@@ -5456,7 +5501,7 @@ setInterval(loadAll,30000);
   app.get("/api/recurring", requireAuth, async (req, res) => {
     const userId = (req.session as any).userId as string;
     const user = await storage.getUser(userId);
-    if (!user?.isPremium) return res.status(403).json({ error: "Premium required" });
+    if (!hasFullAccess(user)) return res.status(403).json({ error: "Premium required" });
     const recs = await storage.getRecurringExpensesForUser(userId);
     res.json(recs);
   });
@@ -5465,7 +5510,7 @@ setInterval(loadAll,30000);
   app.post("/api/recurring", requireAuth, async (req, res) => {
     const userId = (req.session as any).userId as string;
     const user = await storage.getUser(userId);
-    if (!user?.isPremium) return res.status(403).json({ error: "Premium required" });
+    if (!hasFullAccess(user)) return res.status(403).json({ error: "Premium required" });
 
     const { description, amount, paidById, splitAmongIds, groupId, frequency } = req.body;
     if (!description || !amount || !paidById || !splitAmongIds || !frequency) {
@@ -5526,7 +5571,7 @@ setInterval(loadAll,30000);
   app.delete("/api/recurring/:id", requireAuth, async (req, res) => {
     const userId = (req.session as any).userId as string;
     const user = await storage.getUser(userId);
-    if (!user?.isPremium) return res.status(403).json({ error: "Premium required" });
+    if (!hasFullAccess(user)) return res.status(403).json({ error: "Premium required" });
 
     // Verify ownership
     const userRecs = await storage.getRecurringExpensesForUser(userId);

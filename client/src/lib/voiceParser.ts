@@ -8,7 +8,6 @@
  * No AI required for the supported intents.
  */
 
-import { isInTWA } from "@/lib/platform";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -68,7 +67,6 @@ const NAV_KEYWORDS: [RegExp, string][] = [
   [/\bfriends?\b/i, "/friends"],
   [/\bgroups?\b/i, "/groups"],
   [/\bexpenses?\b/i, "/expenses"],
-  [/\b(upgrade|premium)\b/i, "/upgrade"],
 ];
 
 const NAV_TRIGGER = /\b(go|open|show|navigate|take me|switch|view)\b/i;
@@ -178,9 +176,6 @@ export function parseVoiceIntent(
 
   // 2. Navigate (must have a navigation trigger word + destination)
   for (const [pattern, route] of NAV_KEYWORDS) {
-    // In the Android TWA, /upgrade is unreachable (Google Play policy).
-    // Skip the voice command so we don't navigate the user to a redirect page.
-    if (isInTWA && route === "/upgrade") continue;
     if (pattern.test(t) && NAV_TRIGGER.test(t)) {
       return { type: "navigate", transcript, destination: route, confidence: "high" };
     }

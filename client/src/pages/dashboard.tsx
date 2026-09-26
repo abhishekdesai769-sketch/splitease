@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { hasFullAccess } from "@shared/access";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import type { Group, Expense, SafeUser, RecurringExpense } from "@shared/schema";
 import { Card } from "@/components/ui/card";
@@ -71,7 +72,7 @@ export default function Dashboard() {
   // Recurring expenses (premium only — skip fetch if not premium)
   const { data: recurringList = [] } = useQuery<RecurringExpense[]>({
     queryKey: ["/api/recurring"],
-    enabled: !!user?.isPremium,
+    enabled: hasFullAccess(user),
   });
 
   const cancelRecurringMutation = useMutation({
@@ -342,7 +343,7 @@ export default function Dashboard() {
       )}
 
       {/* Recurring expenses (premium) */}
-      {user?.isPremium && recurringList.length > 0 && (
+      {hasFullAccess(user) && recurringList.length > 0 && (
         <div>
           <div className="flex items-center gap-2 mb-3">
             <Repeat className="w-4 h-4 text-primary" />

@@ -15,6 +15,7 @@
 // reset) is one constant or one branch — not a hunt through routes.ts.
 
 import { db } from "./db";
+import { hasFullAccess } from "@shared/access";
 import { users, deviceScanQuota, aiScanAudit } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
 import type { User } from "@shared/schema";
@@ -68,7 +69,7 @@ export async function checkScanEligibility(
   user: Pick<User, "id" | "isPremium" | "freeAiScansUsed" | "freeAiScansGranted">,
   deviceId: string | null,
 ): Promise<ScanEligibility> {
-  if (user.isPremium) {
+  if (hasFullAccess(user)) {
     return { allowed: true, reason: "paid", freeRemaining: 0, paid: true };
   }
 
@@ -126,7 +127,7 @@ export async function incrementScanCounters(params: {
   platform: string | null;
 }): Promise<void> {
   const { user, deviceId, platform } = params;
-  if (user.isPremium) return;
+  if (hasFullAccess(user)) return;
 
   const now = new Date().toISOString();
 
@@ -185,7 +186,7 @@ export async function commitScanByScanId(params: {
 
   // Paid users: nothing to charge. Still mark the audit row as counted so we
   // never re-process if they downgrade. Cheap, safe.
-  if (user.isPremium) {
+  if (hasFullAccess(user)) {
     try {
       await db
         .update(aiScanAudit)

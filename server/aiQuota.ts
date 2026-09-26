@@ -12,6 +12,7 @@
 // for admin observability and proactive alert emails.
 
 import { db } from "./db";
+import { hasFullAccess } from "@shared/access";
 import { aiUsageDaily, aiAlertsSent, aiMessages, aiConversations, deviceTokens } from "@shared/schema";
 import { eq, and, sql, gte, desc } from "drizzle-orm";
 import { sendSupportEmail } from "./email";
@@ -523,7 +524,7 @@ export async function checkAiAccess(
   },
   opts?: { clientClaimsIosNative?: boolean },
 ): Promise<AiAccessState> {
-  if (user.isPremium) {
+  if (hasFullAccess(user)) {
     return { canUse: true, reason: "premium", hasIosToken: true };
   }
 
@@ -585,8 +586,9 @@ export async function checkAiAccess(
  */
 export function getFreeTrialExhaustedMessage(): string {
   return (
-    "Hey — those 3 were on me, a free try-it-out. **AI Mode is a Premium feature** from here on. " +
-    "[Upgrade to Premium](#/upgrade) to keep parsing receipts and splitting by voice, or stick with the manual Add Expense form (always free)."
+    // Unreachable while shared/access.ts grants everyone full access; kept
+    // neutral (no upsell) in case a limit ever routes here again.
+    "You've reached today's AI Mode limit. You can still add expenses with the regular Add Expense form, and AI Mode will be back tomorrow."
   );
 }
 

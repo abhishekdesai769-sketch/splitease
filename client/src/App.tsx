@@ -22,7 +22,6 @@ import { LandingGate } from "@/pages/landing";
 import ResetPassword from "@/pages/reset-password";
 import NotFound from "@/pages/not-found";
 import Import from "@/pages/import";
-import Upgrade from "@/pages/upgrade";
 import AiMode from "@/pages/ai-mode";
 import OnboardingPreferences from "@/pages/onboarding";
 import FirstRunWizard from "@/pages/first-run";
@@ -210,12 +209,9 @@ function AppRouter() {
         <Route path="/ai/:id" component={AiMode} />
         <Route path="/invite/:code" component={InvitePage} />
         <Route path="/import" component={Import} />
-        {/* /upgrade route is hidden inside the Android TWA — Google Play policy
-            forbids non-Play payment UI in apps. Users see clean free product;
-            payments happen on the web. (See lib/platform.ts.) */}
-        <Route path="/upgrade">
-          {() => (isInTWA ? <Redirect to="/" /> : <Upgrade />)}
-        </Route>
+        {/* No in-app upgrade page (Sept 2026): everything is unlocked, and
+            pricing will move to an onboarding paywall. Old links land home. */}
+        <Route path="/upgrade">{() => <Redirect to="/" />}</Route>
         {user.isAdmin ? (
           <>
             <Route path="/admin" component={Admin} />

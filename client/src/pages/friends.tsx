@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { hasFullAccess } from "@shared/access";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { track } from "@/lib/analytics";
 import { apiRequest, apiFormRequest, queryClient } from "@/lib/queryClient";
@@ -13,7 +14,6 @@ import { UserPlus, Plus, Users2, HandCoins, CheckCircle2, ChevronRight, Camera, 
 import { shareAppLink } from "@/lib/share";
 import { ShareChannels } from "@/components/ShareChannels";
 import { Switch } from "@/components/ui/switch";
-import { UpgradePromptSheet } from "@/components/UpgradePromptSheet";
 import { isInTWA } from "@/lib/platform";
 import { ScanReceiptButton } from "@/components/ScanReceiptButton";
 import { CurrencySelector, formatMoney } from "@/components/CurrencySelector";
@@ -68,7 +68,6 @@ export default function Friends() {
     } catch {}
   }, []);
   const [currency, setCurrency] = useState("CAD");
-  const [upgradeSheetOpen, setUpgradeSheetOpen] = useState(false);
 
   const { data: friendsList = [], isLoading } = useQuery<SafeUser[]>({
     queryKey: ["/api/friends"],
@@ -81,7 +80,7 @@ export default function Friends() {
   // Exchange rates (premium)
   const { data: ratesData } = useQuery<{ rates: Record<string, number> }>({
     queryKey: ["/api/exchange-rates"],
-    enabled: !!user?.isPremium,
+    enabled: hasFullAccess(user),
     staleTime: 6 * 60 * 60 * 1000,
   });
   const fxRates = ratesData?.rates ?? {};
@@ -363,8 +362,7 @@ export default function Friends() {
                       <CurrencySelector
                         value={currency}
                         onChange={setCurrency}
-                        isPremium={!!user?.isPremium}
-                        onUpgrade={() => setUpgradeSheetOpen(true)}
+                        isPremium={hasFullAccess(user)}
                       />
                     </div>
                     <Input
@@ -477,7 +475,7 @@ export default function Friends() {
                       TWA when the user isn't premium (Google Play policy: no
                       premium teaser UI). Web/iOS render normally. Premium
                       users (paid via web Stripe) still see + use the toggle. */}
-                  {!(isInTWA && !user?.isPremium) && (
+                  {hasFullAccess(user) && (
                   <div className="rounded-lg border border-border p-3 space-y-2.5">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
@@ -487,19 +485,9 @@ export default function Friends() {
                           <p className="text-xs text-muted-foreground">Auto-creates on schedule</p>
                         </div>
                       </div>
-                      {user?.isPremium ? (
-                        <Switch checked={isRecurring} onCheckedChange={setIsRecurring} />
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => setUpgradeSheetOpen(true)}
-                          className="text-xs text-primary font-medium flex items-center gap-1 hover:underline"
-                        >
-                          <Crown className="w-3 h-3" /> Premium
-                        </button>
-                      )}
+                      <Switch checked={isRecurring} onCheckedChange={setIsRecurring} />
                     </div>
-                    {isRecurring && user?.isPremium && (
+                    {isRecurring && hasFullAccess(user) && (
                       <div className="grid grid-cols-2 gap-1.5 pt-1">
                         {(["monthly", "weekly"] as const).map((freq) => (
                           <button
@@ -519,7 +507,6 @@ export default function Friends() {
                     )}
                   </div>
                   )}
-                  <UpgradePromptSheet open={upgradeSheetOpen} onClose={() => setUpgradeSheetOpen(false)} />
 
                   {/* Receipt (optional) — plain photo attach for THIS manual
                       expense. The AI scan lives BELOW the form (it fills in
@@ -567,7 +554,7 @@ export default function Friends() {
                   >
                     {(addExpenseMutation.isPending || addRecurringMutation.isPending)
                       ? "Adding..."
-                      : isRecurring && user?.isPremium
+                      : isRecurring && hasFullAccess(user)
                         ? `Set Up Recurring (${recurringFrequency})`
                         : "Add Expense"}
                   </Button>
@@ -583,8 +570,7 @@ export default function Friends() {
                         <div className="flex-1 h-px bg-border" />
                       </div>
                       <ScanReceiptButton
-                        isPremium={!!user?.isPremium}
-                        onUpgrade={() => setUpgradeSheetOpen(true)}
+                        isPremium={hasFullAccess(user)}
                         onResult={async (data, file, scanId) => {
                           // AUTO-CREATE the expense — don't just pre-fill the
                           // form (that confused users into thinking nothing

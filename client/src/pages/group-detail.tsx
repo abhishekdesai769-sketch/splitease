@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { hasFullAccess } from "@shared/access";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, apiFormRequest, queryClient } from "@/lib/queryClient";
 import type { Group, Expense, SafeUser, ActivityLog } from "@shared/schema";
@@ -13,7 +14,6 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Plus, ArrowLeft, Trash2, Shuffle, Receipt, UserPlus, X, HandCoins, CheckCircle2, AlertTriangle, Camera, Mail, Loader2, Crown, Shield, LogOut, UserMinus, Clock, Check, Ghost, FileText, Pencil, MoreVertical, Upload, Download, Repeat, ChevronDown, ChevronRight, Copy, MessageCircle, Share2, Users2 } from "lucide-react";
 import { shareInviteLink, shareAppLink } from "@/lib/share";
 import { Switch } from "@/components/ui/switch";
-import { UpgradePromptSheet } from "@/components/UpgradePromptSheet";
 import { isInTWA } from "@/lib/platform";
 import { ScanReceiptButton } from "@/components/ScanReceiptButton";
 import { CurrencySelector, formatMoney } from "@/components/CurrencySelector";
@@ -66,7 +66,6 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurringFrequency, setRecurringFrequency] = useState<"monthly" | "weekly">("monthly");
-  const [upgradeSheetOpen, setUpgradeSheetOpen] = useState(false);
   // Member-balances accordion — collapsed by default. The user's own
   // balance is always visible above ("You owe X"); the everyone-else
   // breakdown is opt-in to keep the group view tidy on large groups
@@ -153,7 +152,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
   // Exchange rates for currency conversion (only fetched for premium users)
   const { data: ratesData } = useQuery<{ rates: Record<string, number> }>({
     queryKey: ["/api/exchange-rates"],
-    enabled: !!user?.isPremium,
+    enabled: hasFullAccess(user),
     staleTime: 6 * 60 * 60 * 1000, // 6 hours
   });
   const fxRates = ratesData?.rates ?? {};
@@ -1071,8 +1070,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                   <CurrencySelector
                     value={currency}
                     onChange={setCurrency}
-                    isPremium={!!user?.isPremium}
-                    onUpgrade={() => setUpgradeSheetOpen(true)}
+                    isPremium={hasFullAccess(user)}
                   />
                 </div>
                 <Input
@@ -1351,7 +1349,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                   when the user isn't premium (Google Play policy: no premium
                   teaser UI). Web/iOS render normally. Premium users (paid via
                   web Stripe) still see + use the toggle. */}
-              {!(isInTWA && !user?.isPremium) && (
+              {hasFullAccess(user) && (
               <div className="rounded-lg border border-border p-3 space-y-2.5">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -1361,19 +1359,9 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                       <p className="text-xs text-muted-foreground">Auto-creates on schedule</p>
                     </div>
                   </div>
-                  {user?.isPremium ? (
-                    <Switch checked={isRecurring} onCheckedChange={setIsRecurring} />
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setUpgradeSheetOpen(true)}
-                      className="text-xs text-primary font-medium flex items-center gap-1 hover:underline"
-                    >
-                      <Crown className="w-3 h-3" /> Premium
-                    </button>
-                  )}
+                  <Switch checked={isRecurring} onCheckedChange={setIsRecurring} />
                 </div>
-                {isRecurring && user?.isPremium && (
+                {isRecurring && hasFullAccess(user) && (
                   <div className="grid grid-cols-2 gap-1.5 pt-1">
                     {(["monthly", "weekly"] as const).map((freq) => (
                       <button
@@ -1393,7 +1381,6 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                 )}
               </div>
               )}
-              <UpgradePromptSheet open={upgradeSheetOpen} onClose={() => setUpgradeSheetOpen(false)} />
 
               {/* Receipt (optional) — plain photo attach for THIS manual
                   expense. The AI scan lives BELOW the form (it fills in
@@ -1438,7 +1425,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
               >
                 {(createExpenseMutation.isPending || createRecurringMutation.isPending)
                   ? "Adding..."
-                  : isRecurring && user?.isPremium
+                  : isRecurring && hasFullAccess(user)
                     ? `Set Up Recurring (${recurringFrequency})`
                     : "Add Expense"}
               </Button>
@@ -1454,8 +1441,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
                     <div className="flex-1 h-px bg-border" />
                   </div>
                   <ScanReceiptButton
-                    isPremium={!!user?.isPremium}
-                    onUpgrade={() => setUpgradeSheetOpen(true)}
+                    isPremium={hasFullAccess(user)}
                     members={members.map(m => ({ id: m.id, name: m.name }))}
                     onItemSplit={async (splits, scanId) => {
                       // Promise.allSettled so one failed item doesn't mask

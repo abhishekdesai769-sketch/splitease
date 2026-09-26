@@ -42,16 +42,24 @@ export function needsHashUpgrade(storedHash: string): boolean {
 
 // ========== Rate limiter ==========
 
-const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+// Each limiter keeps its OWN counters. (They used to share one map keyed by
+// IP, so the global 200/min limiter's traffic counted against e.g. the
+// 5/hour support limiter — sending a support message after normal app use
+// returned 429 — and whichever limiter created an IP's entry set the window
+// for all of them.)
+type RateEntry = { count: number; resetAt: number };
+const allRateMaps: Map<string, RateEntry>[] = [];
 
 export function rateLimit(windowMs: number, maxRequests: number) {
+  const hits = new Map<string, RateEntry>();
+  allRateMaps.push(hits);
   return (req: Request, res: Response, next: NextFunction) => {
     const ip = req.ip || req.socket.remoteAddress || "unknown";
     const now = Date.now();
-    const entry = rateLimitMap.get(ip);
+    const entry = hits.get(ip);
 
     if (!entry || now > entry.resetAt) {
-      rateLimitMap.set(ip, { count: 1, resetAt: now + windowMs });
+      hits.set(ip, { count: 1, resetAt: now + windowMs });
       return next();
     }
 
@@ -66,8 +74,10 @@ export function rateLimit(windowMs: number, maxRequests: number) {
 // Clean up old rate limit entries periodically
 setInterval(() => {
   const now = Date.now();
-  for (const [key, val] of rateLimitMap) {
-    if (now > val.resetAt) rateLimitMap.delete(key);
+  for (const hits of allRateMaps) {
+    for (const [key, val] of hits) {
+      if (now > val.resetAt) hits.delete(key);
+    }
   }
 }, 60000);
 

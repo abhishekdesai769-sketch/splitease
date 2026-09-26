@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Crown, ChevronDown, Check } from "lucide-react";
-import { isInTWA } from "@/lib/platform";
+import { ChevronDown, Check } from "lucide-react";
 
 export interface CurrencyInfo {
   code: string;
@@ -27,36 +26,21 @@ export const CURRENCIES: CurrencyInfo[] = [
 interface Props {
   value: string;
   onChange: (currency: string) => void;
+  /** Kept for call-site compatibility; conversion is available to everyone. */
   isPremium?: boolean;
-  onUpgrade?: () => void;
 }
 
-export function CurrencySelector({ value, onChange, isPremium, onUpgrade }: Props) {
+export function CurrencySelector({ value, onChange }: Props) {
   const [open, setOpen] = useState(false);
-
-  // In the Android TWA, hide the currency selector entirely for non-premium
-  // users — it's a premium feature and we can't show upgrade UI on Android.
-  // Premium users (paid via web) still see the full selector.
-  if (isInTWA && !isPremium) return null;
-
-  const handleClick = () => {
-    if (!isPremium) { onUpgrade?.(); return; }
-    setOpen(true);
-  };
 
   return (
     <>
       <button
         type="button"
-        onClick={handleClick}
-        className={`flex items-center gap-1 text-xs font-semibold rounded-md px-2 py-1.5 border transition-colors ${
-          isPremium
-            ? "border-border hover:bg-muted/60 text-foreground"
-            : "border-amber-400/50 text-amber-600 hover:bg-amber-50/10"
-        }`}
-        title={isPremium ? "Change currency" : "Upgrade to Premium for currency conversion"}
+        onClick={() => setOpen(true)}
+        className="flex items-center gap-1 text-xs font-semibold rounded-md px-2 py-1.5 border border-border hover:bg-muted/60 text-foreground transition-colors"
+        title="Change currency"
       >
-        {!isPremium && <Crown className="w-3 h-3 text-amber-500 shrink-0" />}
         <span>{value === "CAD" ? "Currency" : value}</span>
         <ChevronDown className="w-3 h-3 text-muted-foreground shrink-0" />
       </button>

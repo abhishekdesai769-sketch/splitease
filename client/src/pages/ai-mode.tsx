@@ -8,8 +8,8 @@
  *   4. User taps "Create" → POST /api/ai/conversations/:id/confirm
  *   5. Expense(s) created via existing endpoints, balances update normally
  *
- * Premium-gated. Non-Premium users see an upgrade teaser. TWA users get
- * the same teaser (Google Play policy parity with other premium features).
+ * Available to everyone (shared/access.ts) — bounded by the daily AI quotas
+ * and kill switch in server/aiQuota.ts. No upsells.
  *
  * Future phases (NOT in v1):
  *   - Voice input (Phase 4)
@@ -27,7 +27,7 @@ import { apiRequest, apiFormRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Sparkles, ArrowLeft, Send, Loader2, Crown, Check, X, Paperclip, Plus, ArrowUp, FileText, Image as ImageIcon, Mic, Keyboard, MicOff, AudioLines } from "lucide-react";
+import { Sparkles, ArrowLeft, Send, Loader2, Check, X, Paperclip, Plus, ArrowUp, FileText, Image as ImageIcon, Mic, Keyboard, MicOff, AudioLines } from "lucide-react";
 import { useVoiceMode } from "@/hooks/useVoiceMode";
 import VoiceCall from "@/components/VoiceCall";
 import { isIosNative } from "@/lib/iap";
@@ -428,10 +428,10 @@ export default function AiMode() {
   const renderName = (id: string) => nameLookup[id] || id.slice(0, 6);
   const renderGroupName = (id?: string | null) => (id ? groupNameLookup[id] || "Group" : null);
 
-  // ── Render: loading + premium-gate (non-iOS non-Premium users) ────────
-  // While access is still being fetched, render nothing — avoids a flash of
-  // the wrong UI for trial users. Once access resolves, if they can't even
-  // attempt to use AI Mode (non-Premium non-iOS), show the existing teaser.
+  // ── Render: loading + fallback ─────────────────────────────────────
+  // While access is still being fetched, render nothing. Everyone has access
+  // (shared/access.ts), so the fallback below only shows if the access check
+  // itself failed — a retry, never an upsell.
   if (!access) return null;
   if (!canRenderChat) {
     return (
@@ -442,22 +442,18 @@ export default function AiMode() {
             <Sparkles className="w-7 h-7 text-primary" />
           </div>
           <div className="space-y-1.5">
-            <h2 className="text-lg font-semibold">AI Mode is a Premium feature</h2>
+            <h2 className="text-lg font-semibold">AI Mode couldn't load</h2>
             <p className="text-sm text-muted-foreground max-w-md mx-auto">
-              Talk to Spliiit, type a one-liner, or drop a <span className="font-medium text-foreground">PDF receipt</span> from Uber Eats, DoorDash, Amazon. The AI parses every item and proposes the split — you confirm with one tap.
-            </p>
-            <p className="text-xs text-muted-foreground/80 max-w-md mx-auto pt-1">
-              The only splitter that reads PDFs. Other apps can't.
+              Check your connection and try again.
             </p>
           </div>
           <Button
             size="lg"
             className="mt-2"
-            onClick={() => setLocation("/upgrade")}
-            data-testid="ai-mode-upgrade-cta"
+            onClick={() => window.location.reload()}
+            data-testid="ai-mode-retry"
           >
-            <Crown className="w-4 h-4 mr-2" />
-            Upgrade to Premium
+            Try again
           </Button>
         </div>
       </div>
@@ -516,17 +512,6 @@ export default function AiMode() {
         style={{ bottom: "env(safe-area-inset-bottom)" }}
       >
         <div className="max-w-3xl mx-auto">
-          {/* Free-trial indicator — only shown to non-Premium iOS users on
-              their first 3 uses. Disappears once they upgrade (or run out). */}
-          {isTrialUser && typeof access?.freeTurnsRemaining === "number" && (
-            <div className="flex items-center justify-center gap-1.5 mb-2">
-              <span className="inline-flex items-center gap-1 text-[10px] font-medium text-muted-foreground bg-muted/60 border border-border px-2 py-1 rounded-full">
-                <Sparkles className="w-2.5 h-2.5 text-primary" />
-                {access.freeTurnsRemaining} of {access.freeTurnsLimit} free uses left
-              </span>
-            </div>
-          )}
-
           {/* Hidden file input — triggered by the paperclip button below */}
           <input
             ref={fileInputRef}
