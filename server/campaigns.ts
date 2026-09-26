@@ -27,7 +27,7 @@ const resend = process.env.RESEND_API_KEY
   ? new Resend(process.env.RESEND_API_KEY)
   : null;
 
-const FROM_ADDRESS = "Spliiit <spliiit@klarityit.ca>";
+const FROM_ADDRESS = "Spliiit <no-reply@spliiit.ca>";
 
 // ─── Campaign registry ───────────────────────────────────────────────────
 
@@ -375,7 +375,7 @@ export async function runCampaign(
           subject: cfg.email.subject,
           html: cfg.email.htmlBody(u as unknown as User),
           text: cfg.email.textBody(u as unknown as User),
-          replyTo: "spliiit@klarityit.ca",  // milestone email is OK to reply to
+          replyTo: "support@spliiit.ca",  // milestone email is OK to reply to
         });
         await recordSend(u.id, cfg.id, "email", true);
         result.emailSent++;
@@ -470,7 +470,7 @@ const EMAIL_LOGO = `
 <table cellpadding="0" cellspacing="0" border="0" style="margin-bottom:20px;">
   <tr>
     <td style="vertical-align:middle;padding-right:10px;">
-      <img src="https://spliiit.klarityit.ca/icon-192.png" width="36" height="36" alt="Spliiit" style="display:block;border-radius:8px;" />
+      <img src="https://spliiit.ca/icon-192.png" width="36" height="36" alt="Spliiit" style="display:block;border-radius:8px;" />
     </td>
     <td style="vertical-align:middle;">
       <span style="font-size:18px;font-weight:700;color:#1a1a1a;letter-spacing:-0.3px;">Spl</span><span style="font-size:18px;font-weight:700;color:#1a1a1a;letter-spacing:-0.3px;">iii</span><span style="font-size:18px;font-weight:700;color:#1a1a1a;letter-spacing:-0.3px;">t</span>

@@ -24,7 +24,7 @@ function ReferralCard() {
 
   if (!stats?.referralCode) return null;
 
-  const referralLink = `https://spliiit.klarityit.ca/?ref=${stats.referralCode}`;
+  const referralLink = `https://spliiit.ca/?ref=${stats.referralCode}`;
   const progress = Math.min(stats.referralCount, 5);
   const pct = (progress / 5) * 100;
 
@@ -88,7 +88,7 @@ function ReferralCard() {
       {/* Link + action buttons */}
       <div className="flex gap-2">
         <div className="flex-1 min-w-0 bg-muted rounded-lg px-3 py-2 text-xs font-mono truncate text-muted-foreground">
-          spliiit.klarityit.ca/?ref={stats.referralCode}
+          spliiit.ca/?ref={stats.referralCode}
         </div>
         <button
           onClick={handleCopy}

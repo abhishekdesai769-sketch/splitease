@@ -110,7 +110,7 @@ export interface ShareAppOptions {
 
 export async function shareAppLink(opts: ShareAppOptions): Promise<ShareResult> {
   const { inviterName, referralCode, baseUrl } = opts;
-  const root = baseUrl || "https://spliiit.klarityit.ca";
+  const root = baseUrl || "https://spliiit.ca";
   const url = referralCode ? `${root}?ref=${referralCode}` : root;
   return shareLink({
     title: "Spliiit — split expenses with friends",
