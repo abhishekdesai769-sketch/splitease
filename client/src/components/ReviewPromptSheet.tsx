@@ -5,18 +5,21 @@
  * the foreground) until the user completes it. No X, no "Maybe later", no
  * tap-outside / Escape dismiss. See lib/reviewPrompt.ts for the done state.
  *
- *   4-5 stars  → "Thank you" → only button sends them to the App Store /
- *                Play Store write-review page. Tapping it = done.
+ * Timing: it waits SHOW_AFTER_MS of foreground time on each open so the
+ * user gets a feel for the app first, and never lands on top of another
+ * open sheet/dialog (e.g. mid add-expense) — it waits for that to close.
  *
- *   1-3 stars  → in-app feedback form → /api/feedback (emailed to support).
- *                Sending it = done. They are not sent to the store.
+ * Flow: tap a star (reaction face + word appear) → Submit
+ *   4-5 stars  → straight to the App Store / Play Store write-review page.
+ *   1-3 stars  → in-app feedback note → /api/feedback (emailed to support).
+ *                They are not sent to the store.
+ * Either completion = done, never shown again on this install.
  *
- * Stars stay tappable on every step so a mis-tap can be corrected.
  * Only shown once the user is logged in and past the first-run wizard.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Star, Loader2, Heart } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { Loader2 } from "lucide-react";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -31,11 +34,90 @@ import {
 } from "@/lib/reviewPrompt";
 import { track } from "@/lib/analytics";
 
-type SheetStep = "rate" | "thanks" | "feedback" | "feedback-sent";
+type SheetStep = "rate" | "feedback" | "feedback-sent";
 type OpenReason = "launch" | "resume";
 
-// Let the first screen paint before the gate slides up.
-const SHOW_DELAY_MS = 1200;
+// Foreground time on each open before the sheet appears.
+const SHOW_AFTER_MS = 20_000;
+// If another sheet/dialog is open when the timer fires, re-check this often.
+const BUSY_RETRY_MS = 3_000;
+
+const WORDS = ["Not for me", "Needs work", "It's okay", "Really good", "Love it"];
+const FACES = [":(", ":/", ":|", ":)", ":D"];
+const STAR_PATH =
+  "M12 2.8l2.75 5.6 6.15.9-4.45 4.35 1.05 6.13L12 16.9l-5.5 2.88 1.05-6.13L3.1 9.3l6.15-.9z";
+
+// ─── Pieces ───────────────────────────────────────────────────────────────────
+
+/** The Spliiit app icon (three i's), drawn to the real icon's proportions. */
+function AppIcon() {
+  return (
+    <svg
+      width="68"
+      height="68"
+      viewBox="0 0 512 512"
+      aria-hidden="true"
+      className="block mx-auto -mt-[34px] mb-3 rounded-2xl shadow-[0_1px_1px_rgba(20,18,16,.10),0_6px_14px_-4px_rgba(20,18,16,.28),0_18px_30px_-12px_rgba(20,18,16,.30)]"
+    >
+      <defs>
+        <linearGradient id="rv-icon-bg" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#2B2927" />
+          <stop offset="1" stopColor="#141312" />
+        </linearGradient>
+        <linearGradient id="rv-icon-glyph" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#FFFFFF" />
+          <stop offset="1" stopColor="#E9E4DC" />
+        </linearGradient>
+      </defs>
+      <rect width="512" height="512" rx="115" fill="url(#rv-icon-bg)" />
+      <rect x="2" y="2" width="508" height="508" rx="113" fill="none" stroke="rgba(255,255,255,.09)" strokeWidth="3" />
+      <g transform="translate(256 256) scale(.86) translate(-256 -256)" fill="url(#rv-icon-glyph)">
+        {[171.5, 255.5, 339.5].map((cx) => (
+          <g key={cx}>
+            <circle cx={cx} cy="155" r="27.5" />
+            <rect x={cx - 28} y="202" width="56" height="184" rx="28" />
+          </g>
+        ))}
+      </g>
+    </svg>
+  );
+}
+
+function Stars({ rating, onPick, size }: { rating: number; onPick: (n: number) => void; size: number }) {
+  return (
+    <div className="flex items-center justify-center gap-[5px]">
+      {[1, 2, 3, 4, 5].map((n) => (
+        <button
+          key={n}
+          type="button"
+          onClick={() => onPick(n)}
+          className="block shrink min-w-0 aspect-square active:scale-90 transition-transform"
+          style={{ flexBasis: size }}
+          aria-label={`${n} star${n !== 1 ? "s" : ""}`}
+          data-testid={`review-star-${n}`}
+        >
+          <svg viewBox="0 0 24 24" className="w-full h-full block">
+            {n <= rating ? (
+              <path d={STAR_PATH} fill="#D9A441" stroke="#B8842A" strokeWidth="1" strokeLinejoin="round" />
+            ) : (
+              <path
+                d={STAR_PATH}
+                fill="hsl(var(--muted))"
+                stroke="hsl(var(--muted-foreground))"
+                strokeWidth="1.3"
+                strokeLinejoin="round"
+              />
+            )}
+          </svg>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function Headline({ children }: { children: ReactNode }) {
+  return <h2 className="font-serif text-[34px] leading-[1.05] tracking-tight text-foreground">{children}</h2>;
+}
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -44,58 +126,86 @@ export function ReviewPromptSheet() {
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<SheetStep>("rate");
   const [rating, setRating] = useState<number>(0);     // 0 = none yet, 1-5 = tapped
+  const [nudge, setNudge] = useState(false);           // Submit tapped with no star
   const [feedbackText, setFeedbackText] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const { toast } = useToast();
   const openRef = useRef(false);
   openRef.current = open;
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const platform = getStorePlatform();
-  const storeName = platform === "ios" ? "App Store" : "Play Store";
   const eligible = !!user?.firstRunCompletedAt;
 
-  const show = useCallback((reason: OpenReason) => {
-    if (openRef.current || !shouldShowReview()) return;
+  const clearTimer = () => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = null;
+  };
+
+  const tryShow = useCallback((reason: OpenReason) => {
+    timerRef.current = null;
+    if (openRef.current || !shouldShowReview() || document.visibilityState !== "visible") return;
+    // Don't land on top of another sheet/dialog — wait for it to close.
+    if (document.querySelector('[role="dialog"], [role="alertdialog"]')) {
+      timerRef.current = setTimeout(() => tryShow(reason), BUSY_RETRY_MS);
+      return;
+    }
     setStep("rate");
     setRating(0);
+    setNudge(false);
     setFeedbackText("");
     setOpen(true);
     track("review_prompt_shown", { trigger: reason, platform });
   }, [platform]);
 
+  const schedule = useCallback((reason: OpenReason) => {
+    clearTimer();
+    if (openRef.current || !shouldShowReview()) return;
+    timerRef.current = setTimeout(() => tryShow(reason), SHOW_AFTER_MS);
+  }, [tryShow]);
+
   // Cold launch (or the moment the user becomes eligible this session)
   useEffect(() => {
     if (!eligible) {
+      clearTimer();
       setOpen(false);
       return;
     }
-    const t = setTimeout(() => show("launch"), SHOW_DELAY_MS);
-    return () => clearTimeout(t);
-  }, [eligible, show]);
+    schedule("launch");
+    return clearTimer;
+  }, [eligible, schedule]);
 
-  // Every return to the foreground counts as an app open
+  // Every return to the foreground counts as a new open; leaving cancels the wait
   useEffect(() => {
     if (!eligible) return;
-    const onVisible = () => {
-      if (document.visibilityState === "visible") show("resume");
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") schedule("resume");
+      else clearTimer();
     };
-    document.addEventListener("visibilitychange", onVisible);
-    return () => document.removeEventListener("visibilitychange", onVisible);
-  }, [eligible, show]);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [eligible, schedule]);
 
-  // Star tap → branch by rating (works from any step, so mis-taps can be fixed)
   const handleStarTap = (n: number) => {
     setRating(n);
+    setNudge(false);
     track("review_prompt_rated", { rating: n, platform });
-    setStep(n >= 4 ? "thanks" : "feedback");
   };
 
-  // 4-5 star path → straight to the store's write-review page
-  const handleAppStoreRedirect = () => {
-    markRated();
-    track("review_prompt_clicked", { platform, rating });
-    window.open(getStoreLink(platform), "_blank", "noopener,noreferrer");
-    setOpen(false);
+  const handleSubmit = () => {
+    if (!rating) {
+      setNudge(true);
+      return;
+    }
+    if (rating >= 4) {
+      // 4-5 stars → straight to the store's write-review page
+      markRated();
+      track("review_prompt_clicked", { platform, rating });
+      window.open(getStoreLink(platform), "_blank", "noopener,noreferrer");
+      setOpen(false);
+    } else {
+      setStep("feedback");
+    }
   };
 
   // 1-3 star path → submit feedback to support email
@@ -124,29 +234,6 @@ export function ReviewPromptSheet() {
     }
   };
 
-  const stars = (size: string) => (
-    <div className="flex items-center justify-center gap-2">
-      {[1, 2, 3, 4, 5].map((n) => (
-        <button
-          key={n}
-          type="button"
-          onClick={() => handleStarTap(n)}
-          className="p-1 active:scale-95 transition-transform"
-          aria-label={`${n} star${n !== 1 ? "s" : ""}`}
-          data-testid={`review-star-${n}`}
-        >
-          <Star
-            className={`${size} transition-colors ${
-              rating >= n
-                ? "fill-amber-400 text-amber-400"
-                : "text-muted-foreground/40 hover:text-amber-400/60"
-            }`}
-          />
-        </button>
-      ))}
-    </div>
-  );
-
   return (
     // Closing only ever happens from inside (store tap / feedback sent) — the
     // sheet ignores every user-initiated dismiss.
@@ -154,94 +241,94 @@ export function ReviewPromptSheet() {
       <SheetContent
         side="bottom"
         hideClose
-        className="rounded-t-2xl"
+        className="rounded-t-[26px] border-0 bg-card px-4 pt-0 pb-[calc(1.25rem+env(safe-area-inset-bottom))] overflow-visible"
         onInteractOutside={(e) => e.preventDefault()}
         onEscapeKeyDown={(e) => e.preventDefault()}
       >
-        <div className="pt-4 pb-6 px-1">
+        <div className="mx-auto w-full max-w-sm text-center">
+          <AppIcon />
 
-          {/* ─── STEP: rate (5 stars, minimal copy) ────────────────────────── */}
+          {/* ─── STEP: rate ────────────────────────────────────────────────── */}
           {step === "rate" && (
-            <div className="space-y-5 pt-1 pb-3 text-center">
-              <h2 className="text-lg font-semibold">How's Spliiit?</h2>
-              {stars("w-10 h-10")}
-              <p className="text-xs text-muted-foreground">Tap a star to rate</p>
-            </div>
-          )}
-
-          {/* ─── STEP: thanks (4-5 stars) ──────────────────────────────────── */}
-          {step === "thanks" && (
-            <div className="space-y-5 pt-1 pb-3 text-center">
-              {stars("w-7 h-7")}
-              <div className="space-y-1.5">
-                <h2 className="text-lg font-semibold flex items-center justify-center gap-1.5">
-                  Thank you <Heart className="w-4 h-4 fill-red-400 text-red-400" />
-                </h2>
-                <p className="text-sm text-muted-foreground px-4">
-                  Share that on the {storeName} — it takes 10 seconds and helps us a ton.
-                </p>
-              </div>
-              <Button
-                className="w-full"
-                size="lg"
-                onClick={handleAppStoreRedirect}
-                data-testid="review-go-to-store"
+            <>
+              <Headline>
+                Enjoying <em className="italic text-accent-foreground">Spliiit</em>?
+              </Headline>
+              <p className="mt-1.5 mb-3.5 text-xs text-muted-foreground">Join 10k+ people splitting smarter</p>
+              <div
+                className={`font-serif text-[34px] leading-none text-foreground overflow-hidden transition-all duration-200 ${
+                  rating ? "h-9 mb-2" : "h-0"
+                }`}
+                aria-hidden="true"
               >
-                Rate on the {storeName}
+                {rating ? FACES[rating - 1] : null}
+              </div>
+              <Stars rating={rating} onPick={handleStarTap} size={38} />
+              <p
+                className={`mt-2.5 h-4 text-xs font-medium ${nudge ? "text-destructive" : "text-foreground"}`}
+                aria-live="polite"
+              >
+                {nudge ? "Tap a star first" : rating ? WORDS[rating - 1] : "Tap a star"}
+              </p>
+              <Button className="mt-3.5 w-full" size="lg" onClick={handleSubmit} data-testid="review-submit">
+                Submit
               </Button>
-            </div>
+            </>
           )}
 
           {/* ─── STEP: feedback (1-3 stars) ────────────────────────────────── */}
           {step === "feedback" && (
-            <div className="space-y-4 pt-1 pb-3">
-              <div className="text-center space-y-1.5">
-                {stars("w-6 h-6")}
-                <h2 className="text-base font-semibold">Sorry it's not great</h2>
-                <p className="text-xs text-muted-foreground">
-                  What would make Spliiit better for you? We read every note.
-                </p>
+            <div className="space-y-3.5">
+              <div>
+                <Headline>
+                  What could be <em className="italic text-accent-foreground">better</em>?
+                </Headline>
+                <p className="mt-1.5 text-xs text-muted-foreground">We read every note.</p>
               </div>
+              <Stars rating={rating} onPick={handleStarTap} size={26} />
               <Textarea
                 value={feedbackText}
                 onChange={(e) => setFeedbackText(e.target.value)}
                 placeholder="Tell us what's wrong or what's missing…"
                 rows={4}
-                className="resize-none text-sm"
+                className="resize-none text-sm text-left"
                 data-testid="review-feedback-textarea"
                 autoFocus
               />
-              <Button
-                className="w-full"
-                size="lg"
-                onClick={handleFeedbackSubmit}
-                disabled={submitting || !feedbackText.trim()}
-                data-testid="review-send-feedback"
-              >
-                {submitting ? (
-                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Sending…</>
-                ) : (
-                  "Send feedback"
-                )}
-              </Button>
+              {rating >= 4 ? (
+                // Changed their mind upward on this screen → store path
+                <Button className="w-full" size="lg" onClick={handleSubmit} data-testid="review-submit">
+                  Submit
+                </Button>
+              ) : (
+                <Button
+                  className="w-full"
+                  size="lg"
+                  onClick={handleFeedbackSubmit}
+                  disabled={submitting || !feedbackText.trim()}
+                  data-testid="review-send-feedback"
+                >
+                  {submitting ? (
+                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Sending…</>
+                  ) : (
+                    "Send feedback"
+                  )}
+                </Button>
+              )}
             </div>
           )}
 
-          {/* ─── STEP: feedback-sent (1-3 stars, after submit) ─────────────── */}
+          {/* ─── STEP: feedback-sent ───────────────────────────────────────── */}
           {step === "feedback-sent" && (
-            <div className="space-y-4 pt-2 pb-4 text-center">
-              <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-primary/10 mx-auto">
-                <Heart className="w-7 h-7 fill-red-400 text-red-400" />
-              </div>
-              <div className="space-y-1.5">
-                <h2 className="text-lg font-semibold">Thanks for the feedback</h2>
-                <p className="text-sm text-muted-foreground px-4">
-                  We read every note. You'll hear from us if we follow up.
-                </p>
-              </div>
+            <div className="pb-4">
+              <Headline>
+                Thank <em className="italic text-accent-foreground">you</em>
+              </Headline>
+              <p className="mt-1.5 text-sm text-muted-foreground">
+                We read every note. You'll hear from us if we follow up.
+              </p>
             </div>
           )}
-
         </div>
       </SheetContent>
     </Sheet>
