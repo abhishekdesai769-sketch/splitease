@@ -369,6 +369,11 @@ async function runMigrations() {
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS payment_methods text`);
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS payment_note text`);
 
+    // ── Notification preferences (Sept 2026 — menu → Notifications) ──────
+    // JSON object of on/off switches; null or missing keys mean ON.
+    // See shared/notificationPrefs.ts for the keys.
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS notification_prefs text`);
+
     // ── Email send counter (June 2026 — Resend daily-quota observability) ──
     // One row per UTC day, incremented on every successful email send.
     // Lets the admin see "emails today: X / 100" without the Resend dashboard.

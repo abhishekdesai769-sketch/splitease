@@ -12,7 +12,9 @@ import { referralClicks, deviceTokens } from "@shared/schema";
 import { eq, and, gt, desc, sql, isNull } from "drizzle-orm";
 import { signupSchema, loginSchema, forgotPasswordSchema, resetPasswordSchema } from "@shared/schema";
 import { notifyExpenseCreated, sendOtpEmail, sendResetPasswordEmail, sendExportEmail, sendSupportEmail, sendInviteToInviteeEmail, sendInviteToAdminEmail, sendPremiumWelcomeEmail, sendFounderPremiumAlert } from "./email";
-import { pushExpenseCreated, pushGroupMemberJoined, pushAddedToGroup, deleteDeviceToken as deleteDeviceTokenRow } from "./push";
+import { pushExpenseCreated, pushGroupMemberJoined, pushAddedToGroup, pushExpenseDeleted, pushExpensesCleared, deleteDeviceToken as deleteDeviceTokenRow } from "./push";
+import { verifyUnsubscribeToken } from "./notificationPrefs";
+import { parseNotificationPrefs, sanitizeNotificationPrefsPatch } from "@shared/notificationPrefs";
 import { parseReceipt, RECEIPT_SCANNING_ENABLED } from "./receipt-parser";
 import { checkScanEligibility, incrementScanCounters, recordScanAudit, normalizeEmail, commitScanByScanId } from "./premium-access";
 import { isDisposableEmail } from "./disposable-emails";
@@ -193,6 +195,41 @@ export async function registerRoutes(
       },
     });
   });
+
+  // One-click unsubscribe from "News and updates" (public; HMAC-signed link
+  // in every announcement email). GET = link click, POST = RFC 8058 one-click
+  // from the mail client's own Unsubscribe button.
+  const handleNewsUnsubscribe = async (req: Request, res: Response) => {
+    const userId = String(req.query.u || "");
+    const token = String(req.query.t || "");
+    let ok = false;
+    if (userId && verifyUnsubscribeToken(userId, token)) {
+      const u = await storage.getUser(userId).catch(() => undefined);
+      if (u) {
+        const next = { ...parseNotificationPrefs(u.notificationPrefs), news: false };
+        await storage.updateUser(userId, { notificationPrefs: JSON.stringify(next) });
+        ok = true;
+      }
+    }
+    if (req.method === "POST") return res.status(ok ? 200 : 400).send(ok ? "Unsubscribed" : "Invalid link");
+    res.status(ok ? 200 : 400).send(`<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${ok ? "Unsubscribed" : "Link not valid"} · Spliiit</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500&family=Instrument+Serif&display=swap">
+<style>
+  body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 1rem; box-sizing: border-box; background: #E7E0D5; color: #3A3632; font-family: 'Inter Tight', -apple-system, sans-serif; }
+  .card { max-width: 420px; background: #F9F8F6; border-radius: 24px; padding: 2.25rem 2rem; box-shadow: 0 18px 48px -16px rgba(40, 30, 20, 0.22); }
+  h1 { font-family: 'Instrument Serif', Georgia, serif; font-weight: 400; color: #282624; font-size: 2.2rem; line-height: 1.1; margin: 0 0 0.75rem; }
+  p { margin: 0 0 0.75rem; line-height: 1.6; font-size: 0.95rem; }
+  a { color: #A45C3E; }
+</style></head><body><div class="card">
+${ok
+  ? `<h1>You're unsubscribed</h1><p>You won't get Spliiit news and announcements any more. Expense and settle-up notifications are separate and still on.</p><p>Changed your mind? Turn it back on in the app under Menu → Notifications.</p>`
+  : `<h1>This link isn't valid</h1><p>It may have been copied incompletely. You can turn off news in the app under Menu → Notifications, or email <a href="mailto:support@spliiit.ca">support@spliiit.ca</a>.</p>`}
+</div></body></html>`);
+  };
+  app.get("/api/unsubscribe/news", handleNewsUnsubscribe);
+  app.post("/api/unsubscribe/news", handleNewsUnsubscribe);
 
   // Privacy Policy page (public, no auth required)
   app.get("/privacy", (_req, res) => {
@@ -1819,6 +1856,19 @@ setInterval(loadAll,30000);
       await storage.deleteExpense(exp.id);
     }
     res.json({ deleted: toDelete.length });
+
+    // One summary push to the friend (fire-and-forget, "Deleted expenses" switch)
+    if (toDelete.length > 0) {
+      const me = await storage.getUser(userId).catch(() => undefined);
+      if (me) {
+        pushExpensesCleared({
+          clearedByUserId: userId,
+          clearedByName: me.name,
+          recipientUserIds: [String(friendId)],
+          count: toDelete.length,
+        }).catch((err) => console.error("[push] friend clear:", err));
+      }
+    }
   });
 
   // Exchange rates for premium currency converter (cached 6h, no API key needed)
@@ -2197,6 +2247,17 @@ setInterval(loadAll,30000);
     const expenses = await storage.getExpensesByGroup(group.id);
     for (const exp of expenses) {
       await storage.deleteExpense(exp.id);
+    }
+
+    // One summary push to the rest of the group (fire-and-forget, "Deleted expenses" switch)
+    if (expenses.length > 0 && user) {
+      pushExpensesCleared({
+        clearedByUserId: userId,
+        clearedByName: user.name,
+        recipientUserIds: group.memberIds,
+        count: expenses.length,
+        groupName: group.name,
+      }).catch((err) => console.error("[push] group clear:", err));
     }
     res.json({ deleted: expenses.length });
   });
@@ -3056,6 +3117,21 @@ setInterval(loadAll,30000);
     const deleted = await storage.deleteExpense(req.params.id);
     if (!deleted) return res.status(404).json({ error: "Not found" });
     res.status(204).send();
+
+    // Tell everyone else on the expense (fire-and-forget, "Deleted expenses" switch)
+    (async () => {
+      const group = expense.groupId ? await storage.getGroup(expense.groupId) : undefined;
+      await pushExpenseDeleted({
+        deletedByUserId: userId,
+        deletedByName: user.name,
+        description: expense.description,
+        amount: expense.amount,
+        paidByUserId: expense.paidById,
+        splitAmongUserIds: expense.splitAmongIds,
+        groupName: group?.name,
+        isSettlement: expense.isSettlement,
+      });
+    })().catch((err) => console.error("[push] expense delete:", err));
 
     // Log activity for group expenses (fire-and-forget)
     if (expense.groupId && !expense.isSettlement) {
@@ -5583,6 +5659,26 @@ setInterval(loadAll,30000);
       paymentNote: note.length > 0 ? note : null,
     });
     res.json({ methods, note });
+  });
+
+  // ── Notification switches (menu → Notifications) ─────────────────────
+  // GET   /api/user/notification-prefs → all seven switches, missing = ON
+  // PATCH /api/user/notification-prefs → merge { key: boolean } into them
+  app.get("/api/user/notification-prefs", requireAuth, async (req: any, res) => {
+    const userId = (req.session as any).userId;
+    const user = await storage.getUser(userId);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    res.json(parseNotificationPrefs(user.notificationPrefs));
+  });
+
+  app.patch("/api/user/notification-prefs", requireAuth, async (req: any, res) => {
+    const userId = (req.session as any).userId;
+    const user = await storage.getUser(userId);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    const patch = sanitizeNotificationPrefsPatch(req.body);
+    const next = { ...parseNotificationPrefs(user.notificationPrefs), ...patch };
+    await storage.updateUser(userId, { notificationPrefs: JSON.stringify(next) });
+    res.json(next);
   });
 
   // Someone else's payment info — gated to friends + shared-group members.

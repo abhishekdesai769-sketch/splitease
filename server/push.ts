@@ -19,6 +19,7 @@ import { db } from "./db";
 import { deviceTokens } from "@shared/schema";
 import { inArray, and, ne, eq } from "drizzle-orm";
 import { sendApnsBatch, APNS_ENABLED, type ApnsTokenRef } from "./apns";
+import { filterUserIdsByPref } from "./notificationPrefs";
 
 interface RecipientFetch {
   token: string;
@@ -82,8 +83,13 @@ export async function pushExpenseCreated(opts: {
   if (!APNS_ENABLED) return;
 
   // Deduplicate + drop the payer — they don't need a push for their own action
-  const recipientIds = Array.from(new Set(opts.splitAmongUserIds)).filter(
+  const candidateIds = Array.from(new Set(opts.splitAmongUserIds)).filter(
     (id) => id && id !== opts.paidByUserId,
+  );
+  // Respect each recipient's Notifications switch (settle-ups vs expenses).
+  const recipientIds = await filterUserIdsByPref(
+    candidateIds,
+    opts.isSettlement ? "settleUps" : "newExpenses",
   );
   if (recipientIds.length === 0) return;
 
@@ -148,8 +154,9 @@ export async function pushGroupMemberJoined(opts: {
 }): Promise<void> {
   if (!APNS_ENABLED) return;
 
-  const recipientIds = Array.from(new Set(opts.groupMemberIds)).filter(
-    (id) => id && id !== opts.joinerUserId,
+  const recipientIds = await filterUserIdsByPref(
+    Array.from(new Set(opts.groupMemberIds)).filter((id) => id && id !== opts.joinerUserId),
+    "groupActivity",
   );
   if (recipientIds.length === 0) return;
 
@@ -189,7 +196,10 @@ export async function pushAddedToGroup(opts: {
 }): Promise<void> {
   if (!APNS_ENABLED) return;
 
-  const tokens = await getTokensForUsers([opts.addedUserId]);
+  const recipientIds = await filterUserIdsByPref([opts.addedUserId], "groupActivity");
+  if (recipientIds.length === 0) return;
+
+  const tokens = await getTokensForUsers(recipientIds);
   if (tokens.length === 0) return;
 
   const result = await sendApnsBatch(tokens, {
@@ -226,7 +236,10 @@ export async function pushWeeklyDigest(opts: {
   if (!APNS_ENABLED) return;
   if (opts.amountOwed <= 0) return;
 
-  const tokens = await getTokensForUsers([opts.userId]);
+  const recipientIds = await filterUserIdsByPref([opts.userId], "weeklyBalance");
+  if (recipientIds.length === 0) return;
+
+  const tokens = await getTokensForUsers(recipientIds);
   if (tokens.length === 0) return;
 
   const formatted = formatAmount(opts.amountOwed, opts.currency ?? "CAD");
@@ -245,6 +258,93 @@ export async function pushWeeklyDigest(opts: {
 
   if (result.invalidTokens.length > 0) {
     await purgeInvalidTokens(result.invalidTokens);
+  }
+}
+
+/**
+ * Notify the other people on an expense that it was deleted.
+ * Recipients: payer + everyone in the split, minus whoever deleted it.
+ * Gated by the "Deleted expenses" switch. Fire-and-forget. Never throws.
+ */
+export async function pushExpenseDeleted(opts: {
+  deletedByUserId: string;
+  deletedByName: string;
+  description: string;
+  amount: number;
+  paidByUserId: string;
+  splitAmongUserIds: string[];
+  groupName?: string;
+  isSettlement?: boolean;
+}): Promise<void> {
+  if (!APNS_ENABLED) return;
+  try {
+    const recipientIds = await filterUserIdsByPref(
+      Array.from(new Set([opts.paidByUserId, ...opts.splitAmongUserIds])).filter(
+        (id) => id && id !== opts.deletedByUserId,
+      ),
+      "deletedExpenses",
+    );
+    if (recipientIds.length === 0) return;
+
+    const tokens = await getTokensForUsers(recipientIds);
+    if (tokens.length === 0) return;
+
+    const formatted = formatAmount(opts.amount);
+    // "Sarah deleted an expense" · "Pizza · CA$40.00 in Roommates"
+    // "Sarah removed a settle-up" · "CA$25.00 in Roommates"
+    const title = opts.isSettlement
+      ? `${opts.deletedByName} removed a settle-up`
+      : `${opts.deletedByName} deleted an expense`;
+    const where = opts.groupName ? ` in ${opts.groupName}` : "";
+    const body = opts.isSettlement ? `${formatted}${where}` : `${opts.description} · ${formatted}${where}`;
+
+    const result = await sendApnsBatch(tokens, {
+      title,
+      body,
+      threadId: opts.groupName ? `group:${opts.groupName}` : "spliiit:expense",
+      data: { type: "expense_deleted", groupName: opts.groupName, amount: opts.amount },
+    });
+    if (result.invalidTokens.length > 0) await purgeInvalidTokens(result.invalidTokens);
+  } catch (err) {
+    console.error("[push] expense deleted:", err);
+  }
+}
+
+/**
+ * One summary push when someone clears ALL expenses (a whole group, or
+ * everything between two friends) — never one push per expense.
+ * Gated by the "Deleted expenses" switch. Fire-and-forget. Never throws.
+ */
+export async function pushExpensesCleared(opts: {
+  clearedByUserId: string;
+  clearedByName: string;
+  recipientUserIds: string[];
+  count: number;
+  groupName?: string;
+}): Promise<void> {
+  if (!APNS_ENABLED || opts.count <= 0) return;
+  try {
+    const recipientIds = await filterUserIdsByPref(
+      Array.from(new Set(opts.recipientUserIds)).filter((id) => id && id !== opts.clearedByUserId),
+      "deletedExpenses",
+    );
+    if (recipientIds.length === 0) return;
+
+    const tokens = await getTokensForUsers(recipientIds);
+    if (tokens.length === 0) return;
+
+    const label = opts.count === 1 ? "1 expense" : `${opts.count} expenses`;
+    const result = await sendApnsBatch(tokens, {
+      title: opts.groupName
+        ? `${opts.clearedByName} cleared ${opts.groupName}`
+        : `${opts.clearedByName} cleared your expenses`,
+      body: opts.groupName ? `${label} deleted from the group.` : `${label} between you were deleted.`,
+      threadId: opts.groupName ? `group:${opts.groupName}` : "spliiit:expense",
+      data: { type: "expenses_cleared", groupName: opts.groupName, count: opts.count },
+    });
+    if (result.invalidTokens.length > 0) await purgeInvalidTokens(result.invalidTokens);
+  } catch (err) {
+    console.error("[push] expenses cleared:", err);
   }
 }
 

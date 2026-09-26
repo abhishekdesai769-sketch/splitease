@@ -10,8 +10,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { apiRequest } from "@/lib/queryClient";
-import { Headphones, Send, Loader2, CheckCircle2, UserPlus, Copy, Check, MessageCircle, Mail, Trash2, AlertTriangle, Upload, HelpCircle, ChevronDown, Bell, Crown, Lock, Monitor, Moon, Settings, Sun, Star, Wallet } from "lucide-react";
+import { Headphones, Send, Loader2, CheckCircle2, UserPlus, Copy, Check, MessageCircle, Mail, Trash2, AlertTriangle, Upload, HelpCircle, ChevronDown, Bell, BellRing, Crown, Lock, Monitor, Moon, Settings, Sun, Star, Wallet } from "lucide-react";
 import { PaymentMethodsEditor } from "@/components/PaymentMethods";
+import { NotificationSettings } from "@/components/NotificationSettings";
 import { getStorePlatform, getStoreLink } from "@/lib/reviewPrompt";
 import { useTheme, type ThemePref } from "@/lib/theme";
 import { CURRENCIES } from "@/components/CurrencySelector";
@@ -59,7 +60,7 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const [open, setOpen] = useState(false);
-  const [view, setView] = useState<"menu" | "support" | "invite" | "delete" | "sent" | "faq" | "reminders" | "preferences" | "payment">("menu");
+  const [view, setView] = useState<"menu" | "support" | "invite" | "delete" | "sent" | "faq" | "reminders" | "preferences" | "payment" | "notifications">("menu");
   const { themePref, setThemePref } = useTheme();
   const [faqOpen, setFaqOpen] = useState<number | null>(null);
 
@@ -342,6 +343,21 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
               <div>
                 <p className="text-sm font-medium">How I get paid</p>
                 <p className="text-xs text-muted-foreground">Interac, PayPal, etc. — friends see this when they settle up</p>
+              </div>
+            </button>
+
+            {/* Notifications */}
+            <button
+              onClick={() => setView("notifications")}
+              className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-muted/50 transition-colors text-left group"
+              data-testid="menu-notifications"
+            >
+              <div className="w-9 h-9 rounded-lg bg-foreground/5 flex items-center justify-center flex-shrink-0">
+                <BellRing className="w-4.5 h-4.5 text-foreground" />
+              </div>
+              <div>
+                <p className="text-sm font-medium">Notifications</p>
+                <p className="text-xs text-muted-foreground">Choose what Spliiit tells you about</p>
               </div>
             </button>
 
@@ -833,6 +849,10 @@ export function SupportDrawer({ children }: { children: React.ReactNode }) {
         })()}
 
         {/* ===== PREFERENCES VIEW ===== */}
+        {view === "notifications" && (
+          <NotificationSettings onBack={() => setView("menu")} />
+        )}
+
         {view === "payment" && (
           <PaymentMethodsEditor onBack={() => setView("menu")} />
         )}

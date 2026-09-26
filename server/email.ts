@@ -1,5 +1,6 @@
 import { Resend } from "resend";
 import { recordEmailSent } from "./emailUsage";
+import { filterEmailsByPref } from "./notificationPrefs";
 
 const resend = process.env.RESEND_API_KEY
   ? new Resend(process.env.RESEND_API_KEY)
@@ -219,9 +220,13 @@ export async function notifyExpenseCreated(opts: {
 
   const hasReceipt = receiptBuffer && receiptFilename;
 
+  // Respect each recipient's "Email copies" switch (menu → Notifications).
+  const wantsCopy = await filterEmailsByPref(splitAmong.map((p) => p.email), "emailCopies");
+
   for (const person of splitAmong) {
     // Don't email the payer about their own expense
     if (person.email === opts.paidByEmail) continue;
+    if (!wantsCopy.has(person.email.toLowerCase())) continue;
 
     const subject = isSettlement
       ? `${paidByName} settled up with you${groupName ? ` in ${groupName}` : ""}`

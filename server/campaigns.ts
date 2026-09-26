@@ -21,6 +21,8 @@ import {
 } from "@shared/schema";
 import { eq, and, ne, inArray, sql, isNotNull } from "drizzle-orm";
 import { sendApnsBatch, APNS_ENABLED } from "./apns";
+import { newsUnsubscribeUrl } from "./notificationPrefs";
+import { parseNotificationPrefs } from "@shared/notificationPrefs";
 import type { User } from "@shared/schema";
 
 const resend = process.env.RESEND_API_KEY
@@ -159,6 +161,9 @@ async function getAudience(config: CampaignConfig): Promise<AudienceUser[]> {
       if (config.audience.excludeCurrencies.includes(cur)) return false;
       // Must have an email to receive anything meaningful
       if (!u.email) return false;
+      // Respect the "News and updates" switch (menu → Notifications, or the
+      // unsubscribe link in a previous announcement email).
+      if (!parseNotificationPrefs(u.notificationPrefs).news) return false;
       // iOS-only campaigns: skip everyone without an APNs token. This is the
       // master gate — applies to email + push + banner + grant uniformly.
       if (config.audience.iosOnly && !iosUserSet.has(u.id)) return false;
@@ -369,13 +374,20 @@ export async function runCampaign(
         continue;
       }
       try {
+        // CASL: every announcement carries a working unsubscribe, both as a
+        // visible footer link and as List-Unsubscribe headers (one-click).
+        const unsubUrl = newsUnsubscribeUrl(u.id);
         await resend.emails.send({
           from: FROM_ADDRESS,
           to: u.email,
           subject: cfg.email.subject,
-          html: cfg.email.htmlBody(u as unknown as User),
-          text: cfg.email.textBody(u as unknown as User),
+          html: cfg.email.htmlBody(u as unknown as User) + unsubscribeFooterHtml(unsubUrl),
+          text: cfg.email.textBody(u as unknown as User) + `\n\nDon't want Spliiit news? Unsubscribe: ${unsubUrl}`,
           replyTo: "support@spliiit.ca",  // milestone email is OK to reply to
+          headers: {
+            "List-Unsubscribe": `<${unsubUrl}>`,
+            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+          },
         });
         await recordSend(u.id, cfg.id, "email", true);
         result.emailSent++;
@@ -462,6 +474,15 @@ export async function runCampaign(
     startedAt,
     finishedAt: new Date().toISOString(),
   };
+}
+
+function unsubscribeFooterHtml(url: string): string {
+  return `
+<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <tr><td align="center" style="padding:8px 16px 24px;font-size:12px;color:#9ca3af;">
+    You're getting this because you use Spliiit. <a href="${url}" style="color:#9ca3af;">Unsubscribe from news</a>
+  </td></tr>
+</table>`;
 }
 
 // ─── Email templates ─────────────────────────────────────────────────────

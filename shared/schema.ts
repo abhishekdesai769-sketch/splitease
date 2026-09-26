@@ -52,6 +52,9 @@ export const users = pgTable("users", {
   //   paymentNote: free-text catch-all ("cash is fine too", etc.). Max 280 chars.
   paymentMethods: text("payment_methods"),   // JSON string or null
   paymentNote: text("payment_note"),         // free text or null
+  // Notification switches — JSON of { key: boolean }; missing = ON.
+  // Keys + parsing live in shared/notificationPrefs.ts.
+  notificationPrefs: text("notification_prefs"),
 }, (table) => [
   uniqueIndex("users_email_idx").on(table.email),
   uniqueIndex("users_referral_code_idx").on(table.referralCode),
