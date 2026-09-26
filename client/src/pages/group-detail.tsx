@@ -806,15 +806,15 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
 
   return (
     <div className="space-y-5">
-      {/* Header — actions on the top row, the group name on its own
-          full-width row below (order-last) so the buttons never squeeze it. */}
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-3">
+      {/* Header — one row: back, group name, ⋮, and a round + (add
+          expense). The icon-only + leaves the name room for two lines. */}
+      <div className="flex items-center gap-2">
         <Link href="/groups">
           <Button size="icon" variant="ghost" data-testid="back-to-groups">
             <ArrowLeft className="w-4 h-4" />
           </Button>
         </Link>
-        <div className="order-last basis-full min-w-0">
+        <div className="flex-1 min-w-0">
           {renaming ? (
             <form className="flex items-center gap-1" onSubmit={async (e) => {
               e.preventDefault();
@@ -843,7 +843,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
             </form>
           ) : (
             <h1
-              className={`text-3xl leading-tight tracking-tight line-clamp-2 break-words font-serif ${(isMeOwner || isMeAdmin || isMeGlobalAdmin) ? "cursor-pointer" : ""}`}
+              className={`text-[26px] leading-[1.05] tracking-tight line-clamp-2 break-words font-serif ${(isMeOwner || isMeAdmin || isMeGlobalAdmin) ? "cursor-pointer" : ""}`}
               onClick={() => {
                 if (isMeOwner || isMeAdmin || isMeGlobalAdmin) {
                   setNewGroupName(group.name);
@@ -861,7 +861,7 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
         {/* Three-dots group actions menu */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button size="icon" variant="ghost" className="ml-auto" data-testid="group-actions-menu">
+            <Button size="icon" variant="ghost" className="shrink-0" data-testid="group-actions-menu">
               <MoreVertical className="w-4 h-4" />
             </Button>
           </DropdownMenuTrigger>
@@ -1033,9 +1033,8 @@ export default function GroupDetail({ groupId }: { groupId: string }) {
 
         <Dialog open={addOpen} onOpenChange={setAddOpen}>
           <DialogTrigger asChild>
-            <Button size="sm" data-testid="add-expense-btn">
-              <Plus className="w-4 h-4 mr-1.5" />
-              Expense
+            <Button size="icon" className="rounded-full shrink-0" aria-label="Add expense" data-testid="add-expense-btn">
+              <Plus className="w-4 h-4" />
             </Button>
           </DialogTrigger>
           <DialogContent className="max-h-[85vh] overflow-y-auto">

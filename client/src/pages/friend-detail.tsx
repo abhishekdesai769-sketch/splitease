@@ -420,30 +420,27 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
 
   return (
     <div className="space-y-5">
-      {/* Header — actions on the top row, the name on its own full-width row
-          below (order-last) so it never gets squeezed by the buttons. */}
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-3">
+      {/* Header — one row: back, avatar + name, ⋮, and a round + (add
+          expense). The icon-only + leaves the name room for two lines. */}
+      <div className="flex items-center gap-2">
         <Link href="/friends">
           <Button size="icon" variant="ghost" data-testid="back-to-friends">
             <ArrowLeft className="w-4 h-4" />
           </Button>
         </Link>
-        <div className="order-last basis-full flex items-center gap-3 min-w-0">
+        <div className="flex-1 min-w-0 flex items-center gap-3">
           <div
             className="w-11 h-11 rounded-full flex items-center justify-center text-white text-base font-semibold shrink-0"
             style={{ backgroundColor: warmAvatar(friend.id) }}
           >
             {friend.name[0]?.toUpperCase()}
           </div>
-          <div className="flex-1 min-w-0">
-            <h1 className="font-serif text-[28px] leading-tight tracking-tight line-clamp-2 break-words">{friend.name}</h1>
-            <p className="text-xs text-muted-foreground truncate font-mono">{friend.email}</p>
-          </div>
+          <h1 className="flex-1 min-w-0 font-serif text-[26px] leading-[1.05] tracking-tight line-clamp-2 break-words">{friend.name}</h1>
         </div>
         {/* ⋮ Three-dot menu: Import + Remove Friend */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button size="icon" variant="ghost" className="ml-auto" data-testid="friend-detail-more-btn">
+            <Button size="icon" variant="ghost" className="shrink-0" data-testid="friend-detail-more-btn">
               <MoreVertical className="w-4 h-4" />
             </Button>
           </DropdownMenuTrigger>
@@ -599,9 +596,8 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
 
         <Dialog open={addExpenseOpen} onOpenChange={setAddExpenseOpen}>
           <DialogTrigger asChild>
-            <Button size="sm" data-testid="add-friend-expense-btn">
-              <Plus className="w-4 h-4 mr-1.5" />
-              Expense
+            <Button size="icon" className="rounded-full shrink-0" aria-label="Add expense" data-testid="add-friend-expense-btn">
+              <Plus className="w-4 h-4" />
             </Button>
           </DialogTrigger>
           <DialogContent className="max-h-[85vh] overflow-y-auto">
