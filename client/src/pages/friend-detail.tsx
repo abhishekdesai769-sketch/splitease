@@ -8,9 +8,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Plus, Trash2, Receipt, CheckCircle2, HandCoins, Bell, AlertTriangle, UserMinus, Camera, X, Mail, Loader2, FileText, Upload, MoreVertical, Download, Repeat, Crown } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Receipt, CheckCircle2, HandCoins, Bell, AlertTriangle, UserMinus, Camera, X, Mail, Loader2, FileText, Upload, MoreVertical, Download, Repeat, Crown, Copy } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { UpgradePromptSheet } from "@/components/UpgradePromptSheet";
 import { isInTWA } from "@/lib/platform";
@@ -444,7 +444,27 @@ export default function FriendDetail({ friendId }: { friendId: string }) {
               <MoreVertical className="w-4 h-4" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-52">
+          <DropdownMenuContent align="end" className="w-64">
+            {/* The compact header has no room for the email — it lives here. */}
+            <DropdownMenuLabel className="font-normal">
+              <p className="text-sm font-semibold truncate">{friend.name}</p>
+              <p className="text-xs text-muted-foreground font-mono truncate">{friend.email}</p>
+            </DropdownMenuLabel>
+            <DropdownMenuItem
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(friend.email);
+                  toast({ title: "Email copied" });
+                } catch {
+                  toast({ title: "Couldn't copy", description: friend.email, variant: "destructive" });
+                }
+              }}
+              data-testid="friend-copy-email"
+            >
+              <Copy className="w-4 h-4 mr-2" />
+              Copy email
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => setImportOpen(true)}>
               <Upload className="w-4 h-4 mr-2" />
               Import from another app
