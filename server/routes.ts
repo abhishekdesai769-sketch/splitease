@@ -201,27 +201,39 @@ export async function registerRoutes(
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Privacy Policy â Spliiit</title>
+  <title>Privacy Policy · Spliiit</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap">
   <style>
+    /* Matches the app: beige canvas, paper card, ink text, Instrument Serif
+       headings, terracotta for links only. No hard divider lines. */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0a0f0d; color: #d1d5db; line-height: 1.7; padding: 2rem 1.25rem; }
+    body { font-family: 'Inter Tight', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: #E7E0D5; color: #3A3632; line-height: 1.7; padding: 2.5rem 1rem 3rem; -webkit-font-smoothing: antialiased; }
     .container { max-width: 680px; margin: 0 auto; }
-    h1 { color: #f9fafb; font-size: 1.75rem; margin-bottom: 0.25rem; }
-    .tagline { color: #4fd1c5; font-size: 0.875rem; margin-bottom: 0.5rem; }
-    .updated { color: #6b7280; font-size: 0.8rem; margin-bottom: 2rem; }
-    h2 { color: #f9fafb; font-size: 1.1rem; margin-top: 2rem; margin-bottom: 0.5rem; }
-    p, li { font-size: 0.925rem; margin-bottom: 0.75rem; }
+    .brand { display: inline-block; font-family: 'Instrument Serif', Georgia, serif; font-size: 1.6rem; color: #282624; text-decoration: none; margin: 0 0 1.25rem 0.5rem; }
+    .card { background: #F9F8F6; border-radius: 24px; padding: 2.5rem 2rem; box-shadow: 0 18px 48px -16px rgba(40, 30, 20, 0.22); }
+    h1 { font-family: 'Instrument Serif', Georgia, serif; font-weight: 400; color: #282624; font-size: 2.75rem; line-height: 1.05; margin-bottom: 0.4rem; }
+    .tagline { font-family: 'Instrument Serif', Georgia, serif; font-style: italic; color: #6B6660; font-size: 1.15rem; margin-bottom: 0.25rem; }
+    .updated { color: #6B6660; font-size: 0.8rem; margin-bottom: 1.5rem; }
+    h2 { font-family: 'Instrument Serif', Georgia, serif; font-weight: 400; color: #282624; font-size: 1.6rem; line-height: 1.2; margin-top: 2.25rem; margin-bottom: 0.5rem; }
+    p, li { font-size: 0.95rem; margin-bottom: 0.75rem; }
+    strong { color: #282624; font-weight: 600; }
     ul { padding-left: 1.25rem; }
     li { margin-bottom: 0.4rem; }
-    a { color: #4fd1c5; text-decoration: none; }
-    a:hover { text-decoration: underline; }
-    .footer { margin-top: 3rem; padding-top: 1.5rem; border-top: 1px solid #1f2937; color: #6b7280; font-size: 0.8rem; }
+    li::marker { color: #A8A29B; }
+    a { color: #A45C3E; text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; }
+    a:hover { color: #8A4A30; }
+    .footer { margin-top: 2rem; padding: 0 0.5rem; color: #6B6660; font-size: 0.8rem; }
+    @media (max-width: 480px) { .card { padding: 2rem 1.25rem; } h1 { font-size: 2.3rem; } }
   </style>
 </head>
 <body>
   <div class="container">
+    <a class="brand" href="/">Spliiit</a>
+    <div class="card">
     <h1>Privacy Policy</h1>
-    <p class="tagline">Spliiit â Expense splitting made easy</p>
+    <p class="tagline">Expense splitting made easy</p>
     <p class="updated">Last updated: March 20, 2026</p>
 
     <h2>Introduction</h2>
@@ -263,8 +275,9 @@ export async function registerRoutes(
     <p>We may update this policy from time to time. Changes will be posted on this page with an updated date.</p>
 
     <h2>Contact Us</h2>
-    <p>If you have questions about this privacy policy, contact us at <a href="mailto:inquiries@klarityit.ca">inquiries@klarityit.ca</a>.</p>
+    <p>If you have questions about this privacy policy, contact us at <a href="mailto:support@spliiit.ca">support@spliiit.ca</a>.</p>
 
+    </div>
     <div class="footer">
       <p>&copy; 2026 Klarity IT Corp. All rights reserved.</p>
     </div>

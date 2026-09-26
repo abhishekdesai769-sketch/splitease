@@ -514,7 +514,7 @@ function Landing({ onSignIn }: { onSignIn: () => void }) {
               <h4>Spliiit</h4>
               <a href="/privacy">Privacy</a>
               <a href="https://www.apple.com/legal/internet-services/itunes/dev/stdeula/" target="_blank" rel="noopener noreferrer">Terms</a>
-              <a href="mailto:inquiries@klarityit.ca">Contact</a>
+              <a href="mailto:support@spliiit.ca">Contact</a>
               <button className="signin" onClick={onSignIn}>Sign in</button>
             </div>
           </div>
