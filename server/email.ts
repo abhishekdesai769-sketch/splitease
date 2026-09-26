@@ -698,7 +698,7 @@ export async function sendReminderEmail(opts: {
 }
 
 /**
- * Spliiit-voiced auto reminder (sent by the scheduler on behalf of a premium user)
+ * Spliiit-voiced auto reminder (sent by the scheduler on behalf of a user who turned reminders on)
  * The FROM is Spliiit — not the premium user — so there's no social awkwardness.
  */
 export async function sendAutoReminderEmail(opts: {
@@ -778,13 +778,13 @@ export async function sendAutoReminderEmail(opts: {
           </tr>
         </table>
       </td></tr>
-      <!-- "Why did I get this?" upsell block -->
+      <!-- "Why did I get this?" explainer -->
       <tr><td style="border-top:1px solid #f3f4f6;padding-top:16px;padding-bottom:16px;">
         <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb;">
           <tr><td style="padding:14px 16px;">
             <p style="margin:0 0 6px 0;font-size:12px;font-weight:600;color:#374151;">Why did you get this?</p>
             <p style="margin:0 0 10px 0;font-size:12px;color:#6b7280;line-height:1.6;">
-              <strong style="color:#374151;">${owedToName}</strong> is a Spliiit Premium member.
+              <strong style="color:#374151;">${owedToName}</strong> turned on auto reminders in Spliiit.
               Spliiit sent this automatically on their behalf — they didn't personally message you
               and may not even know this landed in your inbox. No awkwardness needed. 😌
             </p>
@@ -792,8 +792,8 @@ export async function sendAutoReminderEmail(opts: {
               Want Spliiit to do the same for you? Set it up once and let the app handle the
               uncomfortable part — your friends get reminded, you stay chill.
             </p>
-            <a href="${appUrl}/r/upgrade" style="font-size:12px;font-weight:600;color:#0d9488;text-decoration:none;">
-              Get Spliiit Premium →
+            <a href="${appUrl}" style="font-size:12px;font-weight:600;color:#B5674A;text-decoration:none;">
+              Try Spliiit, it's free →
             </a>
           </td></tr>
         </table>
@@ -805,7 +805,7 @@ export async function sendAutoReminderEmail(opts: {
   </td></tr>
 </table>`;
 
-  const text = `${bodyText}\n\nSettle up on Spliiit: ${appUrl}\n\n---\nWhy did you get this?\n${owedToName} is a Spliiit Premium member. Spliiit sent this automatically on their behalf — they didn't personally nudge you.\n\nWant Spliiit to do the same for you? Get Premium: ${appUrl}/r/upgrade\n\nThis is an automated message — please do not reply to this email.\n— Spliiit`;
+  const text = `${bodyText}\n\nSettle up on Spliiit: ${appUrl}\n\n---\nWhy did you get this?\n${owedToName} turned on auto reminders in Spliiit. Spliiit sent this automatically on their behalf — they didn't personally nudge you.\n\nWant Spliiit to do the same for you? It's free: ${appUrl}\n\nThis is an automated message — please do not reply to this email.\n— Spliiit`;
 
   sendEmail(to, subject, html, text);
 }

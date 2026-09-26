@@ -93,15 +93,15 @@ export function NotificationSettings({ onBack }: { onBack: () => void }) {
   const showBanner = permission === "denied" || permission === "prompt";
 
   return (
-    <div className="flex-1 flex flex-col px-4 overflow-y-auto pb-8" data-testid="notification-settings">
+    <div className="flex-1 flex flex-col px-4 pt-3 overflow-y-auto pb-8" data-testid="notification-settings">
       <button
         onClick={onBack}
-        className="text-xs text-muted-foreground hover:text-foreground mb-3 self-start flex-shrink-0 px-1"
+        className="text-sm text-muted-foreground hover:text-foreground self-start px-1 py-2.5 mb-1 flex-shrink-0"
       >
-        ← Back
+        ← Menu
       </button>
 
-      <h3 className="font-serif text-[34px] leading-none text-foreground mb-5 px-1">Notifications</h3>
+      <h3 className="font-serif text-[36px] leading-none text-foreground mb-5 px-1">Notifications</h3>
 
       {showBanner && (
         <div className="flex items-center gap-3 rounded-[20px] bg-accent px-4 py-3.5 mb-5" data-testid="push-off-banner">

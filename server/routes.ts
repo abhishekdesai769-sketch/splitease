@@ -5551,11 +5551,11 @@ setInterval(loadAll,30000);
     });
   });
 
-  // PATCH /api/reminder-settings — update reminder configuration (premium only)
+  // PATCH /api/reminder-settings — update reminder configuration (free for everyone)
   app.patch("/api/reminder-settings", requireAuth, async (req, res) => {
     const userId = (req.session as any).userId as string;
     const user = await storage.getUser(userId);
-    if (!user?.isPremium) return res.status(403).json({ error: "Premium required" });
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
 
     const { reminderEnabled, reminderDays, reminderTone } = req.body;
 

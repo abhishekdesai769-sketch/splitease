@@ -146,7 +146,7 @@ export interface IStorage {
 
   // Auto-reminder settings (premium)
   updateReminderSettings(userId: string, data: { reminderEnabled: boolean; reminderDays: number; reminderTone: string }): Promise<void>;
-  getPremiumUsersWithRemindersEnabled(): Promise<User[]>;
+  getUsersWithRemindersEnabled(): Promise<User[]>;
   getLastReminderSent(fromUserId: string, toUserId: string): Promise<SentReminder | undefined>;
   upsertSentReminder(fromUserId: string, toUserId: string, sentAt: string): Promise<void>;
 }
@@ -904,10 +904,10 @@ export class PgStorage implements IStorage {
       .where(eq(users.id, userId));
   }
 
-  async getPremiumUsersWithRemindersEnabled(): Promise<User[]> {
+  // Auto reminders are free for everyone (Sept 2026) — no isPremium filter.
+  async getUsersWithRemindersEnabled(): Promise<User[]> {
     return db.select().from(users).where(
       and(
-        eq(users.isPremium, true),
         eq(users.reminderEnabled, true),
         eq(users.isGhost, false)
       )

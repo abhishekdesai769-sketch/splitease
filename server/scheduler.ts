@@ -173,7 +173,7 @@ async function processRecurringExpenses() {
 }
 
 // ─── Auto Payment Reminders ──────────────────────────────────────────────────
-// Runs daily. For each premium user with reminders enabled, computes who owes
+// Runs daily. For each user with reminders enabled (free for everyone), computes who owes
 // them money and sends an email from Spliiit's voice if the debt has been
 // outstanding longer than the user's configured threshold (min 7 days).
 
@@ -182,10 +182,10 @@ async function processAutoReminders() {
   const today = new Date();
 
   try {
-    const premiumUsers = await storage.getPremiumUsersWithRemindersEnabled();
+    const premiumUsers = await storage.getUsersWithRemindersEnabled();
     if (premiumUsers.length === 0) return;
 
-    console.log(`[scheduler] Processing auto-reminders for ${premiumUsers.length} premium user(s)`);
+    console.log(`[scheduler] Processing auto-reminders for ${premiumUsers.length} user(s)`);
 
     for (const premUser of premiumUsers) {
       try {

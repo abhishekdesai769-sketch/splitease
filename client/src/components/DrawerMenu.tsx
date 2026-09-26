@@ -5,7 +5,6 @@ import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { isIosNative } from "@/lib/iap";
-import { isInTWA } from "@/lib/platform";
 import { CURRENCIES } from "@/components/CurrencySelector";
 
 // The menu drawer's home screen and the Account screen behind the name row.
@@ -94,10 +93,7 @@ export function DrawerHome({
       <GroupLabel>You</GroupLabel>
       <div className="rounded-[22px] bg-card p-1 mb-4">
         <Row icon={<Wallet className={icon} />} title="How I get paid" sub="Friends see this when they settle up" onClick={onPayment} testId="menu-payment" />
-        {/* Hidden in the Android TWA for non-premium users (Google Play policy). */}
-        {!(isInTWA && !user.isPremium) && (
-          <Row icon={<Clock className={icon} />} title="Auto reminders" sub="Email people who owe you" onClick={onReminders} testId="menu-auto-reminders" />
-        )}
+        <Row icon={<Clock className={icon} />} title="Auto reminders" sub="Email people who owe you" onClick={onReminders} testId="menu-auto-reminders" />
         <Row icon={<Bell className={icon} />} title="Notifications" onClick={onNotifications} testId="menu-notifications" />
       </div>
 
@@ -166,8 +162,8 @@ export function AccountView({ onBack, onDelete }: { onBack: () => void; onDelete
   };
 
   return (
-    <div className="flex-1 flex flex-col px-4 pt-5 pb-5 overflow-y-auto" data-testid="drawer-account">
-      <button onClick={onBack} className="text-xs text-muted-foreground hover:text-foreground mb-2 self-start px-1 py-2">
+    <div className="flex-1 flex flex-col px-4 pt-3 pb-5 overflow-y-auto" data-testid="drawer-account">
+      <button onClick={onBack} className="text-sm text-muted-foreground hover:text-foreground self-start px-1 py-2.5 mb-1">
         ← Menu
       </button>
 

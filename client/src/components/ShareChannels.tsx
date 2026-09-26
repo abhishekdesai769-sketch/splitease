@@ -21,6 +21,8 @@ interface ShareChannelsProps {
   text: string;
   /** Subject line for the email channel. */
   emailSubject?: string;
+  /** "paper" = the menu drawer's look: borderless paper tiles on beige. */
+  variant?: "default" | "paper";
 }
 
 const TILE =
@@ -29,7 +31,15 @@ const ICON_WRAP =
   "w-14 h-14 rounded-2xl border border-border bg-card flex items-center justify-center text-foreground transition-colors group-hover:bg-muted/60 group-active:bg-muted";
 const LABEL = "text-[11px] font-medium text-muted-foreground";
 
-export function ShareChannels({ url, text, emailSubject = "Join me on Spliiit" }: ShareChannelsProps) {
+const PAPER_TILE = "flex flex-col items-center gap-2 rounded-[20px] bg-card pt-3.5 pb-3 group active:bg-muted/40";
+const PAPER_ICON_WRAP = "w-10 h-10 rounded-full bg-muted/60 flex items-center justify-center text-foreground";
+const PAPER_LABEL = "text-[12.5px] text-foreground";
+
+export function ShareChannels({ url, text, emailSubject = "Join me on Spliiit", variant = "default" }: ShareChannelsProps) {
+  const paper = variant === "paper";
+  const tile = paper ? PAPER_TILE : TILE;
+  const iconWrap = paper ? PAPER_ICON_WRAP : ICON_WRAP;
+  const label = paper ? PAPER_LABEL : LABEL;
   const [copied, setCopied] = useState(false);
   const combined = `${text} ${url}`;
 
@@ -58,8 +68,21 @@ export function ShareChannels({ url, text, emailSubject = "Join me on Spliiit" }
   const displayUrl = url.replace(/^https?:\/\//, "");
 
   return (
-    <div className="space-y-4">
+    <div className={paper ? "space-y-5 mb-5" : "space-y-4"}>
       {/* Copy-link chip */}
+      {paper ? (
+      <div className="w-full flex items-center gap-3 bg-card rounded-full pl-4 pr-1.5 py-1.5">
+        <span className="flex-1 text-sm text-foreground truncate">{displayUrl}</span>
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="rounded-full bg-foreground text-background text-[13px] font-medium px-4 py-2.5 shrink-0"
+          data-testid="share-copy-link"
+        >
+          {copied ? "Copied" : "Copy"}
+        </button>
+      </div>
+      ) : (
       <button
         type="button"
         onClick={handleCopy}
@@ -72,65 +95,66 @@ export function ShareChannels({ url, text, emailSubject = "Join me on Spliiit" }
           {copied ? "Copied" : "Copy"}
         </span>
       </button>
+      )}
 
       {/* Channel grid — monochrome ink, one system. */}
-      <div className="grid grid-cols-3 gap-x-2 gap-y-3">
+      <div className={paper ? "grid grid-cols-3 gap-2.5" : "grid grid-cols-3 gap-x-2 gap-y-3"}>
         {/* WhatsApp */}
-        <a className={TILE} href={`https://wa.me/?text=${encodeURIComponent(combined)}`} target="_blank" rel="noopener noreferrer" data-testid="share-whatsapp">
-          <span className={ICON_WRAP}>
+        <a className={tile} href={`https://wa.me/?text=${encodeURIComponent(combined)}`} target="_blank" rel="noopener noreferrer" data-testid="share-whatsapp">
+          <span className={iconWrap}>
             <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 2a10 10 0 0 0-8.6 15L2 22l5.2-1.4A10 10 0 1 0 12 2z" />
               <path d="M8.6 8.4c-.3 0-.6.1-.8.4-.3.3-.9.9-.9 2.1s.9 2.5 1 2.6c.1.2 1.8 2.9 4.5 3.9 2.2.9 2.7.7 3.2.7.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.1-1.2-.1-.1-.3-.2-.6-.3l-1.4-.7c-.2-.1-.4-.1-.6.1l-.6.8c-.1.2-.3.2-.5.1-.7-.3-1.4-.6-2.3-1.6-.3-.4-.6-.9-.7-1.1-.1-.2 0-.3.1-.4l.4-.5c.1-.2.1-.3 0-.5l-.7-1.6c-.2-.4-.4-.4-.6-.4z" fill="currentColor" stroke="none" />
             </svg>
           </span>
-          <span className={LABEL}>WhatsApp</span>
+          <span className={label}>WhatsApp</span>
         </a>
 
         {/* Telegram */}
-        <a className={TILE} href={`https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`} target="_blank" rel="noopener noreferrer" data-testid="share-telegram">
-          <span className={ICON_WRAP}>
+        <a className={tile} href={`https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`} target="_blank" rel="noopener noreferrer" data-testid="share-telegram">
+          <span className={iconWrap}>
             <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21.5 4.3 2.9 11.2c-.6.2-.6 1 0 1.2l4.6 1.5 1.8 5.3c.2.5.8.6 1.2.2l2.5-2.4 4.6 3.4c.4.3 1 .1 1.1-.4L22.3 5c.1-.6-.4-1-.8-.7z" />
               <path d="M8.1 13.9 16 8.2l-5.9 6.3" />
             </svg>
           </span>
-          <span className={LABEL}>Telegram</span>
+          <span className={label}>Telegram</span>
         </a>
 
         {/* X */}
-        <a className={TILE} href={`https://x.com/intent/post?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`} target="_blank" rel="noopener noreferrer" data-testid="share-x">
-          <span className={ICON_WRAP}>
+        <a className={tile} href={`https://x.com/intent/post?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`} target="_blank" rel="noopener noreferrer" data-testid="share-x">
+          <span className={iconWrap}>
             <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
               <path d="M18.9 2h3.3l-7.2 8.2L23.6 22h-6.7l-5.2-6.9L5.6 22H2.3l7.7-8.8L2.1 2h6.8l4.7 6.3L18.9 2zm-1.2 18h1.8L7.1 3.9H5.2L17.7 20z" />
             </svg>
           </span>
-          <span className={LABEL}>X</span>
+          <span className={label}>X</span>
         </a>
 
         {/* SMS */}
-        <a className={TILE} href={`sms:?&body=${encodeURIComponent(combined)}`} data-testid="share-sms">
-          <span className={ICON_WRAP}>
+        <a className={tile} href={`sms:?&body=${encodeURIComponent(combined)}`} data-testid="share-sms">
+          <span className={iconWrap}>
             <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 11.5a8.4 7.5 0 0 1-12.5 6.6L3 20l1.9-4.9A8.4 7.5 0 1 1 21 11.5z" />
             </svg>
           </span>
-          <span className={LABEL}>Text</span>
+          <span className={label}>Text</span>
         </a>
 
         {/* Email */}
-        <a className={TILE} href={`mailto:?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(combined)}`} data-testid="share-email">
-          <span className={ICON_WRAP}>
+        <a className={tile} href={`mailto:?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(combined)}`} data-testid="share-email">
+          <span className={iconWrap}>
             <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
               <rect x="3" y="5" width="18" height="14" rx="2" />
               <path d="m3 7 9 6 9-6" />
             </svg>
           </span>
-          <span className={LABEL}>Email</span>
+          <span className={label}>Email</span>
         </a>
 
         {/* More — native OS share sheet (IG / Snap / TikTok / etc.) */}
-        <button type="button" className={TILE} onClick={() => shareLink({ title: emailSubject, text, url })} data-testid="share-more">
-          <span className={ICON_WRAP}>
+        <button type="button" className={tile} onClick={() => shareLink({ title: emailSubject, text, url })} data-testid="share-more">
+          <span className={iconWrap}>
             <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="18" cy="5" r="2.4" />
               <circle cx="6" cy="12" r="2.4" />
@@ -138,7 +162,7 @@ export function ShareChannels({ url, text, emailSubject = "Join me on Spliiit" }
               <path d="m8.1 10.8 7.4-4.4M8.1 13.2l7.4 4.4" />
             </svg>
           </span>
-          <span className={LABEL}>More</span>
+          <span className={label}>More</span>
         </button>
       </div>
     </div>
